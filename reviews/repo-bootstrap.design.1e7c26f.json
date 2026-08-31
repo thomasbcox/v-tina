@@ -1,0 +1,75 @@
+{
+  "verdict": "The sketch is the right shape: four files, no dependency, no framework, and the one real design choice — an echoing no-op gate instead of bare `true` — is the honest, self-identifying form of a deliberate vacuous check, directly serving the Non-goal's stated failure mode (a vacuous check that looks real). Deferring CI and the manifest until the technology story is correct; a CI workflow over a no-op gate would be decorative. Oracle assignments are clean: every mechanism is derived from its criterion rather than an implementation token, none is unfailable, and AC3's mechanism even includes the empty case, which is exactly the discipline the frame skill asks for. Two IMPORTANT spec-level issues hold this short of sound-as-written: (1) AC1 and AC3 are wrapped in Gherkin scenarios although their subjects are the loop's config and the repository's git state — the exact 'fake scenario' this repo's AGENTS.md forbids for bookkeeping criteria; (2) AC3 tests only `.env.local` while the in-scope intent is `.env*` so Supabase/Fireworks credentials 'cannot be committed' — as written, every criterion can pass while `.env` holding live keys remains committable. Fix those two and this ships.",
+  "findings": [
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "AC1 and AC3 are bookkeeping criteria wrapped in fake Gherkin scenarios",
+      "locus": "reviews/repo-bootstrap.md — Acceptance criteria 1 and 3",
+      "claim": "The repo addendum scopes Gherkin to criteria whose outcome is observable in the product's own behavior, and names as plain property assertions 'anything whose subject is the repository or the loop rather than the product.' There is no product yet. AC1's subject is the loop's own gate config (`.claude/workflow.json`'s `testCommand`) and AC3's subject is git's untracked-file reporting — both are repository/loop bookkeeping, so the scenarios are manufactured: `Given a clone` / `When a developer creates node_modules/` read as product behavior while asserting bookkeeping, the precise anti-pattern the addendum calls out ('A manufactured Given a repository / When the diff is taken is a fake scenario'). AC3's `When` additionally strings four fixture-creation actions together, pressing against the single-trigger rule. AC2 is defensible (a visitor genuinely can fail its `Then` on the repo's public surface) and may stay.",
+      "alternative": "Rewrite AC1 and AC3 as plain numbered property assertions in the style of AC4–7 (e.g., 'The `testCommand` recorded in `.claude/workflow.json` exits 0 and prints a message identifying itself as a deliberate no-op awaiting the technology story'; 'None of `node_modules/`, `.next/`, `.env*`, `.vercel/` appears in `git status --porcelain` output'). Keep AC2 as a scenario.",
+      "win": "Brings the spec into compliance with the repo's own AGENTS.md rule it cites in its preamble, and removes two scenarios whose Given/When scaffolding asserts nothing — the reviewer reading them can no longer mistake loop bookkeeping for product behavior."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "AC3 is narrower than the stated intent: `.env.local` only, not `.env*`",
+      "locus": "reviews/repo-bootstrap.md — Acceptance criterion 3 vs In scope item 4",
+      "claim": "In-scope item 4 grounds the `.gitignore` work in 'including `.env*`, so credentials for Supabase and Fireworks cannot be committed once that work starts.' AC3 quantifies over exactly one env file — `.env.local` — so an implementation that ignores `.env*.local` (the stock Next.js template pattern) passes every criterion while `.env` or `.env.production` holding live Supabase keys remains committable. The criterion that exists to keep the audit's clean secret finding true cannot catch the failure it was written against. An acceptance criterion whose letter is satisfiable while its motivating risk is fully present is a spec defect, not a test-gap to patch later.",
+      "alternative": "Widen AC3 to quantify over the `.env*` family the in-scope item names (e.g., include `.env` and `.env.production` alongside `.env.local` in the `When`/assertion), keeping the `!.env.example` negation visible in the criterion or its test notes so the carve-out is verified rather than assumed.",
+      "win": "One criterion now covers the entire credential surface the story exists to protect, eliminating the silent hole where the most common secret file (`.env`) could be committed on a fully green story."
+    }
+  ],
+  "regressions": [
+    {
+      "criterion": "1 (testCommand exits 0, self-identifies as a deliberate no-op)",
+      "regression": "The recorded command chains a real check whose failure is swallowed — e.g., `some-check || true; echo 'no-op gate…'` or `some-check; echo '…'` — so it exits 0 and prints the self-identifying message (letter) while silently absorbing genuine failures, recreating the exact 'vacuous check that looks like a real one' dishonesty the Non-goal exists to prevent."
+    },
+    {
+      "criterion": "1 (testCommand exits 0, self-identifies as a deliberate no-op)",
+      "regression": "The command prints the no-op banner and exits 0 but also performs a side effect — creates or touches files, installs something, bootstraps config — so it satisfies the letter (exit 0, self-identifying message) while not actually being a no-op, and every future `/review` step 3 run mutates the working tree under the guise of a gate."
+    },
+    {
+      "criterion": "2 (README states what v-tina is, names the intended stack, purpose forthcoming)",
+      "regression": "The README contains all three literal elements but the 'what v-tina is' sentence is a generic placeholder ('v-tina is a new project') — the three elements are mechanically present (letter) while a visitor still cannot tell what v-tina is, which is the outcome the criterion exists to produce."
+    },
+    {
+      "criterion": "2 (README states what v-tina is, names the intended stack, purpose forthcoming)",
+      "regression": "The README names the intended stack but describes it in the present tense as already built ('v-tina is a Next.js/Supabase app that…'), so it states what v-tina is and names the stack (letter) while implying shipped code that does not exist — the repo reads as broken or abandoned, the precise impression the 'forthcoming story' sentence was meant to prevent."
+    },
+    {
+      "criterion": "3 (git status reports no untracked entries for node_modules/, .next/, .env.local, .vercel/)",
+      "regression": "The `.gitignore` lists the four literal paths only — ignoring `.env.local` but not `.env`, `.env.production`, or other `.env*` variants — so all four probed paths are clean (letter) while the most common credential file, `.env` with live Supabase/Fireworks keys, remains committable, defeating the intent stated in In scope item 4."
+    },
+    {
+      "criterion": "3 (git status reports no untracked entries for the four paths)",
+      "regression": "The ignore entries are root-anchored (`/node_modules`, `/.next`) so the four paths are ignored at the repository root (letter) but the same artifacts created one level down (e.g., `packages/web/node_modules/`) still appear as untracked — the pattern holds only for the exact probe locations rather than for the stack's artifacts wherever they occur."
+    },
+    {
+      "criterion": "4 (workflow.json parses; exactly baseBranch, branchPrefix, testCommand; no retired fields)",
+      "regression": "The file parses and carries exactly the three permitted keys, but a value is unusable — `baseBranch` names a branch that does not exist, or `testCommand` is an empty string — so the key-set letter passes while the intent (the loop can load the config and `/review` runs past step 1) fails."
+    },
+    {
+      "criterion": "4 (workflow.json parses; exactly baseBranch, branchPrefix, testCommand)",
+      "regression": "The JSON text contains a duplicate key (e.g., `branchPrefix` twice with different values): most parsers accept it last-wins, so the file 'parses' and yields exactly the three keys (letter), but which value any given consumer sees depends on its parser — the config is ambiguous while appearing conformant."
+    },
+    {
+      "criterion": "5 (LICENSE exists at root and is the license Thomas names)",
+      "regression": "The LICENSE file contains the named license's text with the copyright placeholder left unfilled (`Copyright (c) [year] [fullname]` or the Apache appendix boilerplate intact) — the file exists and is nominally the named license (letter) while the grant is arguably never applied to anyone and GitHub's license detection does not recognize it, leaving the repo's legal state as murky as before."
+    },
+    {
+      "criterion": "6 (reviews/audit-2026-08-30.md is tracked in git)",
+      "regression": "The path is tracked — `git ls-files` returns it — but the committed content is not the audit of record: the file was re-generated, summarized, or truncated before committing rather than swept in as-is. The letter (tracked at that path) passes while the intent (the audit that motivated this story is preserved in version control) is violated."
+    },
+    {
+      "criterion": "7 (diff vs stack base shows only .claude/workflow.json, README.md, LICENSE, .gitignore outside reviews/)",
+      "regression": "A change belonging to this story is committed onto the stack base branch (`claude/agents-gherkin-scope`) or another ancestor instead of this branch, so the enumerated diff shows only the four allowed files (letter) while the story's actual footprint is larger than declared — the scope check is defeated by moving the change below the diff base rather than by keeping the story small."
+    },
+    {
+      "criterion": "7 (diff vs stack base shows only the four allowed files)",
+      "regression": "Non-review-trail content — scaffolding notes, a config sample, a docs draft — is parked under `reviews/` to ride the categorical exclusion, so the scope command stays clean (letter) while the story ships files outside its declared scope hidden inside the exemption meant only for workflow bookkeeping about the loop itself."
+    }
+  ]
+}
