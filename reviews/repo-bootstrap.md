@@ -145,7 +145,9 @@ against this list — not against regressions the author invents later.
 ## Loop record
 
 - frame/6 — ran (codex on kimi-latest, 2 findings, 12 regressions) → reviews/repo-bootstrap.design.1e7c26f.json
-- frame/9 — not yet reached
+- frame/9 — n/a — no criterion names a size. The gate is a deliberate no-op this pass (step-7
+  decision), so every oracle is `manual`/`reviewer` and there is no running check to drive red.
+  The manual/reviewer criteria were nonetheless executed; results recorded in Test notes.
 - review/6 — not yet reached
 - review/8 — not yet reached
 - close/3b — not yet reached
@@ -218,3 +220,29 @@ Thomas's disposition per step-6 finding. The approved shape is binding on step 9
 - **Regression list:** all 12 **ratified** as returned, no amendments. Every criterion covered.
 - **Scope amendments:** `reviews/.*.tmp` folded into the `.gitignore` work; LICENSE is **MIT**.
 - **Still open:** whether to push `main` and set it as GitHub's default branch (Open questions Q3).
+
+## Step-9 verification (2026-08-30)
+
+No criterion names a size, so demonstrate-red does not apply. The `manual` and `reviewer`
+criteria were executed rather than asserted:
+
+- **AC1 — pass.** Gate read from `.claude/workflow.json` and run: exit 0, printed
+  `gate: no-op for repo-bootstrap — a real gate lands with the technology story`. It is a bare
+  `echo`, so the step-6 regressions about a swallowed real check (`some-check || true`) and about
+  a side-effecting gate are both structurally excluded.
+- **AC3 — pass, verified with `git check-ignore -v`.** `.env` (line 12), `.env.local` and
+  `.env.production` (`.env.*`, line 13), `.vercel/`, `.next/`, `reviews/.probe.tmp` (line 20) all
+  ignored; `node_modules/` ignored **at any depth** — `packages/web/node_modules/` matched line 5,
+  which closes the reviewer's root-anchoring regression. `.env.example` correctly **not** ignored,
+  so the negation carve-out is verified rather than assumed.
+  *An earlier check reported `.env` leaking; that was an unescaped `.` in the probe's own grep
+  pattern matching `.env.example`, not a gitignore defect. `git check-ignore` is authoritative.*
+- **AC4 — pass.** Parses; keys exactly `baseBranch`, `branchPrefix`, `testCommand`; neither
+  retired field present.
+- **AC5 — pass.** MIT, copyright line filled (`2026 Thomas Cox`) — the step-6 regression warned
+  specifically about leaving `[year] [fullname]` placeholders.
+- **AC6 — pass.** `reviews/audit-2026-08-30.md` committed **as generated**, not re-run or
+  summarised, per its regression.
+- **AC2 — reviewer.** Left to the independent reviewer, as its oracle says.
+- **AC7 — pass.** Enumerated diff shows only `.claude/workflow.json`, `README.md`, `LICENSE`,
+  `.gitignore`.

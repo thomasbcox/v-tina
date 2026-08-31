@@ -1,0 +1,5 @@
+{
+  "baseBranch": "main",
+  "branchPrefix": "claude/",
+  "testCommand": "echo 'gate: no-op for repo-bootstrap — a real gate lands with the technology story'"
+}
