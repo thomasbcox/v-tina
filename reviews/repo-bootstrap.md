@@ -149,7 +149,7 @@ against this list — not against regressions the author invents later.
   decision), so every oracle is `manual`/`reviewer` and there is no running check to drive red.
   The manual/reviewer criteria were nonetheless executed; results recorded in Test notes.
 - review/6 — ran (codex on glm-latest, 1 findings) → reviews/repo-bootstrap.approach.1d3eb76.json
-- review/8 — not yet reached
+- review/8 — ran (codex: deepseek-pro-latest correctness / kimi-latest hidden-failure, 0 / 0 findings) → reviews/repo-bootstrap.correctness.1d3eb76.json, reviews/repo-bootstrap.hidden-failure.1d3eb76.json
 - close/3b — not yet reached
 - close/4 — not yet reached
 
@@ -288,3 +288,23 @@ Artifact: `reviews/repo-bootstrap.approach.1d3eb76.json` · 6 commands executed,
 - **Claim:** The bootstrap design was intentionally minimal and honest, but the approved late scope amendment changed its premise: the detailed product specification is now committed in the repository. README.md nevertheless says the repository holds only scaffolding and that the detailed purpose is in a forthcoming story. This leaves the public entrypoint with stale claims and no link to the now-present specification, defeating the visitor-oriented intent of AC2 even though its literal wording remains present.
 - **Alternative:** Keep the implementation status forthcoming, not the story: replace the Purpose section with a direct link to v-tina-user-stories.md, state that the specification is committed but no application code exists yet, and include the root specification in the repository map. No additional structure or dependency is needed.
 - **Win:** A visitor can discover v-tina's actual purpose in one click, and two false repository-content statements are removed while preserving the deliberately minimal bootstrap shape.
+
+## Decisions (2026-08-30)
+
+**Approach pass (codex on glm-latest, 1 finding).**
+
+- **README still describes the committed product story as forthcoming** (IMPORTANT, two-way,
+  nonstandard): **ACCEPTED — tidied.** The Purpose section now links to
+  `v-tina-user-stories.md`, Status reads "specification committed; no application code written
+  yet", and the spec appears in the repository map. The opening paragraph's "holds only
+  scaffolding" claim was removed as also false, and — now that the specification is in the repo —
+  the README states what V-Tina actually is rather than the generic placeholder the step-6
+  design review had warned against.
+
+**Correctness pass (codex on deepseek-pro-latest): 0 findings.**
+
+**Hidden-failure pass (codex on kimi-latest): 0 findings.** Recorded with its limit stated: this
+critic executed only 2 commands. The diff is entirely markdown, JSON and ignore rules with no
+error-handling paths, so an empty return is the honest result — but 2 commands is a thin read,
+and `BACKLOG.md` OPS-51 owns the gap that a near-trivial run still passes the fabrication
+detector. Treat this as "nothing to find here", not as strong evidence.
