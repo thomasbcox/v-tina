@@ -148,7 +148,7 @@ against this list — not against regressions the author invents later.
 - frame/9 — n/a — no criterion names a size. The gate is a deliberate no-op this pass (step-7
   decision), so every oracle is `manual`/`reviewer` and there is no running check to drive red.
   The manual/reviewer criteria were nonetheless executed; results recorded in Test notes.
-- review/6 — not yet reached
+- review/6 — ran (codex on glm-latest, 1 findings) → reviews/repo-bootstrap.approach.1d3eb76.json
 - review/8 — not yet reached
 - close/3b — not yet reached
 - close/4 — not yet reached
@@ -274,3 +274,17 @@ AC → file map.
 | 5 | `LICENSE` |
 | 6 | `reviews/audit-2026-08-30.md` |
 | 7 | none — a scope check over the diff, not a file |
+
+## Codex (glm-latest) approach review (2026-08-30, base main, HEAD 1d3eb76)
+
+Artifact: `reviews/repo-bootstrap.approach.1d3eb76.json` · 6 commands executed, 0 REACH-reported.
+
+**Verdict.** 2026-08-30 22:37:42 PDT — Yes: if I built this from the spec, I would keep the same minimal bootstrap shape — a three-key workflow config with a self-identifying echo no-op, standard stack-specific ignore rules, a short README, MIT license, and tracked review records — and would not add CI, a test runner, a framework, or a dependency manifest yet. The only shape defect is that the later scope amendment added the detailed product story without updating the public-facing README that still describes that story as forthcoming.
+
+### IMPORTANT
+
+**README still describes the committed product story as forthcoming** — reversibility: two-way · standing: nonstandard
+
+- **Claim:** The bootstrap design was intentionally minimal and honest, but the approved late scope amendment changed its premise: the detailed product specification is now committed in the repository. README.md nevertheless says the repository holds only scaffolding and that the detailed purpose is in a forthcoming story. This leaves the public entrypoint with stale claims and no link to the now-present specification, defeating the visitor-oriented intent of AC2 even though its literal wording remains present.
+- **Alternative:** Keep the implementation status forthcoming, not the story: replace the Purpose section with a direct link to v-tina-user-stories.md, state that the specification is committed but no application code exists yet, and include the root specification in the repository map. No additional structure or dependency is needed.
+- **Win:** A visitor can discover v-tina's actual purpose in one click, and two false repository-content statements are removed while preserving the deliberately minimal bootstrap shape.
