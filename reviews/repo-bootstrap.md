@@ -81,8 +81,8 @@ are workflow bookkeeping and stay as numbered property assertions.
 
 7. Scope containment: run
    `git diff --name-only claude/agents-gherkin-scope...HEAD -- . ':(exclude)reviews/'`
-   and verify no files appear beyond `.claude/workflow.json`, `README.md`, `LICENSE`, and
-   `.gitignore`. The base is the **stack base**, not `main`, deliberately: Thomas chose at step 1
+   and verify no files appear beyond `.claude/workflow.json`, `README.md`, `LICENSE`,
+   `.gitignore`, and `v-tina-user-stories.md`. The base is the **stack base**, not `main`, deliberately: Thomas chose at step 1
    to stack this story on `claude/agents-gherkin-scope`, so `main...HEAD` additionally shows
    `AGENTS.md` — inherited from that decision, not changed by this story. `reviews/` is excluded
    per the categorical review-trail exemption.
@@ -246,3 +246,17 @@ criteria were executed rather than asserted:
 - **AC2 — reviewer.** Left to the independent reviewer, as its oracle says.
 - **AC7 — pass.** Enumerated diff shows only `.claude/workflow.json`, `README.md`, `LICENSE`,
   `.gitignore`.
+
+## Scope amendment (2026-08-30)
+
+`v-tina-user-stories.md` — the V-Tina multi-agent specification — appeared in the working tree
+during step 9 and was **committed on Thomas's explicit instruction**, after the story's scope was
+already approved. AC7's enumerated list is widened to include it rather than left knowingly false.
+
+Scanned before committing, because this repository is public: gitleaks reported 0 findings, and
+no credential patterns or key names were present.
+
+**Known tension this creates.** `README.md` states the purpose is "specified in a forthcoming
+story." That story is now committed alongside it, so the sentence is stale. AC2's oracle is
+`reviewer`, so this is left for the review pass to judge rather than quietly rewritten here —
+changing it now would re-litigate an approved criterion mid-flight.
