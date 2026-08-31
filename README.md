@@ -1,36 +1,51 @@
 # v-tina
 
-v-tina is an early-stage project by Thomas Cox. Right now the repository holds **only
-scaffolding** — licence, ignore rules, reviewer guidance, and the configuration its review
-workflow needs. No application code has been written yet.
+v-tina is the repository for **V-Tina**, a planned public-facing chat application that answers
+questions about Oregon executive policy. It is designed as an openly-labelled *virtual AI
+avatar* — not an official government service and not a real person — that grounds every answer
+in retrieval over official source documents and links each claim back to its `oregon.gov`
+original, so a reader can verify it directly.
 
 ## Status
 
-Pre-implementation. Everything below describes what this repository is *intended* to become,
-not what it currently contains.
+**Specification committed; no application code written yet.** The repository currently holds the
+product specification, licence, ignore rules, reviewer guidance, and the configuration its
+review workflow needs. Everything under *Intended stack* describes what V-Tina is planned to be
+built on, not what has been built.
+
+## Purpose
+
+The full specification — agent roles, interface contracts, five user stories, and their
+acceptance criteria — is committed here:
+
+**[v-tina-user-stories.md](v-tina-user-stories.md)**
+
+It covers the vector database and ingestion pipeline, request orchestration and safety
+filtering, prompt and linguistic styling, the transparent verification UI, and the diagnostic
+test suite.
 
 ## Intended stack
 
 - **Next.js** with **TypeScript**
 - **Tailwind CSS**
-- **Supabase**
+- **Supabase** (PostgreSQL + `pgvector`) for semantic retrieval
 - **Vercel** for deployment
-- **Fireworks** for model inference
+- **Fireworks** for embeddings and inference
 
-## Purpose
+## Repository map
 
-The detailed purpose and scope of v-tina are specified in a forthcoming story. This README will
-be replaced when that story lands; until then, treat the stack above as direction rather than
-commitment.
+| Path | What it is |
+|---|---|
+| [v-tina-user-stories.md](v-tina-user-stories.md) | The product specification and user stories |
+| `AGENTS.md` | Repo-local reviewer guidance |
+| `reviews/` | Story specifications and review artifacts |
+| `.claude/workflow.json` | Configuration for the review workflow |
 
-## Working in this repository
+Acceptance criteria for product behaviour are written as numbered Given/When/Then prose;
+workflow bookkeeping criteria stay as numbered property assertions. See `AGENTS.md`.
 
-- `AGENTS.md` — repo-local reviewer guidance. Acceptance criteria for product behaviour are
-  written as numbered Given/When/Then prose; workflow bookkeeping criteria stay as numbered
-  property assertions.
-- `reviews/` — story specifications and review artifacts.
-- The test gate is currently a deliberate **no-op**: the technology is not yet chosen, so a real
-  gate would be rewritten by the story that chooses it.
+The test gate is currently a deliberate **no-op**: the technology is not yet stood up, so a real
+gate would be rewritten by the story that builds it.
 
 ## Licence
 
