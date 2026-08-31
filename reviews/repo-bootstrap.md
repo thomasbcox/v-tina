@@ -260,3 +260,17 @@ no credential patterns or key names were present.
 story." That story is now committed alongside it, so the sentence is stale. AC2's oracle is
 `reviewer`, so this is left for the review pass to judge rather than quietly rewritten here —
 changing it now would re-litigate an approved criterion mid-flight.
+
+## Build note (2026-08-30)
+
+AC → file map.
+
+| AC | File(s) |
+|---|---|
+| 1 | `.claude/workflow.json` (the `testCommand` value) |
+| 2 | `README.md` |
+| 3 | `.gitignore` |
+| 4 | `.claude/workflow.json` |
+| 5 | `LICENSE` |
+| 6 | `reviews/audit-2026-08-30.md` |
+| 7 | none — a scope check over the diff, not a file |
