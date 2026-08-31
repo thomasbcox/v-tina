@@ -151,7 +151,7 @@ against this list — not against regressions the author invents later.
 - review/6 — ran (codex on glm-latest, 1 findings) → reviews/repo-bootstrap.approach.1d3eb76.json
 - review/8 — ran (codex: deepseek-pro-latest correctness / kimi-latest hidden-failure, 0 / 0 findings) → reviews/repo-bootstrap.correctness.1d3eb76.json, reviews/repo-bootstrap.hidden-failure.1d3eb76.json
 - close/3b — no activation
-- close/4 — not yet reached
+- close/4 — presented: merge (two merges, agents-gherkin-scope first; Thomas publishes `main` himself)
 
 ## Open questions
 
