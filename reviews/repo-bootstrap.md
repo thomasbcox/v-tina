@@ -308,3 +308,17 @@ critic executed only 2 commands. The diff is entirely markdown, JSON and ignore 
 error-handling paths, so an empty return is the honest result — but 2 commands is a thin read,
 and `BACKLOG.md` OPS-51 owns the gap that a near-trivial run still passes the fabrication
 detector. Treat this as "nothing to find here", not as strong evidence.
+
+## Fixes (2026-08-30)
+
+One approved finding, already applied during the step-7 acceptance and therefore **reviewed by
+both correctness critics afterwards** rather than after them.
+
+- **README described the committed product story as forthcoming** (approach pass, IMPORTANT,
+  two-way) → fixed in `07828cd`. Purpose now links to `v-tina-user-stories.md`; Status reads
+  "specification committed; no application code written yet"; the spec is in the repository map;
+  the stale "holds only scaffolding" sentence was removed; and the opening now states what
+  V-Tina is instead of the generic placeholder the design review had warned against.
+
+Nothing else was approved. Design finding 1 (AC1/AC3 in scenario form) stays **accepted, not
+fixed**, per the step-7 decision, and is not to be re-raised.
