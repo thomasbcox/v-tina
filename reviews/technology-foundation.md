@@ -62,10 +62,13 @@ stay as numbered property assertions, per `AGENTS.md`.
    fails.
 
 2. **Given** an environment where a required Supabase or Fireworks variable is missing or empty,
-   **When** `src/lib/env.ts` is loaded,
-   **Then** it raises an error naming the specific variable at fault,
-   **And** with every required variable present and well-formed it returns the parsed values
-   without raising.
+   **When** the application starts,
+   **Then** startup fails with an error naming every variable at fault,
+   **And** with every required variable present and well-formed the application starts normally.
+
+   *Amended 2026-09-01* — previously read "when `src/lib/env.ts` is loaded", which described the
+   module rather than the application. That wording is precisely what let the approach pass's
+   BLOCKER through: the module was correct and tested while nothing ever loaded it.
 
 3. **Given** a pull request targeting `main`,
    **When** the GitHub Actions workflow runs,
@@ -86,7 +89,7 @@ stay as numbered property assertions, per `AGENTS.md`.
    and verify no files appear beyond the project skeleton generated for item 1, plus
    `src/types/index.ts`, `src/lib/env.ts`, `__tests__/`, `.env.example`,
    `.github/workflows/`, `.claude/workflow.json`, `.gitignore`, `vitest.config.mts`,
-   `scripts/gate.mjs`, `.nvmrc` and `README.md`.
+   `scripts/gate.mjs`, `.nvmrc`, `README.md` and `src/instrumentation.ts`.
 
 ## Test notes
 
@@ -152,7 +155,9 @@ size, so step 9 must demonstrate red against their entries here.
 - frame/9 — demonstrated red for every ratified regression on the two size-bearing criteria:
   AC2 (3 regressions) and AC6 (2). Baseline green, each regression red, restored green.
 - review/6 — ran (codex on glm-latest, 2 findings) → reviews/technology-foundation.approach.fbb22d2.json
-- review/8 — not yet reached
+- review/8 — n/a — not run this round. An approach/redesign fix was approved at step 7, and the
+  loop's invariant is that the correctness pass only ever reads a shape that has cleared approach
+  review. Both critics run in the next round, against the reshaped branch.
 - close/3b — not yet reached
 - close/4 — not yet reached
 
@@ -350,3 +355,42 @@ files are inside the review worktree).
 - **Claim:** The gate restates the exact commands already declared by package.json's typecheck, lint, and test scripts, so later changes to those scripts can drift away from the gate. It also invokes the tools through npx, which can attempt registry resolution when a local binary is absent instead of failing immediately with a dependency-not-installed error, weakening the gate's reproducibility.
 - **Alternative:** Have the gate runner compose the existing definitions by spawning npm run typecheck, npm run lint, and npm run test, while retaining its run-all-and-report behavior. This needs no additional dependency.
 - **Win:** One definition per check, no duplicated command arguments, and no network/remote-version fallback; the gate always exercises the lockfile-installed local binaries and fails deterministically when dependencies are missing.
+
+## Decisions (2026-09-01)
+
+**Approach pass (codex on glm-latest, 2 findings).**
+
+- **Environment validation defined but never wired into startup** (BLOCKER, one-way, nonstandard):
+  **FIX.** `src/instrumentation.ts` now calls `getEnv()` once through Next.js's own boot hook,
+  guarded to the Node runtime because the Edge runtime does not carry the server-only keys.
+  `parseEnv` stays pure, so the existing tests were untouched.
+- **Gate duplicates npm scripts and delegates to npx** (IMPORTANT, two-way, nonstandard): **FIX.**
+  `scripts/gate.mjs` now names the checks (`typecheck`, `lint`, `test`) and runs each through
+  `npm run`, so there is one definition per check and the project's installed binaries are used
+  rather than a registry fetch. The run-all-and-report behaviour is unchanged and was re-verified.
+
+**Correctness and hidden-failure passes: NOT RUN this round** — see the `review/8` loop record line.
+
+**Separate decision, raised by the author rather than a critic.**
+
+- **The `semver` dev dependency**: **REMOVED**, on Thomas's instruction. `__tests__/node-version.test.ts`
+  went with it, since comparing the pin against the floor was its only purpose. `.nvmrc` and
+  `engines.node` both remain. **What this costs, stated plainly:** nothing now checks that the two
+  agree, so lowering `.nvmrc` below the `engines.node` floor would go unnoticed. The README was
+  corrected to say so — it had claimed a gate test kept them in step, which would have been false
+  the moment the test was deleted.
+
+## Fixes (2026-09-01)
+
+Applied on Thomas's instruction after the step-7 consult. Gate green: typecheck, lint, 21 tests.
+
+Both fixes were verified rather than assumed:
+
+| Check | Result |
+|---|---|
+| Startup stops calling the checker → the new test | **red** (guards the fix; not a dead assertion) |
+| Typecheck broken → does the gate still run lint and test? | **yes** — all three reported, gate failed on typecheck only |
+| Restored | green |
+
+The second matters because the gate was rewritten this round: the run-all-and-report property is a
+ratified regression from the framing review, and it survived the change to `npm run`.

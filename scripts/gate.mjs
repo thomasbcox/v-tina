@@ -8,21 +8,21 @@
  */
 import { spawnSync } from "node:child_process";
 
-const CHECKS = [
-  ["typecheck", "npx", ["tsc", "--noEmit"]],
-  ["lint", "npx", ["eslint", "."]],
-  ["test", "npx", ["vitest", "run"]],
-];
+// Each entry names a script defined in package.json rather than restating its
+// command, so there is one definition per check. Running them through `npm run`
+// also resolves the project's own installed binaries instead of reaching for the
+// registry when one is missing.
+const CHECKS = ["typecheck", "lint", "test"];
 
 const failed = [];
-for (const [name, cmd, args] of CHECKS) {
+for (const name of CHECKS) {
   process.stdout.write(`\n=== gate: ${name} ===\n`);
-  const r = spawnSync(cmd, args, { stdio: "inherit" });
+  const r = spawnSync("npm", ["run", "--silent", name], { stdio: "inherit" });
   if (r.status !== 0) failed.push(name);
 }
 
 process.stdout.write("\n=== gate summary ===\n");
-for (const [name] of CHECKS) {
+for (const name of CHECKS) {
   process.stdout.write(`  ${failed.includes(name) ? "FAIL" : "pass"}  ${name}\n`);
 }
 if (failed.length > 0) {
