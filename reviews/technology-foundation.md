@@ -394,3 +394,20 @@ Both fixes were verified rather than assumed:
 
 The second matters because the gate was rewritten this round: the run-all-and-report property is a
 ratified regression from the framing review, and it survived the change to `npm run`.
+
+## Build note (2026-09-01)
+
+AC → file map, after the round-1 approach fixes.
+
+| AC | File(s) |
+|---|---|
+| 1 | `scripts/gate.mjs`, `package.json` (`gate`, `typecheck`, `lint`, `test` scripts), `.claude/workflow.json` |
+| 2 | `src/lib/env.ts` (validation), `src/instrumentation.ts` (startup wiring — added this round) |
+| 3 | `.github/workflows/gate.yml` |
+| 4 | `.claude/workflow.json` |
+| 5 | `src/types/index.ts` |
+| 6 | `.env.example`, `src/lib/env.ts` (`REQUIRED_ENV_KEYS`) |
+| 7 | none — a scope check over the diff, not a file |
+
+`__tests__/node-version.test.ts` was removed this round with the `semver` dependency; `.nvmrc` and
+`engines.node` remain, now unguarded by any check.
