@@ -312,3 +312,17 @@ The engine risk raised in Open question 3 did **not** materialise: Next.js 16.3.
   ratified: it is used solely by the `.nvmrc`/`engines` consistency test, and hand-rolling range
   comparison is the reinvention the best-practice lens flags. Flagged here for the approach pass
   rather than passed over.
+
+## Build note (2026-08-31)
+
+AC → file map.
+
+| AC | File(s) |
+|---|---|
+| 1 | `scripts/gate.mjs`, `package.json` (`gate` script), `.claude/workflow.json` |
+| 2 | `src/lib/env.ts` |
+| 3 | `.github/workflows/gate.yml` |
+| 4 | `.claude/workflow.json` |
+| 5 | `src/types/index.ts` |
+| 6 | `.env.example`, `src/lib/env.ts` (`REQUIRED_ENV_KEYS`) |
+| 7 | none — a scope check over the diff, not a file |
