@@ -85,7 +85,8 @@ stay as numbered property assertions, per `AGENTS.md`.
    `git diff --name-only main...HEAD -- . ':(exclude)reviews/'`
    and verify no files appear beyond the project skeleton generated for item 1, plus
    `src/types/index.ts`, `src/lib/env.ts`, `__tests__/`, `.env.example`,
-   `.github/workflows/`, `.claude/workflow.json` and `.gitignore`.
+   `.github/workflows/`, `.claude/workflow.json`, `.gitignore`, `vitest.config.mts`,
+   `scripts/gate.mjs`, `.nvmrc` and `README.md`.
 
 ## Test notes
 
@@ -148,7 +149,8 @@ size, so step 9 must demonstrate red against their entries here.
 ## Loop record
 
 - frame/6 — ran (codex on kimi-latest, 3 findings, 16 regressions) → reviews/technology-foundation.design.f04cf8d.json
-- frame/9 — not yet reached
+- frame/9 — demonstrated red for every ratified regression on the two size-bearing criteria:
+  AC2 (3 regressions) and AC6 (2). Baseline green, each regression red, restored green.
 - review/6 — not yet reached
 - review/8 — not yet reached
 - close/3b — not yet reached
@@ -244,3 +246,69 @@ Thomas's disposition per step-6 finding. The approved shape is binding on step 9
 - **Regression list:** all **16 ratified** as returned, no amendments. Every criterion covered.
 - **Still open:** Q2 — whether to make the CI check required on `main`, which would also require
   enabling `allow_auto_merge` or `/close` step 5(a) aborts.
+
+## Step-9 verification (2026-08-31)
+
+### Demonstrate red — criteria 2 and 6
+
+Both name `Small`, so each ratified regression was applied, the gate run, the failure observed,
+and the change reverted. Baseline was green before and after.
+
+| Ratified regression | Gate |
+|---|---|
+| baseline, nothing modified | green |
+| AC2 — presence checked but not emptiness (empty string accepted) | **red** |
+| AC2 — error does not name the offending variable | **red** |
+| AC2 — URL accepted without a scheme | **red** |
+| AC6 — real-looking credential committed in `.env.example` | **red** |
+| AC6 — required key renamed, stale key left documented | **red** |
+| restored | green |
+
+No dead assertions: every ratified regression drove the gate red.
+
+### Other criteria
+
+- **AC1 — pass.** `npm run gate` runs typecheck, lint and tests and exits non-zero if any fails.
+  Confirmed against the ratified regression about `&&` chaining: on the first run typecheck failed
+  and lint and tests **still executed**, with all three reported in the summary. The runner is a
+  script, not a chain, for exactly that reason. `passWithNoTests: false` is set, so an empty suite
+  fails rather than reporting a pass.
+- **AC3 — manual, not yet judgeable.** The workflow triggers on `pull_request` targeting `main`
+  and invokes `npm run gate` — the same script, not a restatement, which is the ratified
+  regression about CI and local drifting apart. It cannot be verified until a pull request exists;
+  that is the criterion's stated oracle, not a skipped check.
+- **AC4 — pass.** `testCommand` is `npm run gate`; the `repo-bootstrap` echo is gone.
+- **AC5 — pass.** `PolicyChunkSource` declares `documentTitle`, `date`, `url`, `pillar`, all
+  **required**, per the ratified regression about all-optional metadata. `ChatStreamEvent` is a
+  discriminated union of exactly the four kinds with no catch-all member.
+- **AC6 — pass**, and see the red table above.
+- **AC7 — pass, with the enumeration widened.** Four files needed adding to AC7's list, each
+  traceable to an approved decision rather than to scope drift: `.nvmrc` and `README.md` come from
+  Thomas's step-7 instruction on finding 2 (*"in a clearly documented way so we always know what
+  version is used where"*); `vitest.config.mts` and `scripts/gate.mjs` are in-scope items 4 and 5
+  that the criterion simply failed to name. The generated starter demo content — the default
+  landing page, `public/*.svg`, the Next.js favicon — was **removed rather than kept**, per the
+  ratified AC7 regression.
+
+### Node version decision (finding 2)
+
+`.nvmrc` pins the **major** (`26`); `package.json` `engines.node` carries `>=20.9.0`, which is
+Next.js 16.3.4's own declared requirement. CI reads `.nvmrc` through `setup-node`'s
+`node-version-file`, so local and CI cannot name different versions. A gate test asserts the
+pinned version satisfies `engines.node`, so the two cannot drift apart silently, and the README
+records which file is read where.
+
+Major rather than exact patch: an exact pin desynchronises from local the moment Homebrew bumps a
+patch, and this account cannot install arbitrary Node versions — Homebrew is owned by
+`thomasadmin`. The major is the meaningful compatibility boundary and keeps the pin honest.
+
+The engine risk raised in Open question 3 did **not** materialise: Next.js 16.3.4 requires
+`node >=20.9.0`, so the installed 26.7.0 is supported.
+
+### Dependencies added
+
+- **`zod`** (runtime) — ratified at step 7 as a one-way door.
+- **`vitest`**, **`semver`**, **`@types/semver`** (dev only). `semver` was not separately
+  ratified: it is used solely by the `.nvmrc`/`engines` consistency test, and hand-rolling range
+  comparison is the reinvention the best-practice lens flags. Flagged here for the approach pass
+  rather than passed over.

@@ -1,0 +1,26 @@
+name: gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Single source of truth for the Node version: .nvmrc.
+      # Local, CI and the future deployment all read that one file.
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      # Invokes the same `gate` script the local testCommand runs, so the two
+      # cannot drift into being different checks.
+      - run: npm run gate
