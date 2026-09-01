@@ -151,7 +151,7 @@ size, so step 9 must demonstrate red against their entries here.
 - frame/6 — ran (codex on kimi-latest, 3 findings, 16 regressions) → reviews/technology-foundation.design.f04cf8d.json
 - frame/9 — demonstrated red for every ratified regression on the two size-bearing criteria:
   AC2 (3 regressions) and AC6 (2). Baseline green, each regression red, restored green.
-- review/6 — not yet reached
+- review/6 — ran (codex on glm-latest, 2 findings) → reviews/technology-foundation.approach.fbb22d2.json
 - review/8 — not yet reached
 - close/3b — not yet reached
 - close/4 — not yet reached
@@ -326,3 +326,27 @@ AC → file map.
 | 5 | `src/types/index.ts` |
 | 6 | `.env.example`, `src/lib/env.ts` (`REQUIRED_ENV_KEYS`) |
 | 7 | none — a scope check over the diff, not a file |
+
+## Codex (glm-latest) approach review (2026-08-31, base main, HEAD fbb22d2)
+
+Artifact: `reviews/technology-foundation.approach.fbb22d2.json` · 11 commands executed, 1 REACH-reported (a `jq` read of `package.json` /
+`package-lock.json` whose shell quoting the confinement checker could not fully resolve; both
+files are inside the review worktree).
+
+**Verdict.** 2026-08-31 20:03:00 PDT — Broadly the shape I would build: a generated Next.js foundation, a pure zod-backed environment parser, declaration-only boundary types with a discriminated stream union, and one gate consumed by both the workflow and CI. I would not ship it unchanged, because the environment validator is defined but not actually connected to application startup, and the gate duplicates existing npm script definitions while introducing npx resolution behavior. Wiring the validator into Next.js's startup hook and making the gate compose the existing npm scripts would preserve the good shape while closing those structural gaps.
+
+### BLOCKER
+
+**Environment validation is defined but never wired into startup** — reversibility: one-way · standing: nonstandard
+
+- **Claim:** The module exposes a lazy getEnv() accessor, but no application entry point invokes it. Missing or malformed configuration therefore does not fail server startup; failure is deferred until some future consumer happens to call getEnv(). That is not the fail-fast startup shape required by the story scope and design sketch, and it establishes an ambiguous cross-cutting pattern for later workstreams to copy.
+- **Alternative:** Keep parseEnv() pure for the unit suite, but add the framework-native startup hook — src/instrumentation.ts with a register() function that calls getEnv() once (guarded to the Node runtime if necessary). No bespoke startup mechanism is needed.
+- **Win:** Invalid configuration fails before the application serves a request and reports every offending key immediately; the pure-test design remains intact and the cached-parse-once invariant becomes real rather than nominal.
+
+### IMPORTANT
+
+**Gate duplicates npm scripts and delegates to npx** — reversibility: two-way · standing: nonstandard
+
+- **Claim:** The gate restates the exact commands already declared by package.json's typecheck, lint, and test scripts, so later changes to those scripts can drift away from the gate. It also invokes the tools through npx, which can attempt registry resolution when a local binary is absent instead of failing immediately with a dependency-not-installed error, weakening the gate's reproducibility.
+- **Alternative:** Have the gate runner compose the existing definitions by spawning npm run typecheck, npm run lint, and npm run test, while retaining its run-all-and-report behavior. This needs no additional dependency.
+- **Win:** One definition per check, no duplicated command arguments, and no network/remote-version fallback; the gate always exercises the lockfile-installed local binaries and fails deterministically when dependencies are missing.
