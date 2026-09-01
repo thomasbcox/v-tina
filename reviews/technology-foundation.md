@@ -154,7 +154,8 @@ size, so step 9 must demonstrate red against their entries here.
 - frame/6 — ran (codex on kimi-latest, 3 findings, 16 regressions) → reviews/technology-foundation.design.f04cf8d.json
 - frame/9 — demonstrated red for every ratified regression on the two size-bearing criteria:
   AC2 (3 regressions) and AC6 (2). Baseline green, each regression red, restored green.
-- review/6 — ran (codex on glm-latest, 2 findings) → reviews/technology-foundation.approach.fbb22d2.json
+- review/6 — round 1: ran (codex on glm-latest, 2 findings) → reviews/technology-foundation.approach.fbb22d2.json
+- review/6 — round 2: ran (codex on glm-latest, 3 findings) → reviews/technology-foundation.approach.bfc05cf.json
 - review/8 — n/a — not run this round. An approach/redesign fix was approved at step 7, and the
   loop's invariant is that the correctness pass only ever reads a shape that has cleared approach
   review. Both critics run in the next round, against the reshaped branch.
@@ -411,3 +412,36 @@ AC → file map, after the round-1 approach fixes.
 
 `__tests__/node-version.test.ts` was removed this round with the `semver` dependency; `.nvmrc` and
 `engines.node` remain, now unguarded by any check.
+
+## Codex (glm-latest) approach review (2026-09-01, base main, HEAD bfc05cf) — round 2
+
+Artifact: `reviews/technology-foundation.approach.bfc05cf.json` · 10 commands executed, 2 REACH-reported (a `grep` of the spec whose
+pattern contained `/api/chat`, and a `node -e` whose regex contained `/npm-run-all/` — both
+read files inside the review worktree; the checker could not resolve the slashes).
+
+**Verdict.** 2026-09-01 14:17:17 PDT — The foundation is broadly the shape I would build: a generated Next.js skeleton, zod-backed environment parsing wired through Next.js's startup hook, declaration-only shared types, and one gate consumed by both the workflow and CI. I would refine the boundary contracts before later workstreams copy them: align the safety vocabulary with the product specification, separate stored chunks from retrieved chunks so similarity is not optional on the retrieval boundary, and split the environment contract by runtime instead of making one flat Env serve Node, Edge, and client contexts.
+
+**All three findings were independently verified against `v-tina-user-stories.md` before being
+presented** — the spec's Gherkin criteria assert `"IN-BOUNDS"` (line 106), `"PARTISAN-TRAP"`
+(113) and `"OUT-OF-BOUNDS"` (121); it requires a similarity score above 0.7 (85); and it
+specifies edge runtime for `/api/chat` (97, 232). Each claim holds.
+
+### IMPORTANT
+
+**Safety classification vocabulary diverges from the specified contract** — reversibility: one-way · standing: nonstandard
+
+- **Claim:** The shared boundary contract invents SafetyClassification values ('in_bounds', 'partisan_detour', 'grounded_deferral', 'crisis') while the product specification's observable flags are 'IN-BOUNDS', 'PARTISAN-TRAP', and 'OUT-OF-BOUNDS'. This is a public contract that five workstreams and the QA assertions are meant to share, so shipping a different vocabulary establishes a translation layer—or a QA mismatch—on day one.
+- **Alternative:** Derive the union directly from the specified classifier labels, and add a value such as 'CRISIS' only when the backend story actually defines that output. Keep the four stream-event discriminators, but make their payloads use the vocabulary the specification already asserts.
+- **Win:** Removes an unnecessary classification-remapping layer, prevents the backend and QA workstreams from typechecking against incompatible labels, and keeps one authoritative vocabulary across implementation and diagnostics.
+
+**One PolicyChunk serves both storage and retrieval, making similarity optional** — reversibility: one-way · standing: kludgy
+
+- **Claim:** PolicyChunk is the return type of queryPolicyChunks in the product specification, and semantic retrieval must return chunks with a similarity score. Marking similarity optional lets the database workstream satisfy the shared type while omitting the score the retrieval, UI, and QA contracts need. The same interface is also used for ingestion, where no similarity score exists, so it blurs two boundaries with one optionally populated field.
+- **Alternative:** Declare a stored PolicyChunk with id, content, and complete source metadata, plus a RetrievedPolicyChunk that extends it with required similarity: number. Type queryPolicyChunks as Promise<RetrievedPolicyChunk[]>, leaving ingestion free to store chunks without inventing a score.
+- **Win:** Centralizes the retrieval invariant in the type system, eliminates the optional-field escape hatch, and gives ingestion and retrieval separate, honest contracts without adding a dependency or runtime code.
+
+**Flat environment contract conflates Node-only, Edge, and public configuration** — reversibility: one-way · standing: nonstandard
+
+- **Claim:** One Env schema requires the Node-only SUPABASE_SERVICE_ROLE_KEY alongside public and Edge-needed keys, while instrumentation deliberately skips validation outside the Node runtime. The product specification requires /api/chat to run on the Edge runtime, so that future route cannot consume getEnv() without demanding a server-only secret in the Edge bundle or bypassing the validated accessor. This establishes the wrong cross-cutting environment pattern for the workstreams that follow.
+- **Alternative:** Keep zod but split the schema by consumer: a public/client schema, a Node server schema for service-role secrets, and an Edge schema containing the keys the chat route actually needs. Instrumentation validates the Node contract, and the Edge route validates its own contract at startup. This needs no new dependency; adopting @t3-oss/env-nextjs would add build-time inlining conveniences at the cost of another dependency, which is not necessary for the current key set.
+- **Win:** Lets the specified Edge route fail fast on its own missing keys without exposing or requiring Node-only secrets, removes the need for future code to duplicate or bypass env validation, and preserves the ratified zod pattern while making runtime boundaries explicit.
