@@ -164,6 +164,7 @@ size, so step 9 must demonstrate red against their entries here.
   AC2 (3 regressions) and AC6 (2). Baseline green, each regression red, restored green.
 - review/6 — round 1: ran (codex on glm-latest, 2 findings) → reviews/technology-foundation.approach.fbb22d2.json
 - review/6 — round 2: ran (codex on glm-latest, 3 findings) → reviews/technology-foundation.approach.bfc05cf.json
+- review/6 — round 3: ran (codex on glm-latest, 3 findings) → reviews/technology-foundation.approach.4f33c43.json
 - review/8 — n/a — not run this round. An approach/redesign fix was approved at step 7, and the
   loop's invariant is that the correctness pass only ever reads a shape that has cleared approach
   review. Both critics run in the next round, against the reshaped branch.
@@ -517,3 +518,33 @@ AC → file map, after the round-2 contract fixes.
 | 6 | `.env.example`, `src/lib/env.ts` (`REQUIRED_ENV_KEYS`) |
 | 7 | none — a scope check over the diff, not a file |
 | 8 | `src/types/index.ts` (`SAFETY_CLASSIFICATIONS`), `__tests__/contracts.test.ts` |
+
+## Codex (glm-latest) approach review (2026-09-01, base main, HEAD 4f33c43) — round 3
+
+Artifact: `reviews/technology-foundation.approach.4f33c43.json` · 14 commands executed, 3 REACH-reported. **Two of those three were network
+fetches** — the reviewer pulled Next.js's own environment-variable documentation from
+`nextjs.org` to check how `NEXT_PUBLIC_` values are exposed to the client bundle, which is what
+finding 1 rests on. The third was a `node -e` whose shell quoting broke; it failed to launch and
+returned nothing.
+
+**Verdict.** 2026-09-01 19:26:07 PDT — Broadly the shape I would build: a generated Next.js foundation, zod-backed runtime-specific environment contracts, declaration-oriented shared boundary types, and one gate consumed by both the workflow and CI. I would refine the environment layer before later workstreams copy it: make the public accessor use Next.js's static NEXT_PUBLIC inlining shape, fail closed when the startup runtime is unknown, and keep the type barrel declaration-only by moving the runtime classification witness into a runtime module.
+
+### IMPORTANT
+
+**Public environment accessor is not Next.js client-bundling safe** — reversibility: one-way · standing: nonstandard
+
+- **Claim:** getPublicEnv() is documented as browser-safe but passes the entire process.env object into the generic zod parser. Next.js exposes NEXT_PUBLIC_* values in the client bundle through static references; passing the whole environment object is not the framework-supported client shape. The Node and Edge paths work, so the current suite stays green, but the first client component that imports this accessor risks receiving missing public keys or an unusable process.env. This is the cross-cutting environment pattern the UI workstream is expected to copy.
+- **Alternative:** Keep zod, but construct the public source with direct static references — for example, an object whose properties are process.env.NEXT_PUBLIC_SUPABASE_URL and process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY — and parse/cache that object in getPublicEnv(). If a framework-aware wrapper is preferred later, @t3-oss/env-nextjs is the concrete candidate, but the direct static object is sufficient here and avoids another dependency.
+- **Win:** Eliminates a class of build-time inlining failures before any client code exists, preserves fail-fast validation, and requires no new dependency.
+
+**Startup validation fails open on an unknown runtime** — reversibility: one-way · standing: kludgy
+
+- **Claim:** The runtime dispatch treats every NEXT_RUNTIME value other than nodejs and edge as 'validate nothing and continue'. That is a silent degradation path: if the startup hook runs with a missing, renamed, or unexpected runtime identifier, the application can start with invalid configuration and nothing surfaces it. The unit suite even ratifies the unrecognized-runtime no-op, so future startup hooks are being taught to fail open rather than fail fast.
+- **Alternative:** Make the dispatch fail closed: nodejs validates the Node contract, edge validates the Edge contract, and any other runtime throws a descriptive startup error naming the unexpected value. If direct unit testing of register() is the concern, extract a small pure runtime-validation function and test that separately; supported runtimes remain explicit rather than implicit.
+- **Win:** Removes an entire unvalidated-startup path and turns a framework/runtime mismatch into an immediate, named startup failure instead of a green but degraded boot.
+
+**Runtime vocabulary witness breaks the declaration-only boundary module** — reversibility: one-way · standing: kludgy
+
+- **Claim:** The boundary module's own contract and the story's design sketch say it is declaration-only with no runtime code, but SAFETY_CLASSIFICATIONS is a runtime array in the same barrel. The need for a checkable vocabulary is real, but placing it here turns the shared type contract into a runtime module as well and blurs the boundary future workstreams are meant to import safely.
+- **Alternative:** Move the const and derive the type from it in a small runtime module such as src/lib/safety.ts, then re-export only the type from src/types/index.ts using export type. The specification-derived test imports the runtime witness from the safety module, while type-only consumers continue importing from the declaration-only barrel.
+- **Win:** Restores the declared type-only boundary, keeps one authoritative classification vocabulary for the classifier and tests, and prevents runtime exports from being bundled by type-only imports.
