@@ -502,3 +502,18 @@ defect and confirming the suite catches it:
 
 The second case matters: a one-directional check would have passed it. The vocabulary test
 compares both ways.
+
+## Build note (2026-09-01, round 3)
+
+AC → file map, after the round-2 contract fixes.
+
+| AC | File(s) |
+|---|---|
+| 1 | `scripts/gate.mjs`, `package.json`, `.claude/workflow.json` |
+| 2 | `src/lib/env.ts`, `src/instrumentation.ts` |
+| 3 | `.github/workflows/gate.yml` |
+| 4 | `.claude/workflow.json` |
+| 5 | `src/types/index.ts` |
+| 6 | `.env.example`, `src/lib/env.ts` (`REQUIRED_ENV_KEYS`) |
+| 7 | none — a scope check over the diff, not a file |
+| 8 | `src/types/index.ts` (`SAFETY_CLASSIFICATIONS`), `__tests__/contracts.test.ts` |
