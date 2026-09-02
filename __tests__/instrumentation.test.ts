@@ -19,22 +19,41 @@ afterEach(() => {
 });
 
 describe("register", () => {
-  it("fails startup, naming the offending key, when configuration is invalid", async () => {
+  it("fails Node startup, naming the offending key, when configuration is invalid", async () => {
     vi.stubEnv("NEXT_RUNTIME", "nodejs");
     stubAll({ FIREWORKS_API_KEY: "" });
     const { register } = await import("../src/instrumentation");
     await expect(register()).rejects.toThrow(/FIREWORKS_API_KEY/);
   });
 
-  it("completes when every required key is present and well-formed", async () => {
+  it("completes on Node when every required key is present", async () => {
     vi.stubEnv("NEXT_RUNTIME", "nodejs");
     stubAll();
     const { register } = await import("../src/instrumentation");
     await expect(register()).resolves.toBeUndefined();
   });
 
-  it("does not validate outside the Node runtime, where server keys do not exist", async () => {
+  // The Edge runtime is validated too — it is not skipped — but against its own
+  // contract, which excludes the server-only secret.
+  it("validates the Edge runtime against its own contract", async () => {
     vi.stubEnv("NEXT_RUNTIME", "edge");
+    stubAll({ FIREWORKS_API_KEY: "" });
+    const { register } = await import("../src/instrumentation");
+    await expect(register()).rejects.toThrow(/FIREWORKS_API_KEY/);
+  });
+
+  it("starts on Edge without the server-only secret present", async () => {
+    vi.stubEnv("NEXT_RUNTIME", "edge");
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", VALID.NEXT_PUBLIC_SUPABASE_URL);
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", VALID.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+    vi.stubEnv("FIREWORKS_API_KEY", VALID.FIREWORKS_API_KEY);
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "");
+    const { register } = await import("../src/instrumentation");
+    await expect(register()).resolves.toBeUndefined();
+  });
+
+  it("does nothing in an unrecognised runtime", async () => {
+    vi.stubEnv("NEXT_RUNTIME", "");
     stubAll({ FIREWORKS_API_KEY: "" });
     const { register } = await import("../src/instrumentation");
     await expect(register()).resolves.toBeUndefined();

@@ -4,6 +4,9 @@
  * These are the contracts the workstreams in `v-tina-user-stories.md` hand each
  * other. They are declarations only — no runtime code and no dependency — so any
  * workstream can import them without pulling in another's implementation.
+ *
+ * Values here are taken from the specification's own acceptance criteria, not
+ * paraphrased, so the QA workstream's assertions and the backend's code agree.
  */
 
 /** Where a policy chunk came from. Every field is required: the verification UI
@@ -19,28 +22,51 @@ export interface PolicyChunkSource {
   pillar: string;
 }
 
-/** One retrievable passage plus its complete source metadata. Produced by the
- *  database workstream, consumed by the backend and the verification UI. */
+/** A stored passage plus its complete source metadata, as the ingestion pipeline
+ *  writes it (User Story 1). Nothing has been searched yet, so there is no
+ *  similarity score — see {@link RetrievedPolicyChunk} for the retrieval side. */
 export interface PolicyChunk {
   id: string;
   content: string;
   source: PolicyChunkSource;
-  /** Similarity score from the semantic query, when the chunk arrived via search. */
-  similarity?: number;
 }
 
-/** How the safety classifier routed a request. */
-export type SafetyClassification =
-  | "in_bounds"
-  | "partisan_detour"
-  | "grounded_deferral"
-  | "crisis";
+/**
+ * A chunk returned by semantic search. `similarity` is **required**, because
+ * User Story 1's acceptance criteria require retrieval to return chunks with a
+ * similarity score above 0.7 — a result without one cannot be judged against
+ * that threshold, ranked, or shown in the verification panel.
+ *
+ * Note: the specification sketches `queryPolicyChunks` as returning
+ * `PolicyChunk[]`, while its acceptance criteria require the score. The criteria
+ * are the binding assertion, so retrieval returns this extended type.
+ */
+export interface RetrievedPolicyChunk extends PolicyChunk {
+  similarity: number;
+}
+
+/**
+ * How the safety classifier routed a request (User Story 2).
+ *
+ * These are the exact flags the specification's acceptance criteria assert, not
+ * paraphrases of the responses they trigger: a `PARTISAN-TRAP` classification is
+ * what triggers the Partisan Detour Rule, and `OUT-OF-BOUNDS` is what triggers
+ * the Grounded Deferral message. No further value is declared here until a
+ * workstream's specification actually defines one.
+ */
+export const SAFETY_CLASSIFICATIONS = [
+  "IN-BOUNDS",
+  "PARTISAN-TRAP",
+  "OUT-OF-BOUNDS",
+] as const;
+
+export type SafetyClassification = (typeof SAFETY_CLASSIFICATIONS)[number];
 
 /** Events streamed by `/api/chat`. A discriminated union on `type` — the four
  *  kinds the backend contract names, with no catch-all member, so consumers
  *  narrow exhaustively rather than falling through to an untyped branch. */
 export type ChatStreamEvent =
   | { type: "safety_status"; classification: SafetyClassification }
-  | { type: "retrieved_chunks"; chunks: PolicyChunk[] }
+  | { type: "retrieved_chunks"; chunks: RetrievedPolicyChunk[] }
   | { type: "streamed_tokens"; text: string }
   | { type: "audit_log_status"; recorded: boolean; auditId?: string };

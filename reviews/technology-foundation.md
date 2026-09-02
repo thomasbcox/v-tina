@@ -78,9 +78,16 @@ stay as numbered property assertions, per `AGENTS.md`.
 4. `.claude/workflow.json`'s `testCommand` invokes the real gate and no longer contains the
    `repo-bootstrap` no-op `echo`.
 
-5. `src/types/index.ts` declares `PolicyChunk` carrying the source metadata the spec enumerates
-   (document title, date, URL, policy pillar) and a stream-event type covering all four event
-   kinds the spec's `/api/chat` contract names.
+5. `src/types/index.ts` declares chunk types carrying the source metadata the spec enumerates
+   (document title, date, URL, policy pillar), separating a stored chunk from a retrieved one so
+   the similarity score is required exactly where the spec requires it, and a stream-event type
+   covering all four event kinds the spec's `/api/chat` contract names.
+
+8. The safety classification vocabulary declared in `src/types/index.ts` matches the flags the
+   specification's own acceptance criteria assert, in both directions: nothing asserted is
+   missing, and nothing is declared that the specification never asserts. *(Added 2026-09-01
+   after the round-2 approach review found the declared vocabulary had been paraphrased rather
+   than taken from the spec.)*
 
 6. Every environment variable `src/lib/env.ts` requires appears in the tracked `.env.example`.
 
@@ -102,7 +109,8 @@ demonstrate-red obligation at step 9.
 | 2 | `Small` | Unit tests over `env.ts` with no I/O: one case per required variable missing, one per malformed, and the all-present case. The error must name the failing variable, not merely report failure. |
 | 3 | `manual` | Open the pull request and read the reported check on it. Cannot be judged locally — it needs GitHub to run the workflow. |
 | 4 | `reviewer` | Parse `.claude/workflow.json`; confirm `testCommand` names the gate and that the `repo-bootstrap` echo string is gone. |
-| 5 | `reviewer` | Read `src/types/index.ts` against `v-tina-user-stories.md`'s stated contracts and confirm each named field and event kind is present. |
+| 5 | `reviewer` | Read `src/types/index.ts` against `v-tina-user-stories.md`'s stated contracts and confirm each named field and event kind is present, and that retrieval requires a similarity score while storage does not. |
+| 8 | `Small` | A test that extracts the asserted flags from `v-tina-user-stories.md` itself (`flagged as "..."`) and compares them against the declared vocabulary both ways. The extent comes from the specification, not a retyped list, so a spec change forces a contract change. Includes the empty case: the test fails if the pattern stops matching anything, so it cannot pass vacuously. |
 | 6 | `Small` | A test that derives the required-variable list **from `env.ts` itself** and asserts each appears in `.env.example`. The extent comes from the module that defines the requirement, so adding a variable without documenting it fails without anyone editing the test. |
 | 7 | `reviewer` | Run the enumerated diff command and compare against the listed paths. |
 
@@ -445,3 +453,52 @@ specifies edge runtime for `/api/chat` (97, 232). Each claim holds.
 - **Claim:** One Env schema requires the Node-only SUPABASE_SERVICE_ROLE_KEY alongside public and Edge-needed keys, while instrumentation deliberately skips validation outside the Node runtime. The product specification requires /api/chat to run on the Edge runtime, so that future route cannot consume getEnv() without demanding a server-only secret in the Edge bundle or bypassing the validated accessor. This establishes the wrong cross-cutting environment pattern for the workstreams that follow.
 - **Alternative:** Keep zod but split the schema by consumer: a public/client schema, a Node server schema for service-role secrets, and an Edge schema containing the keys the chat route actually needs. Instrumentation validates the Node contract, and the Edge route validates its own contract at startup. This needs no new dependency; adopting @t3-oss/env-nextjs would add build-time inlining conveniences at the cost of another dependency, which is not necessary for the current key set.
 - **Win:** Lets the specified Edge route fail fast on its own missing keys without exposing or requiring Node-only secrets, removes the need for future code to duplicate or bypass env validation, and preserves the ratified zod pattern while making runtime boundaries explicit.
+
+## Decisions (2026-09-01, round 2)
+
+**Approach pass (codex on glm-latest, 3 findings). Thomas: "fix all".**
+
+All three shared one root cause: the boundary contracts were written from my reading of
+`v-tina-user-stories.md` rather than from its literal assertions. Each claim was verified against
+the specification before being acted on.
+
+- **Safety vocabulary diverged from the specified contract** (IMPORTANT, one-way, nonstandard):
+  **FIX.** The declared flags are now `IN-BOUNDS`, `PARTISAN-TRAP`, `OUT-OF-BOUNDS` — the exact
+  strings the spec's criteria assert at lines 106, 113 and 121. The invented `crisis` value was
+  removed; nothing in the spec asserts it. Two of the four originals had named the *response*
+  (`grounded_deferral`, `partisan_detour`) rather than the *classification* that triggers it.
+- **One `PolicyChunk` served both storage and retrieval** (IMPORTANT, one-way, kludgy): **FIX.**
+  `PolicyChunk` is now the stored passage; `RetrievedPolicyChunk` extends it with a **required**
+  `similarity`. The spec's `queryPolicyChunks` sketch says `PolicyChunk[]` while its criteria
+  require a score above 0.7 — the criteria are the binding assertion, and the type comment records
+  that reconciliation rather than silently choosing.
+- **Flat environment contract conflated Node, Edge and public config** (IMPORTANT, one-way,
+  nonstandard): **FIX.** Three nested schemas — public ⊂ edge ⊂ node. The Edge contract excludes
+  the server-only service-role secret, so the spec's edge-runtime chat route can validate its own
+  configuration without demanding a secret that must not reach the edge bundle. `register()` now
+  validates **both** runtimes against their own contracts instead of skipping everything but Node.
+
+**Beyond the three findings, to stop this recurring.** The classification vocabulary now has a
+runtime witness (`SAFETY_CLASSIFICATIONS`) so it can be checked, and a new test derives the
+expected flags from the specification file itself. `src/types/index.ts` is therefore no longer
+strictly declaration-only; that trade is deliberate — a type alone leaves nothing to check, which
+is exactly how the vocabulary drifted. **Flagged for the next approach pass** rather than passed
+over.
+
+**Correctness and hidden-failure passes: NOT RUN this round** — an approach fix was approved
+again, so the invariant holds and both critics run in round 3.
+
+## Fixes (2026-09-01, round 2)
+
+Gate green: typecheck, lint, 30 tests, no warnings. Each fix was verified by reintroducing the
+defect and confirming the suite catches it:
+
+| Reintroduced defect | Gate |
+|---|---|
+| the original invented vocabulary (`in_bounds`, `partisan_detour`, …) | **red** |
+| spec-correct flags plus one extra the spec never asserts | **red** |
+| Edge contract made to demand the server-only secret again | **red** |
+| restored | green |
+
+The second case matters: a one-directional check would have passed it. The vocabulary test
+compares both ways.
