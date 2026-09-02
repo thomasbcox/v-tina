@@ -165,6 +165,7 @@ size, so step 9 must demonstrate red against their entries here.
 - review/6 — round 1: ran (codex on glm-latest, 2 findings) → reviews/technology-foundation.approach.fbb22d2.json
 - review/6 — round 2: ran (codex on glm-latest, 3 findings) → reviews/technology-foundation.approach.bfc05cf.json
 - review/6 — round 3: ran (codex on glm-latest, 3 findings) → reviews/technology-foundation.approach.4f33c43.json
+- review/6 — round 4: ran (codex on glm-latest, 0 findings — CLEAN) → reviews/technology-foundation.approach.a9eef9c.json
 - review/8 — n/a — not run this round. An approach/redesign fix was approved at step 7, and the
   loop's invariant is that the correctness pass only ever reads a shape that has cleared approach
   review. Both critics run in the next round, against the reshaped branch.
@@ -616,3 +617,13 @@ AC → file map, after the round-3 fixes.
 | 6 | `.env.example`, `src/lib/env.ts` (`REQUIRED_ENV_KEYS`) |
 | 7 | none — a scope check over the diff, not a file |
 | 8 | `src/lib/safety.ts` (`SAFETY_CLASSIFICATIONS`), `__tests__/contracts.test.ts` |
+
+## Codex (glm-latest) approach review (2026-09-01, base main, HEAD a9eef9c) — round 4
+
+Artifact: `reviews/technology-foundation.approach.a9eef9c.json` · 8 commands executed, 1 REACH-reported (a `grep` of the spec whose pattern
+contained `/api/chat`; the file is inside the review worktree).
+
+**Verdict.** 2026-09-01 19:39:14 PDT — Yes, I would build this foundation in substantially the same shape. The project uses the framework-native Next.js skeleton and startup hook, zod supplies declarative runtime-specific environment schemas rather than hand-rolled per-key validation, the shared contracts are declaration-oriented with the safety vocabulary's runtime witness correctly isolated, retrieval separates stored and retrieved chunks, and one npm gate is consumed by both the local workflow and CI. No dependency or framework construct would meaningfully remove code here, and the earlier approach findings have been resolved rather than reintroduced.
+
+**Findings: none.** The shape is blessed, so the correctness pass proceeds in this same round
+rather than the branch going back for another redesign.
