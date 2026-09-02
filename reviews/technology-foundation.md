@@ -601,3 +601,18 @@ Gate green: typecheck, lint, 32 tests, no warnings. Each fix verified by reintro
 Typecheck caught a real error during this round: re-exporting the classification type without
 importing it left `ChatStreamEvent` unable to reference it. The gate failed, which is the gate
 working.
+
+## Build note (2026-09-01, round 4)
+
+AC → file map, after the round-3 fixes.
+
+| AC | File(s) |
+|---|---|
+| 1 | `scripts/gate.mjs`, `package.json`, `.claude/workflow.json` |
+| 2 | `src/lib/env.ts`, `src/instrumentation.ts` |
+| 3 | `.github/workflows/gate.yml` |
+| 4 | `.claude/workflow.json` |
+| 5 | `src/types/index.ts` |
+| 6 | `.env.example`, `src/lib/env.ts` (`REQUIRED_ENV_KEYS`) |
+| 7 | none — a scope check over the diff, not a file |
+| 8 | `src/lib/safety.ts` (`SAFETY_CLASSIFICATIONS`), `__tests__/contracts.test.ts` |
