@@ -1,0 +1,13 @@
+{
+  "summary": "The change correctly satisfies the technology-foundation spec across its acceptance criteria. `scripts/gate.mjs` runs typecheck, lint and the unit suite unconditionally and exits non-zero on any failure, and `.claude/workflow.json` and the GitHub Actions workflow both consume that single gate definition. `src/lib/env.ts` declares nested zod schemas (public ⊂ edge ⊂ node), `src/instrumentation.ts` validates the active runtime's contract at startup and fails closed on an unknown or unset NEXT_RUNTIME, and the env/example completeness tests derive their extents from the schema itself. The boundary types carry the required source metadata, separate stored from retrieved chunks with a required similarity score, and cover all four chat stream event kinds; the safety vocabulary matches the spec's asserted flags in both directions and its runtime witness is correctly isolated from the declaration-only type barrel. The diff stays inside the AC7 allowlist. Only a minor starter-template leftover was found.",
+  "findings": [
+    {
+      "severity": "NIT",
+      "title": "Starter template font tokens reference variables nothing defines",
+      "file": "src/app/globals.css",
+      "line": 11,
+      "claim": "The `@theme inline` block maps `--font-sans`/`--font-mono` to `--font-geist-sans`/`--font-geist-mono`, but `src/app/layout.tsx` no longer imports the Geist font via `next/font/google` or assigns those custom properties on `<html>`/`<body>`. The two variables are therefore never defined, so the `font-sans`/`font-mono` theme tokens resolve to invalid custom-property values; this is invisible today only because `body` hard-codes `font-family: Arial, Helvetica, sans-serif`. It is dead scaffold cruft that will mislead the UI workstream into thinking the project fonts are wired.",
+      "suggestion": "Either restore the Geist font imports and set `--font-geist-sans`/`--font-geist-mono` on the root layout, or delete the two `--font-sans`/`--font-mono` lines from `@theme inline` until a font is actually configured."
+    }
+  ]
+}

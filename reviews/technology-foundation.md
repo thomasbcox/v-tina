@@ -166,9 +166,10 @@ size, so step 9 must demonstrate red against their entries here.
 - review/6 — round 2: ran (codex on glm-latest, 3 findings) → reviews/technology-foundation.approach.bfc05cf.json
 - review/6 — round 3: ran (codex on glm-latest, 3 findings) → reviews/technology-foundation.approach.4f33c43.json
 - review/6 — round 4: ran (codex on glm-latest, 0 findings — CLEAN) → reviews/technology-foundation.approach.a9eef9c.json
-- review/8 — n/a — not run this round. An approach/redesign fix was approved at step 7, and the
-  loop's invariant is that the correctness pass only ever reads a shape that has cleared approach
-  review. Both critics run in the next round, against the reshaped branch.
+- review/8 — round 4: PARTIAL. correctness ran (codex on deepseek-pro-latest, 1 finding) →
+  reviews/technology-foundation.correctness.a9eef9c.json. **hidden-failure did NOT run** — codex
+  exited 1 twice, promoting nothing. Cause diagnosed below; it is an upstream model failure, not a
+  clean review and not a fabrication.
 - close/3b — not yet reached
 - close/4 — not yet reached
 
@@ -627,3 +628,44 @@ contained `/api/chat`; the file is inside the review worktree).
 
 **Findings: none.** The shape is blessed, so the correctness pass proceeds in this same round
 rather than the branch going back for another redesign.
+
+## Codex correctness pass (2026-09-01, base main, HEAD a9eef9c) — round 4, PARTIAL
+
+**The hidden-failure critic did not run.** Both critics were dispatched; `correctness`
+(deepseek-pro-latest) completed and published, `hidden-failure` (kimi-latest) exited 1 twice and
+promoted nothing. Per the fail-closed rule this is **half a review**, recorded as such rather than
+presented as clean.
+
+**Cause, diagnosed rather than assumed.** A direct probe of each routed model:
+
+| Model | Purposes it serves | Probe result |
+|---|---|---|
+| `deepseek-pro-latest` | correctness | replies normally |
+| `glm-latest` | approach | replies normally |
+| `kimi-latest` | **design, hidden-failure, lesson** | `stream disconnected before completion: Unknown message role 'developer' at index 0` |
+
+The model behind the `kimi-latest` alias is rejecting the `developer` message role the codex CLI
+sends. This is provider-side, not a defect in this repository or this branch. Note that the same
+alias **served the design pass successfully earlier the same day** (round `f04cf8d`), so the alias
+moved underneath us — precisely the risk `codex-models.json` documents when it says the routes name
+family aliases "whose model can change with no signal".
+
+**Blast radius beyond this story:** `kimi-latest` also serves `/frame`'s design review and
+`/close`'s lesson review, so three of the five routed purposes are affected until the route is
+changed or the provider is fixed. The remedy lives in `claude-light-workflow`, not here.
+
+### Correctness findings (deepseek-pro-latest): 1
+
+**NIT — Starter template font tokens reference variables nothing defines**
+`src/app/globals.css:11`
+
+- **Claim:** The `@theme inline` block maps `--font-sans`/`--font-mono` to
+  `--font-geist-sans`/`--font-geist-mono`, but `src/app/layout.tsx` no longer imports the Geist
+  font or assigns those custom properties. The variables are never defined, so those theme tokens
+  resolve to invalid values — invisible today only because `body` hard-codes a font stack. Dead
+  scaffold cruft that would mislead the UI workstream into thinking fonts are wired.
+
+### Hidden-failure findings: NOT RUN
+
+No artifact exists for this lens this round. The branch has **not** been examined for swallowed
+errors, silent fallbacks, or degraded-state continuation.
