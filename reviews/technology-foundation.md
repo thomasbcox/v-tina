@@ -96,7 +96,7 @@ stay as numbered property assertions, per `AGENTS.md`.
    and verify no files appear beyond the project skeleton generated for item 1, plus
    `src/types/index.ts`, `src/lib/env.ts`, `__tests__/`, `.env.example`,
    `.github/workflows/`, `.claude/workflow.json`, `.gitignore`, `vitest.config.mts`,
-   `scripts/gate.mjs`, `.nvmrc`, `README.md` and `src/instrumentation.ts`.
+   `scripts/gate.mjs`, `.nvmrc`, `README.md`, `src/instrumentation.ts` and `src/lib/safety.ts`.
 
 ## Test notes
 
@@ -548,3 +548,56 @@ returned nothing.
 - **Claim:** The boundary module's own contract and the story's design sketch say it is declaration-only with no runtime code, but SAFETY_CLASSIFICATIONS is a runtime array in the same barrel. The need for a checkable vocabulary is real, but placing it here turns the shared type contract into a runtime module as well and blurs the boundary future workstreams are meant to import safely.
 - **Alternative:** Move the const and derive the type from it in a small runtime module such as src/lib/safety.ts, then re-export only the type from src/types/index.ts using export type. The specification-derived test imports the runtime witness from the safety module, while type-only consumers continue importing from the declaration-only barrel.
 - **Win:** Restores the declared type-only boundary, keeps one authoritative classification vocabulary for the classifier and tests, and prevents runtime exports from being bundled by type-only imports.
+
+## Decisions (2026-09-01, round 3)
+
+**Approach pass (codex on glm-latest, 3 findings). Thomas: "delete the YAGNI code and the
+anticipatory code. fix the rest".**
+
+Two of the three were defects **introduced by my own round-2 fix** (`f79d35b`), not newly
+discovered depth. Traced with `git log -S` rather than assumed.
+
+- **Public environment accessor not client-bundling safe** (IMPORTANT, one-way, nonstandard):
+  **DELETED, not fixed.** `getPublicEnv`, `PublicEnv` and its cache are gone — nothing consumed
+  them. `publicEnvSchema` stays, because `edgeEnvSchema` extends it, so it is used structure
+  rather than anticipation. The comment now records why there is deliberately no accessor: Next.js
+  inlines `NEXT_PUBLIC_` values through direct static references, so a browser-side accessor has to
+  be written against real client code. The UI workstream writes it when it has that code.
+- **Startup failed open on an unknown runtime** (IMPORTANT, one-way, kludgy): **FIX.** `register()`
+  now throws, naming the unexpected value, for anything that is not `nodejs` or `edge`. The unit
+  test that had *ratified* the fail-open behaviour was deleted and replaced with two fail-closed
+  cases.
+- **Runtime vocabulary witness in the declaration-only barrel** (IMPORTANT, one-way, kludgy):
+  **FIX.** `SAFETY_CLASSIFICATIONS` moved to `src/lib/safety.ts`; `src/types/index.ts` re-exports
+  only the type. This is the trade I flagged for review at the end of round 2 rather than passing
+  over, and the reviewer reached the same place independently.
+
+**Beyond the findings.** The declaration-only property was previously verified by hand. It is now
+a test (`__tests__/contracts.test.ts`), so the barrel cannot silently regain runtime exports.
+
+**Not deleted, and why — this needs Thomas's call.** By a literal reading of "delete the
+anticipatory code", the shared boundary contracts in `src/types/index.ts` all qualify:
+`PolicyChunkSource`, `PolicyChunk`, `RetrievedPolicyChunk` and `ChatStreamEvent` have **zero
+consumers** and exist purely for workstreams not yet written. They were **left in place** because
+deleting them would reverse Thomas's own framing decision — he chose "Building + shared
+vocabulary" at step 1 specifically so five workstreams would share one vocabulary instead of
+inventing five. Two instructions point opposite ways here, so this is surfaced rather than
+resolved unilaterally.
+
+**Correctness and hidden-failure passes: NOT RUN this round** — an approach fix was approved
+again, so both critics run in round 4.
+
+## Fixes (2026-09-01, round 3)
+
+Gate green: typecheck, lint, 32 tests, no warnings. Each fix verified by reintroducing the defect:
+
+| Reintroduced defect | Result |
+|---|---|
+| unknown runtime silently starts again | **red** |
+| runtime export added back to the types barrel | **red** |
+| `getPublicEnv` references remaining after deletion | **0** |
+| restored | green |
+
+Typecheck caught a real error during this round: re-exporting the classification type without
+importing it left `ChatStreamEvent` unable to reference it. The gate failed, which is the gate
+working.

@@ -45,22 +45,11 @@ export interface RetrievedPolicyChunk extends PolicyChunk {
   similarity: number;
 }
 
-/**
- * How the safety classifier routed a request (User Story 2).
- *
- * These are the exact flags the specification's acceptance criteria assert, not
- * paraphrases of the responses they trigger: a `PARTISAN-TRAP` classification is
- * what triggers the Partisan Detour Rule, and `OUT-OF-BOUNDS` is what triggers
- * the Grounded Deferral message. No further value is declared here until a
- * workstream's specification actually defines one.
- */
-export const SAFETY_CLASSIFICATIONS = [
-  "IN-BOUNDS",
-  "PARTISAN-TRAP",
-  "OUT-OF-BOUNDS",
-] as const;
+import type { SafetyClassification } from "../lib/safety";
 
-export type SafetyClassification = (typeof SAFETY_CLASSIFICATIONS)[number];
+// Re-exported so consumers get the whole boundary from one place, while the
+// runtime value it derives from stays in the safety module.
+export type { SafetyClassification };
 
 /** Events streamed by `/api/chat`. A discriminated union on `type` — the four
  *  kinds the backend contract names, with no catch-all member, so consumers

@@ -20,7 +20,11 @@ const nonEmpty = (label: string) =>
     .trim()
     .min(1, `${label} must not be empty`);
 
-/** Safe in the browser bundle — the `NEXT_PUBLIC_` prefix is what exposes them. */
+/** The browser-exposed subset — the `NEXT_PUBLIC_` prefix is what exposes them.
+ *  Declared as the base of the nesting below; there is deliberately no accessor
+ *  for it. Next.js only inlines these into the client bundle through direct static
+ *  references, so a browser-side accessor has to be written against real client
+ *  code. The UI workstream adds one when it has that code to write it against. */
 export const publicEnvSchema = z.object({
   NEXT_PUBLIC_SUPABASE_URL: z
     .string()
@@ -41,7 +45,6 @@ export const nodeEnvSchema = edgeEnvSchema.extend({
   SUPABASE_SERVICE_ROLE_KEY: nonEmpty("SUPABASE_SERVICE_ROLE_KEY"),
 });
 
-export type PublicEnv = z.infer<typeof publicEnvSchema>;
 export type EdgeEnv = z.infer<typeof edgeEnvSchema>;
 export type NodeEnv = z.infer<typeof nodeEnvSchema>;
 
@@ -82,7 +85,6 @@ export function parseEnv<S extends z.ZodObject<z.ZodRawShape>>(
 
 let cachedNode: NodeEnv | undefined;
 let cachedEdge: EdgeEnv | undefined;
-let cachedPublic: PublicEnv | undefined;
 
 /** Validated Node-server environment, parsed once on first use. */
 export function getNodeEnv(): NodeEnv {
@@ -94,10 +96,4 @@ export function getNodeEnv(): NodeEnv {
 export function getEdgeEnv(): EdgeEnv {
   if (!cachedEdge) cachedEdge = parseEnv(edgeEnvSchema, process.env);
   return cachedEdge;
-}
-
-/** Validated browser-safe environment, parsed once on first use. */
-export function getPublicEnv(): PublicEnv {
-  if (!cachedPublic) cachedPublic = parseEnv(publicEnvSchema, process.env);
-  return cachedPublic;
 }
