@@ -1,0 +1,103 @@
+{
+  "verdict": "2026-09-04 10:59:28 PDT — The overall shape is sound and modern: `yaml` plus `zod` avoids a hand-rolled YAML subset, injected I/O makes the pipeline testable without network access, SQL owns ranking, HNSW is the appropriate pgvector index family at this scale, and RLS with no write policies gives the intended public-read/service-role-write split. Before build, make re-ingestion document-atomic rather than a row-level upsert alone, put argument guards on the publicly callable SQL function, and enforce the official Oregon domain in the single frontmatter schema. The main oracle problem is AC 5: a fake Supabase client can prove parameter forwarding and row mapping, but it cannot falsify the ordering, threshold, count, or pillar-filter guarantees that the criterion asserts.",
+  "findings": [
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "one-way",
+      "standing": "kludgy",
+      "title": "Row-level upserts do not make document ingestion idempotent",
+      "locus": "Design sketch — Migration unique constraint and `src/lib/ingest/pipeline.ts` store interface",
+      "claim": "The proposed `unique(url, chunk_index)` plus `store.upsert(rows)` handles unchanged or growing documents, but not a revised document with fewer chunks: the old higher-ordinal rows remain and remain retrievable. The same happens if document content changes while retaining its URL. The store interface has only `upsert(rows)`, so it cannot express deletion of stale rows, and this becomes the ingestion pattern later stories copy. A caller can therefore see a successful ingest while the database still contains chunks that no longer exist in the source document.",
+      "alternative": "Make the store operation document-scoped and transactional, such as `replaceDocument(source, rows)` backed by one SQL RPC that deletes the existing rows for the URL and inserts the complete new set in the same transaction. Alternatively, model documents in their own table and replace child chunks transactionally.",
+      "win": "Eliminates the stale-row failure class and centralizes the invariant that the database contains exactly the current chunks for each ingested document."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "one-way",
+      "standing": "nonstandard",
+      "title": "The public SQL function needs argument guards",
+      "locus": "Design sketch — `match_policy_chunks` migration",
+      "claim": "`match_policy_chunks` is callable by the public/anon role and accepts an arbitrary result count and threshold. TypeScript validation in `queryPolicyChunks` does not protect the database when the function is called directly through PostgREST or the SQL editor. A huge count can force an unnecessarily large vector scan and response, and an out-of-range or non-finite threshold can produce nonsensical behavior rather than a clear rejection.",
+      "alternative": "Validate the arguments inside `match_policy_chunks` or a thin PL/pgSQL wrapper: require `match_count` between 1 and a documented maximum, require the cosine threshold to be finite and within [-1, 1], and then run the existing SQL query. Keep any TypeScript validation as an additional boundary check, not the only guard.",
+      "win": "Removes an unbounded public-resource-consumption path and puts the public contract's invariant where direct callers cannot bypass it."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "AC 5's Small oracle cannot falsify its main guarantees",
+      "locus": "Test notes — AC 5",
+      "claim": "The assigned mechanism asserts the RPC name and arguments and maps fabricated rows. That is an implementation-shape check: it can pass while the actual database returns rows out of similarity order, below the threshold, beyond the count, or from the wrong pillar. AC 6 covers the SQL function manually, but AC 5 still claims those outcomes for the caller-facing boundary, so its named oracle cannot fail for most of its `Then`.",
+      "alternative": "Split the criterion honestly: make the parameter-forwarding and row-mapping property a separate Small/bookkeeping assertion, and exercise the caller-facing behavior through the same hosted synthetic-vector check as AC 6, or mark AC 5 `manual` and call the real `queryPolicyChunks` there. Keep the fake-client test only as a supplementary mapping test.",
+      "win": "No acceptance criterion claims an observable outcome that its oracle cannot falsify; mapping and SQL semantics are tested independently rather than giving false coverage to the latter."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "Frontmatter URL validation does not enforce the official source domain",
+      "locus": "Design sketch — `src/lib/ingest/parse.ts` frontmatter schema",
+      "claim": "A generic `z.string().url()` rejects scheme-less strings but accepts any host, such as `https://example.com`. The product's grounding and verification intent is specifically official `oregon.gov` sources, so an accidentally mis-tagged fixture or corpus entry could be embedded, stored, and later presented as a verifiable official citation.",
+      "alternative": "Add one declarative domain rule to the URL schema: require `https:`, and allow only `oregon.gov` or a subdomain such as `www.oregon.gov` / `governor.oregon.gov`. Throw the same all-invalid-fields error when the host is wrong.",
+      "win": "Prevents unofficial citations at ingestion with one centralized invariant, avoiding later UI or QA workarounds after rows already exist."
+    }
+  ],
+  "regressions": [
+    {
+      "criterion": "1 — chunks in document order, sized 500–1000, with complete metadata and no loss or duplication",
+      "regression": "The chunker cuts every 500 characters regardless of paragraph or sentence boundaries. It satisfies order, length, exact concatenation, metadata, and no loss/duplication, but destroys the coherent policy passages that semantic retrieval is meant to retrieve."
+    },
+    {
+      "criterion": "2 — malformed frontmatter is refused, naming every faulty field, with nothing embedded or stored",
+      "regression": "The error message includes every field name from the document, including valid ones, or emits a raw parser dump in which the faulty fields merely appear among unrelated noise. The letter 'names every field at fault' is textually satisfied while the intent — a precise diagnosis — is violated."
+    },
+    {
+      "criterion": "2 — malformed frontmatter is refused, naming every faulty field, with nothing embedded or stored",
+      "regression": "URL validation checks only generic URL syntax, so `https://example.com` is accepted because it has a scheme. The document is embedded and stored even though the product's intent is citations to official `oregon.gov` sources."
+    },
+    {
+      "criterion": "3 — every chunk is embedded exactly once and stored, and the stored count equals the chunk count",
+      "regression": "The pipeline returns `chunks.length` as the stored count without checking the store's confirmation. A store that silently inserts only some rows, or returns fewer inserted rows, still leaves the pipeline reporting the full chunk count."
+    },
+    {
+      "criterion": "4 — a part-way service or store failure surfaces and the document is not reported as ingested",
+      "regression": "The pipeline catches the failure and returns a success-shaped result containing `ok: false` or an error field rather than rejecting. An error is technically surfaced and no ingested count is reported, but callers that only check success cannot be forced to notice the failure."
+    },
+    {
+      "criterion": "4 — a part-way service or store failure surfaces and the document is not reported as ingested",
+      "regression": "The store writes the first chunks before failing, the caller receives an error, but the partial rows remain. The document is not reported as ingested, yet future retrieval can return an incomplete document as though it were valid."
+    },
+    {
+      "criterion": "5 — retrieval returns scored, complete chunks in order, within threshold and count, and filtered by pillar",
+      "regression": "The boundary function forwards the correct RPC arguments and maps fabricated rows perfectly, while the actual database function ignores the threshold, pillar, or similarity ordering. The assigned fake-client test passes because it never exercises those outcomes."
+    },
+    {
+      "criterion": "6 — hosted SQL ordering, threshold, count, pillar filtering, and public-key permissions behave",
+      "regression": "The manual test uses hand-written vectors so orthogonal or trivially separated that insertion order or primary-key order coincides exactly with similarity order. A function ordering by `id` or `created_at` would still appear to satisfy 'most similar first'."
+    },
+    {
+      "criterion": "6 — hosted SQL ordering, threshold, count, pillar filtering, and public-key permissions behave",
+      "regression": "The permission check accidentally uses a service-role or SQL-editor owner connection for the insert attempt, so the refusal proves nothing about a caller holding only the public/anon key."
+    },
+    {
+      "criterion": "7 — schema and embedding code agree, with one dimension constant as the source of both",
+      "regression": "The migration and TypeScript constant are both changed to another dimension, such as 1536. The synchronization test passes because both declarations now agree, even though the selected Fireworks model still emits 768-dimensional vectors."
+    },
+    {
+      "criterion": "7 — schema and embedding code agree, with one dimension constant as the source of both",
+      "regression": "The migration check finds `vector(768)` in a comment, example, or unrelated table while `policy_chunks.embedding` uses the wrong dimension. The token is present, so the check passes without validating the actual column."
+    },
+    {
+      "criterion": "8 — package.json gains the Supabase runtime dependency and CLI dev dependency, but not `@supabase/ssr`",
+      "regression": "The dependencies are added with `\"*\"` or another non-pinned range. The package keys satisfy the criterion, but `npx supabase` can resolve a different CLI version on each machine, defeating the version-pinned migration workflow."
+    },
+    {
+      "criterion": "9 — every environment variable read by new code is already declared in env.ts",
+      "regression": "A module reads configuration through a dynamic key such as `process.env[key]`, or through `import.meta.env`, so a reviewer searching only for literal `process.env`, `getNodeEnv`, and `getEdgeEnv` references finds nothing and the criterion passes vacuously."
+    },
+    {
+      "criterion": "10 — scope containment to the enumerated paths",
+      "regression": "Unrelated feature logic or runtime code is placed inside an allowed directory such as `__tests__/` or `src/lib/ingest/`. Every path appears on the allowlist, so the diff command passes while the scope-containment intent is violated."
+    }
+  ]
+}
