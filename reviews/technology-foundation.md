@@ -172,7 +172,7 @@ size, so step 9 must demonstrate red against their entries here.
 - close/3b — activation observed (review_runner refused to promote, 3x, session-observed);
   judged not novel and no proposal written — see the note below for why neither canned wording
   ('no activation' / 'ran') was accurate here.
-- close/4 — not yet reached
+- close/4 — presented: re-review or merge; Thomas chose **merge**
 
 **Earlier rounds of this story** (kept as prose, not as record lines: the record holds one line
 per step by design, and extra lines break the round-id agreement check `/close` step 3b runs):
