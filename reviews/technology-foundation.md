@@ -162,10 +162,7 @@ size, so step 9 must demonstrate red against their entries here.
 - frame/6 — ran (codex on kimi-latest, 3 findings, 16 regressions) → reviews/technology-foundation.design.f04cf8d.json
 - frame/9 — demonstrated red for every ratified regression on the two size-bearing criteria:
   AC2 (3 regressions) and AC6 (2). Baseline green, each regression red, restored green.
-- review/6 — round 1: ran (codex on glm-latest, 2 findings) → reviews/technology-foundation.approach.fbb22d2.json
-- review/6 — round 2: ran (codex on glm-latest, 3 findings) → reviews/technology-foundation.approach.bfc05cf.json
-- review/6 — round 3: ran (codex on glm-latest, 3 findings) → reviews/technology-foundation.approach.4f33c43.json
-- review/6 — round 4: ran (codex on glm-latest, 0 findings — CLEAN) → reviews/technology-foundation.approach.a9eef9c.json
+- review/6 — ran (codex on glm-latest, 0 findings — CLEAN) → reviews/technology-foundation.approach.a9eef9c.json
 - review/8 — round 4: ran (codex: deepseek-pro-latest correctness / gpt-oss-120b hidden-failure,
   1 / 0 findings) → reviews/technology-foundation.correctness.a9eef9c.json,
   reviews/technology-foundation.hidden-failure.a9eef9c.json. The hidden-failure critic was blocked
@@ -174,6 +171,14 @@ size, so step 9 must demonstrate red against their entries here.
   record, not because the pass is still missing.
 - close/3b — not yet reached
 - close/4 — not yet reached
+
+**Earlier rounds of this story** (kept as prose, not as record lines: the record holds one line
+per step by design, and extra lines break the round-id agreement check `/close` step 3b runs):
+
+- round 1: ran (codex on glm-latest, 2 findings) → reviews/technology-foundation.approach.fbb22d2.json
+- round 2: ran (codex on glm-latest, 3 findings) → reviews/technology-foundation.approach.bfc05cf.json
+- round 3: ran (codex on glm-latest, 3 findings) → reviews/technology-foundation.approach.4f33c43.json
+- round 4: ran (codex on glm-latest, 0 findings — CLEAN) → reviews/technology-foundation.approach.a9eef9c.json
 
 ## Open questions
 
@@ -719,3 +724,22 @@ decide.
 
 **Round 4 approved no approach/redesign fix**, so `/close` may present the merge option at its
 fork rather than routing back for another review round.
+
+## Fixes (2026-09-03, round 4)
+
+One approved finding, applied before `/close` was invoked and gated afterwards.
+
+- **Starter template font tokens reference variables nothing defines** (correctness, NIT) →
+  `c51c380`. The two `@theme inline` mappings to `--font-geist-sans` / `--font-geist-mono` are
+  removed; they were the only references to those variables in the tree and nothing defined them.
+  `body`'s hard-coded font stack was deliberately left — it is a real value, not a dangling
+  reference, and font selection belongs to the UI workstream.
+
+No other finding was approved. The approach and hidden-failure passes returned nothing.
+
+**Loop record repair, this step.** The `## Loop record` had accumulated one `review/6` line per
+round. The template's rule is that each step **overwrites its own line**; appending was a
+readability choice of mine that broke a mechanical guarantee — `/close` step 3b's round-id
+agreement check found four round ids where it requires exactly one, and would have stopped. The
+record now carries one line per step, with the per-round history kept as prose below it where it
+cannot be parsed as a step line. The check passes.
