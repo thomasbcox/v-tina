@@ -1,0 +1,101 @@
+{
+  "verdict": "The sketch is a sound, modern shape: scaffold with create-next-app rather than hand-assembling config, contracts as pure exported types with a discriminated stream-event union, one `npm run gate` definition consumed by both `.claude/workflow.json` and CI so the two cannot drift, and Vitest scoped to exactly the two criteria that are unit-testable. Two things should be settled before build: Open question 1 should resolve to `zod` (hand-rolled per-key validation reimplements one declarative schema and sets the wrong first pattern for five workstreams to copy), and CI should pin a Node version rather than float on whatever `setup-node` defaults to, given Open question 3's engine-range risk. The oracle assignments are honest — the `manual` and `reviewer` rows name checks that can genuinely fail, and criterion 6's derive-the-extent-from-`env.ts` mechanism is the right shape.",
+  "findings": [
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "one-way",
+      "standing": "standard",
+      "title": "Resolve Open question 1 to zod, not hand-rolled validation",
+      "locus": "Design sketch — `src/lib/env.ts` / Open questions 1",
+      "claim": "The sketch leaves the project's first runtime dependency undecided and offers hand-rolled validation as a coequal option. Hand-rolling reimplements exactly what one declarative schema covers — per-key presence/emptiness checks, per-key error naming, and the return-typed-values happy path all become bespoke code that later stories will imitate. This is the first dependency and a cross-cutting pattern five workstreams will copy, so it is a one-way door and needs Thomas's ratification either way — but the ratified answer should be zod.",
+      "alternative": "Declare a zod object schema over `process.env`, `safeParse` it, and on failure throw an error built from `z.prettifyError` / the issues array so every offending key is named. zod is zero-dependency and ~small; if the project wants the Next.js-idiomatic wrapper, `@t3-oss/env-nextjs` does the same with build-time inlining awareness, but plain zod is sufficient here.",
+      "win": "Deletes the per-key validation code `env.ts` would otherwise carry, gets 'names the offending variable' (criterion 2) for free — and names *all* offenders at once instead of throwing on the first — and establishes the declarative-validation pattern the later ingestion and route-validation work will need anyway."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "standard",
+      "title": "Pin the Node version in CI rather than floating",
+      "locus": "Design sketch — CI / Open questions 3",
+      "claim": "The sketch's CI workflow is 'checkout, install Node, `npm ci`, `npm run gate`' with no named Node version, while the local toolchain is node v26.7.0 — newer than Next.js's supported-engine range is likely to name, and newer than what the eventual Vercel deployment will run. A floating `setup-node` default means CI, local, and production can each run a different runtime, so a green check proves less than criterion 3 intends.",
+      "alternative": "Answer Open question 3 with 'pin': set an explicit LTS in the workflow via `setup-node`'s `node-version` (or a committed `.nvmrc` / `package.json` `engines` that `node-version-file` reads), and note the pin in the README so local matches CI.",
+      "win": "One source of truth for the runtime version across local, CI and the future deployment; eliminates an entire class of 'green CI, broken deploy' failures before the deployment story exists."
+    },
+    {
+      "severity": "NIT",
+      "reversibility": "two-way",
+      "standing": "standard",
+      "title": "Separate the pure parse from the loaded-once singleton in env.ts",
+      "locus": "Design sketch — `src/lib/env.ts` ('Loaded once at startup, never re-read per request')",
+      "claim": "A module that throws at import time and caches its result makes criterion 2's Small tests — one case per missing variable, one per malformed — fight the module cache (per-test module resets and dynamic imports), which invites exactly the brittle test plumbing this loop exists to catch.",
+      "alternative": "Export a pure `parseEnv(env)` function (the unit under test) alongside a cached singleton that calls it once with `process.env`. The startup-once semantics are unchanged; the tests call the pure function with fabricated env maps.",
+      "win": "The Small suite becomes plain function calls with no module-cache gymnastics, removing a whole category of false-green tests where the singleton was populated by an earlier case."
+    }
+  ],
+  "regressions": [
+    {
+      "criterion": "1 — gate runs typecheck, lint and the unit suite, exits non-zero if any fails",
+      "regression": "The gate script chains the three checks with `&&`, so when typecheck fails the lint and unit suite never execute — the exit-code letter holds while the 'runs all three' intent (a full report of what is broken) is violated."
+    },
+    {
+      "criterion": "1 — gate runs typecheck, lint and the unit suite, exits non-zero if any fails",
+      "regression": "The gate's exit status reflects only the last command (steps joined with `;`, or an npm script whose intermediate failure is swallowed), so a failing lint followed by a passing test run exits 0 and the failing check is never surfaced."
+    },
+    {
+      "criterion": "1 — gate runs typecheck, lint and the unit suite, exits non-zero if any fails",
+      "regression": "The test step is configured to pass when no test files exist (a passWithNoTests-style flag), so 'the unit suite runs' is satisfied by a suite that tests nothing — the deliberate-break check in the test notes passes while the suite is vacuous."
+    },
+    {
+      "criterion": "2 — env.ts raises naming the specific missing/empty variable; happy path returns parsed values",
+      "regression": "Validation checks presence but not emptiness: a variable set to an empty string (or whitespace-only) is accepted as present, so the 'missing or empty' half of the criterion fails silently while every 'variable exists' test is green."
+    },
+    {
+      "criterion": "2 — env.ts raises naming the specific missing/empty variable; happy path returns parsed values",
+      "regression": "The error message names the failing variable only incidentally — a dumped env dump, a raw schema-issue blob, or a stack trace in which the key appears among unrelated noise — satisfying 'naming the variable' textually while leaving a developer unable to tell which key is actually at fault."
+    },
+    {
+      "criterion": "2 — env.ts raises naming the specific missing/empty variable; happy path returns parsed values",
+      "regression": "The 'well-formed' happy path returns raw, untrimmed strings with no shape check at all, so a placeholder like 'your-key-here' or a URL missing its scheme passes as well-formed — values are returned without raising while being unusable."
+    },
+    {
+      "criterion": "3 — PR targeting main: CI runs the same gate and reports on the PR",
+      "regression": "The workflow restates the three checks inline in YAML instead of invoking the one gate script, so the CI check and the local `testCommand` are two copies that can drift — a check does run and report on the PR (the letter) while 'the same gate' (the intent) is already false on day one."
+    },
+    {
+      "criterion": "3 — PR targeting main: CI runs the same gate and reports on the PR",
+      "regression": "The workflow triggers on pull requests to any branch, or only on pushes, so a PR targeting `main` gets no reported check while activity elsewhere shows green — the trigger filter never actually matches the one case the criterion names."
+    },
+    {
+      "criterion": "3 — PR targeting main: CI runs the same gate and reports on the PR",
+      "regression": "The gate step's failure is neutralized (continue-on-error, `|| true`, or a missing `npm ci` failure propagation), so the PR always shows a green check regardless of the gate result — the reporting exists but can never report failure."
+    },
+    {
+      "criterion": "4 — testCommand invokes the real gate; the repo-bootstrap echo is gone",
+      "regression": "`testCommand` is repointed to `npm run gate` and the echo string is removed from `workflow.json`, but the `gate` script in `package.json` itself omits one of the three checks or still contains a vacuous step — the no-op migrated from the config file into the manifest rather than disappearing."
+    },
+    {
+      "criterion": "5 — PolicyChunk carries title/date/URL/pillar; stream-event type covers all four event kinds",
+      "regression": "PolicyChunk declares all four metadata fields as optional, so a chunk lacking title, date, URL and pillar still typechecks — the fields are 'declared' while the contract's intent (every chunk carries complete source metadata for the verification UI) is void."
+    },
+    {
+      "criterion": "5 — PolicyChunk carries title/date/URL/pillar; stream-event type covers all four event kinds",
+      "regression": "The stream-event union nominally has four members but one is a catch-all whose payload is `unknown`/`any`, or the discriminator values do not match the names the `/api/chat` contract uses — all four kinds are 'covered' while real streamed events either fail to narrow or silently match the catch-all."
+    },
+    {
+      "criterion": "6 — every variable env.ts requires appears in the tracked .env.example",
+      "regression": "`.env.example` contains every required key but with real-looking credential values instead of placeholders — the file is exempted from the `.env*` ignore, so the completeness letter is satisfied by committing what look like secrets, the exact outcome the ignore family exists to prevent."
+    },
+    {
+      "criterion": "6 — every variable env.ts requires appears in the tracked .env.example",
+      "regression": "`.env.example` satisfies 'every required variable appears' while accumulating stale keys nothing requires, or documenting a required key under a different name than `env.ts` reads — the one-directional check stays green while the file stops being a usable setup document."
+    },
+    {
+      "criterion": "7 — scope containment to skeleton, named files and directories",
+      "regression": "Every committed path is on the allowlist, but feature logic is smuggled into an allowed file — the chat route or prompt content drafted inside `src/types/index.ts`, or a working component beyond the scaffold under `src/components/` — satisfying the path enumeration while violating the 'no feature logic' intent the containment exists to enforce."
+    },
+    {
+      "criterion": "7 — scope containment to skeleton, named files and directories",
+      "regression": "The generated skeleton keeps the starter template's demo content (the default landing page, sample API route, placeholder assets) unexamined — all paths are 'the project skeleton generated for item 1' by the letter, while shipping demo behavior the story's 'no feature logic' scope meant to exclude."
+    }
+  ]
+}

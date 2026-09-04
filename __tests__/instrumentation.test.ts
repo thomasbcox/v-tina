@@ -1,0 +1,71 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+const VALID: Record<string, string> = {
+  NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co",
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: "anon-key-value",
+  SUPABASE_SERVICE_ROLE_KEY: "service-role-value",
+  FIREWORKS_API_KEY: "fireworks-key-value",
+};
+
+const stubAll = (overrides: Record<string, string> = {}) => {
+  for (const [k, v] of Object.entries({ ...VALID, ...overrides })) {
+    vi.stubEnv(k, v);
+  }
+};
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.resetModules();
+});
+
+describe("register", () => {
+  it("fails Node startup, naming the offending key, when configuration is invalid", async () => {
+    vi.stubEnv("NEXT_RUNTIME", "nodejs");
+    stubAll({ FIREWORKS_API_KEY: "" });
+    const { register } = await import("../src/instrumentation");
+    await expect(register()).rejects.toThrow(/FIREWORKS_API_KEY/);
+  });
+
+  it("completes on Node when every required key is present", async () => {
+    vi.stubEnv("NEXT_RUNTIME", "nodejs");
+    stubAll();
+    const { register } = await import("../src/instrumentation");
+    await expect(register()).resolves.toBeUndefined();
+  });
+
+  // The Edge runtime is validated too — it is not skipped — but against its own
+  // contract, which excludes the server-only secret.
+  it("validates the Edge runtime against its own contract", async () => {
+    vi.stubEnv("NEXT_RUNTIME", "edge");
+    stubAll({ FIREWORKS_API_KEY: "" });
+    const { register } = await import("../src/instrumentation");
+    await expect(register()).rejects.toThrow(/FIREWORKS_API_KEY/);
+  });
+
+  it("starts on Edge without the server-only secret present", async () => {
+    vi.stubEnv("NEXT_RUNTIME", "edge");
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", VALID.NEXT_PUBLIC_SUPABASE_URL);
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", VALID.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+    vi.stubEnv("FIREWORKS_API_KEY", VALID.FIREWORKS_API_KEY);
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "");
+    const { register } = await import("../src/instrumentation");
+    await expect(register()).resolves.toBeUndefined();
+  });
+
+  // Fails closed. The previous version of this test ratified the opposite —
+  // an unrecognised runtime validated nothing and the app started anyway — which
+  // is the silent unvalidated-boot path this hook exists to remove.
+  it("refuses to start in an unrecognised runtime, even with valid configuration", async () => {
+    vi.stubEnv("NEXT_RUNTIME", "deno");
+    stubAll();
+    const { register } = await import("../src/instrumentation");
+    await expect(register()).rejects.toThrow(/deno/);
+  });
+
+  it("refuses to start when NEXT_RUNTIME is unset", async () => {
+    vi.stubEnv("NEXT_RUNTIME", "");
+    stubAll();
+    const { register } = await import("../src/instrumentation");
+    await expect(register()).rejects.toThrow(/unset/);
+  });
+});

@@ -44,8 +44,38 @@ test suite.
 Acceptance criteria for product behaviour are written as numbered Given/When/Then prose;
 workflow bookkeeping criteria stay as numbered property assertions. See `AGENTS.md`.
 
-The test gate is currently a deliberate **no-op**: the technology is not yet stood up, so a real
-gate would be rewritten by the story that builds it.
+## Node version
+
+One source of truth, read by everything:
+
+| Where | What it reads |
+|---|---|
+| Local development | `.nvmrc` — run `nvm use` in the repository root |
+| CI (GitHub Actions) | `.nvmrc`, via `setup-node`'s `node-version-file` |
+| Compatibility floor | `package.json` `engines.node` (`>=20.9.0`, Next.js's own requirement) |
+
+`.nvmrc` pins the **major**, so a patch upgrade does not desynchronise local from CI while a major
+change stays an explicit decision. Change the version in `.nvmrc`; CI follows it automatically.
+
+`engines.node` is a separate, hand-maintained declaration — it is the floor npm warns against, not
+a copy of the pin. **Nothing checks that the two agree**: the test that compared them was removed
+along with the version-comparison dependency it needed. If you lower `.nvmrc` below the
+`engines.node` floor, no tooling will object, so keep them consistent by hand.
+
+The deployment story must confirm the host offers this major and move `.nvmrc` if not — that is
+the one place a change is needed.
+
+## The gate
+
+`npm run gate` runs three checks and reports **all** of them before exiting:
+
+- `typecheck` — `tsc --noEmit`
+- `lint` — `eslint`
+- `test` — `vitest run`
+
+It deliberately does not chain them with `&&`: a failing first check would otherwise hide the
+state of the other two. CI runs this same script rather than restating the checks, so the local
+gate and the CI check cannot become different things.
 
 ## Licence
 
