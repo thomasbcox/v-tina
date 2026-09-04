@@ -696,3 +696,26 @@ model-specific rather than provider-wide. Thomas rerouted the loop on 2026-09-03
 `hidden-failure` to `gpt-oss-120b`, `design` and `lesson` off `kimi-latest` as well — and the pass
 completed on the first attempt afterwards. The two concurrent critics still sit in different model
 families, which is the property that rule protects.
+
+## Decisions (2026-09-03, round 4)
+
+**Approach pass (codex on glm-latest): 0 findings — clean.** The shape is blessed; nothing to
+decide.
+
+**Correctness pass (codex on deepseek-pro-latest): 1 finding. Thomas: "fix please".**
+
+- **Starter template font tokens reference variables nothing defines** (NIT,
+  `src/app/globals.css:11`): **FIX.** The two `@theme inline` mappings to `--font-geist-sans` and
+  `--font-geist-mono` are removed. They were the only references to those variables anywhere in
+  the tree, and nothing defined them — dead since the Geist font import was stripped along with
+  the starter demo. Tailwind's own defaults now apply to the `font-sans`/`font-mono` tokens.
+
+  Deliberately **not** touched: `body`'s hard-coded `Arial, Helvetica, sans-serif`. That is a real
+  value rather than a dangling reference, so it is outside this finding, and font selection
+  belongs to the UI workstream.
+
+**Hidden-failure pass (codex on gpt-oss-120b): 0 findings.** Recorded with its stated limit —
+4 commands executed, a thin read on a diff with almost no error-handling surface.
+
+**Round 4 approved no approach/redesign fix**, so `/close` may present the merge option at its
+fork rather than routing back for another review round.
