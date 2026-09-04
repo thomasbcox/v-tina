@@ -166,10 +166,12 @@ size, so step 9 must demonstrate red against their entries here.
 - review/6 — round 2: ran (codex on glm-latest, 3 findings) → reviews/technology-foundation.approach.bfc05cf.json
 - review/6 — round 3: ran (codex on glm-latest, 3 findings) → reviews/technology-foundation.approach.4f33c43.json
 - review/6 — round 4: ran (codex on glm-latest, 0 findings — CLEAN) → reviews/technology-foundation.approach.a9eef9c.json
-- review/8 — round 4: PARTIAL. correctness ran (codex on deepseek-pro-latest, 1 finding) →
-  reviews/technology-foundation.correctness.a9eef9c.json. **hidden-failure did NOT run** — codex
-  exited 1 twice, promoting nothing. Cause diagnosed below; it is an upstream model failure, not a
-  clean review and not a fabrication.
+- review/8 — round 4: ran (codex: deepseek-pro-latest correctness / gpt-oss-120b hidden-failure,
+  1 / 0 findings) → reviews/technology-foundation.correctness.a9eef9c.json,
+  reviews/technology-foundation.hidden-failure.a9eef9c.json. The hidden-failure critic was blocked
+  for three attempts by an upstream model failure and completed only after the routing was changed
+  off `kimi-latest` on 2026-09-03; the diagnosis is kept below because it explains the gap in the
+  record, not because the pass is still missing.
 - close/3b — not yet reached
 - close/4 — not yet reached
 
@@ -669,3 +671,28 @@ changed or the provider is fixed. The remedy lives in `claude-light-workflow`, n
 
 No artifact exists for this lens this round. The branch has **not** been examined for swallowed
 errors, silent fallbacks, or degraded-state continuation.
+
+## Codex hidden-failure pass (2026-09-01 round, completed 2026-09-03)
+
+Artifact: `reviews/technology-foundation.hidden-failure.a9eef9c.json` · codex on **gpt-oss-120b**
+· 4 commands executed, 0 REACH-reported.
+
+**Findings: 0.**
+
+Ran under the same round id `a9eef9c` as the approach and correctness passes, so round 4 is one
+round with one identity despite the three-day gap and the routing change in between.
+
+**Stated limit.** This critic executed only **4 commands** — a thin read. The diff it examined is
+configuration, type declarations and a startup hook, with almost no error-handling surface for
+this lens to inspect, so an empty return is the plausible result. But `BACKLOG.md` OPS-51 owns the
+gap that a near-trivial run still clears the fabrication detector, so this is recorded as "little
+here for the lens to find", not as strong evidence of absence.
+
+**Why it took four attempts.** `hidden-failure` routed to `kimi-latest`, whose Fireworks
+deployment first rejected the `developer` message role the codex CLI sends, then rejected the
+mixture of client- and server-executed tools, then reverted to the first error. Direct probes
+confirmed `deepseek-pro-latest` and `glm-latest` answered normally throughout, so the fault was
+model-specific rather than provider-wide. Thomas rerouted the loop on 2026-09-03 —
+`hidden-failure` to `gpt-oss-120b`, `design` and `lesson` off `kimi-latest` as well — and the pass
+completed on the first attempt afterwards. The two concurrent critics still sit in different model
+families, which is the property that rule protects.
