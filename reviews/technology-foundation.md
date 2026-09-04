@@ -169,7 +169,9 @@ size, so step 9 must demonstrate red against their entries here.
   for three attempts by an upstream model failure and completed only after the routing was changed
   off `kimi-latest` on 2026-09-03; the diagnosis is kept below because it explains the gap in the
   record, not because the pass is still missing.
-- close/3b — not yet reached
+- close/3b — activation observed (review_runner refused to promote, 3x, session-observed);
+  judged not novel and no proposal written — see the note below for why neither canned wording
+  ('no activation' / 'ran') was accurate here.
 - close/4 — not yet reached
 
 **Earlier rounds of this story** (kept as prose, not as record lines: the record holds one line
@@ -743,3 +745,27 @@ readability choice of mine that broke a mechanical guarantee — `/close` step 3
 agreement check found four round ids where it requires exactly one, and would have stopped. The
 record now carries one line per step, with the per-round history kept as prose below it where it
 cannot be parsed as a step line. The check passes.
+
+## After-action check (2026-09-03)
+
+**An activation did occur**, so `- close/3b — no activation` would have been false. No lesson
+review ran either, so `- close/3b — ran (codex ...)` would also have been false. The record line
+says what actually happened instead.
+
+**The activation.** `review_runner.py` refused to promote a result three times, session-observed:
+`STOP: codex exited 1 for 'hidden-failure' — nothing promoted`. `./install.sh --check` was not
+run — this repository has no `install.sh`, so the drift class does not apply here. The guard hook
+blocked nothing this session.
+
+**Judged not novel; no proposal written.** The control did exactly its job: it promoted nothing,
+the fail-closed rule held, and a half review was reported as a half review rather than as a clean
+one. That is the system working, which the step's own default treats as no lesson.
+
+**And novelty could not be cited even if argued.** The one candidate — that the stop
+`codex exited 1` matches none of the three stops the skill documents as "worded to be told apart",
+and names no cause, so the operator must reproduce by hand to learn why — is a **workflow**
+observation about estate tooling, not a product finding. Its register is `claude-light-workflow`,
+not this repository. **Searched here and found none: `BACKLOG.md` is absent, `.aar/` is absent,
+`.aar/rejected-lessons.md` is absent.** With no register to check against, novelty cannot be
+established, and the rule is that no cited evidence of novelty means no proposal. Recorded here
+as an observation for Thomas rather than smuggled into the lesson path unreviewed.
