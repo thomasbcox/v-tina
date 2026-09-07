@@ -240,10 +240,30 @@ falsify; the outcomes that regression describes now sit under AC6.
 - **AC5 — pass.** Fake-client tests assert the four parameters by name, the omitted pillar, and
   the row mapping; a compile-time check confirms a real `SupabaseClient` satisfies the narrow
   interface the fakes implement.
-- **AC6 — pending.** Needs the migration pushed to the hosted project, which needs Thomas's one-time
-  `npx supabase link` and `SUPABASE_DB_PASSWORD`. The manual checks (ordering including both
-  tie-breaks, count and threshold guards, `queryPolicyChunks` with the anon key, shrinking
-  replacement, anon-key write refusal) run after the push and are recorded here when done.
+- **AC6 — pass (manual, hosted project, 2026-09-07).** Migration `20260907154338_policy_chunks`
+  pushed with `npx supabase db push`; the remote history lists it. A one-off script (run with
+  vitest, deleted afterwards, never committed) exercised the live database through the real
+  boundary functions, using the service-role key for writes and the anon key for the public-caller
+  checks. Fixtures: five synthetic documents inserted in an order unrelated to similarity, with
+  768-vectors chosen so that three rows tie at similarity 0.80 — one legislative dated 2024-05-01,
+  one executive dated 2022-02-02, one executive dated 2025-03-03 — plus one at 1.00, one at 0.60
+  and one at 0.00.
+  - **Ordering and tie-breaks:** query at threshold 0.5, count 10 returned `one#0@1.00`,
+    `four#0@0.80` (executive, 2025), `three#0@0.80` (executive, 2022), `two#0@0.80`
+    (legislative, 2024), `five#0@0.60`; the 0.00 row was excluded. Similarity first, then
+    executive before legislative regardless of date, then newest as-of date — as specified.
+  - **Count and pillar:** count 2 returned the first two; pillar `education` returned only
+    `four` and `five`; threshold 0.9 returned only `one`.
+  - **Guards:** count 51 and count 0 refused naming `match_count`; thresholds 1.5 and -2
+    refused naming `match_threshold`; count 50 served.
+  - **Public caller:** `queryPolicyChunks` with the anon key returned the same six rows in the
+    same order as with the service role.
+  - **Shrinking replacement:** replacing document `one` (two chunks) with one chunk left five
+    rows in total and no row for its old ordinal 1.
+  - **Anon key permissions:** select succeeded; insert returned an error; delete and update
+    affected zero rows; calling `replace_document_chunks` returned an error; the table was
+    unchanged afterwards.
+  - **Cleanup:** every fixture document replaced with an empty set; the table was left empty.
 - **AC9 — pass (reviewer).** The new modules read no environment at all: `createSupabaseClient`
   and `createFireworksEmbedder` take their URL and keys as arguments, so the callers (story 1b's
   operator script, the later chat route) build them from `getNodeEnv()` / `getEdgeEnv()`. No
@@ -275,7 +295,7 @@ falsify; the outcomes that regression describes now sit under AC6.
 ## Loop record
 
 - frame/6 — ran (codex on glm-latest, 4 findings, 14 regressions) → reviews/policy-chunks-ingest.design.7bd2d96.json
-- frame/9 — demonstrated red for every ratified regression on the size-bearing criteria (AC1, AC2 ×2, AC3, AC4 ×2, AC7, AC8, AC11); baseline green, each regression red, restored green. AC5's regression is answered by the criterion's narrowing at step 7, and AC7's first regression is recorded as covered by story 1b, both per the ratified list. AC6 (`manual`, hosted database) is pending Thomas's CLI link and database password; the migration has not yet been pushed.
+- frame/9 — demonstrated red for every ratified regression on the size-bearing criteria (AC1, AC2 ×2, AC3, AC4 ×2, AC7, AC8, AC11); baseline green, each regression red, restored green. AC5's regression is answered by the criterion's narrowing at step 7, and AC7's first regression is recorded as covered by story 1b, both per the ratified list. AC6 (`manual`) ran against the hosted project on 2026-09-07 after the migration was pushed: all checks passed (see Step-9 verification).
 - review/6 — not yet reached
 - review/8 — not yet reached
 - close/3b — not yet reached
