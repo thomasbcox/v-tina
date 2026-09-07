@@ -314,7 +314,7 @@ Also: `src/types/index.ts` gains `documentKind` and `chunkIndex`; `src/lib/embed
 
 - frame/6 — ran (codex on glm-latest, 4 findings, 14 regressions) → reviews/policy-chunks-ingest.design.7bd2d96.json
 - frame/9 — demonstrated red for every ratified regression on the size-bearing criteria (AC1, AC2 ×2, AC3, AC4 ×2, AC7, AC8, AC11); baseline green, each regression red, restored green. AC5's regression is answered by the criterion's narrowing at step 7, and AC7's first regression is recorded as covered by story 1b, both per the ratified list. AC6 (`manual`) ran against the hosted project on 2026-09-07 after the migration was pushed: all checks passed (see Step-9 verification).
-- review/6 — not yet reached
+- review/6 — ran (codex on glm-latest, 2 findings) → reviews/policy-chunks-ingest.approach.4dfdeb9.json
 - review/8 — not yet reached
 - close/3b — not yet reached
 - close/4 — not yet reached
@@ -474,3 +474,27 @@ Artifact: `reviews/policy-chunks-ingest.design.7bd2d96.json` · round `7bd2d96` 
 - **Claim:** A generic `z.string().url()` rejects scheme-less strings but accepts any host, such as `https://example.com`. The product's grounding and verification intent is specifically official `oregon.gov` sources, so an accidentally mis-tagged fixture or corpus entry could be embedded, stored, and later presented as a verifiable official citation.
 - **Alternative:** Add one declarative domain rule to the URL schema: require `https:`, and allow only `oregon.gov` or a subdomain such as `www.oregon.gov` / `governor.oregon.gov`. Throw the same all-invalid-fields error when the host is wrong.
 - **Win:** Prevents unofficial citations at ingestion with one centralized invariant, avoiding later UI or QA workarounds after rows already exist.
+
+## Codex (glm-latest) approach review (2026-09-07, base main, HEAD 4dfdeb9)
+
+Artifact: `reviews/policy-chunks-ingest.approach.4dfdeb9.json` · round `4dfdeb9` · 6 commands executed, 0 REACH-reported.
+
+**Verdict.** 2026-09-07 10:33:46 PDT — The overall shape is sound and close to what I would build: yaml plus zod for frontmatter, injected I/O throughout, SQL owning ranking and argument guards, a transactional document replacement, and public-read/service-role-write separation are all the right choices. I would change the retrieval SQL so the HNSW index is actually usable, and remove the redundant URL index. No other higher-leverage shape concerns.
+
+### IMPORTANT
+
+**The retrieval SQL is written in a form the HNSW index cannot serve** — reversibility: two-way · standing: nonstandard
+
+- **Locus:** supabase/migrations/20260907154338_policy_chunks.sql:33-103
+- **Claim:** The migration creates an HNSW index on embedding with vector_cosine_ops, but match_policy_chunks filters on 1 - (embedding <=> query_embedding) > match_threshold and orders by the inverse-expression alias similarity, followed by tie-break keys. pgvector's index path is matched by the raw distance operator expression, not an arithmetic wrapper around it, so the declared index is decorative and public retrieval will scan and sort the table instead. This undermines User Story 1's fast-semantic-lookup requirement as the real corpus grows, while the database still pays for HNSW maintenance on every replacement.
+- **Alternative:** Express the threshold as p.embedding <=> query_embedding < 1 - match_threshold and make the first ORDER BY key the raw p.embedding <=> query_embedding expression, with kind/date/chunk tie-breaks after it; if the secondary keys still prevent an index plan, use an indexed nearest-neighbor candidate CTE and then apply the exact tie-break sort. Verify the hosted plan with EXPLAIN ANALYZE before merge or in story 1b.
+- **Win:** Makes the HNSW index actually serve retrieval, keeping query latency bounded as the corpus grows instead of paying index maintenance cost for no read benefit.
+
+### NIT
+
+**The standalone URL index duplicates the unique constraint's prefix** — reversibility: two-way · standing: kludgy
+
+- **Locus:** supabase/migrations/20260907154338_policy_chunks.sql:27-36
+- **Claim:** The unique (url, chunk_index) constraint already creates a B-tree index whose leading url column supports both replace_document_chunks' delete by URL and any URL equality lookup. The separate policy_chunks_url_idx duplicates that prefix and adds storage plus write amplification on every document replacement.
+- **Alternative:** Drop policy_chunks_url_idx and rely on the unique constraint's composite index for URL access.
+- **Win:** Removes one redundant index, reducing ingestion write cost and schema surface without losing any query path.
