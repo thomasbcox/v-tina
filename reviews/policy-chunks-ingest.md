@@ -292,6 +292,24 @@ falsify; the outcomes that regression describes now sit under AC6.
 - **The chunker keeps each paragraph's trailing blank-line separator inside the chunk** so the
   chunks concatenate to exactly the body; the whitespace is harmless to embedding.
 
+## Build note (2026-09-07)
+
+| AC | Where it is satisfied |
+|---|---|
+| 1 | `src/lib/ingest/parse.ts` (frontmatter → `PolicyChunkSource` + body), `src/lib/ingest/chunk.ts` (500–1000-character chunks, paragraph → sentence → whitespace boundaries, exact concatenation), `src/lib/ingest/pipeline.ts` `prepareDocument`; tests `__tests__/ingest-parse.test.ts`, `__tests__/ingest-chunk.test.ts`; fixtures `__tests__/fixtures/*.md` |
+| 2 | `src/lib/ingest/parse.ts` (`DocumentValidationError.invalidFields`, `zod` schema, host allowlist via `src/lib/ingest/metadata.ts`); tests `__tests__/ingest-parse.test.ts`, refusal-before-I/O in `__tests__/ingest-pipeline.test.ts` |
+| 3 | `src/lib/ingest/pipeline.ts` `ingestDocument` (one `replaceDocument` call, confirmed count checked); test `__tests__/ingest-pipeline.test.ts` |
+| 4 | `src/lib/ingest/pipeline.ts` (errors propagate, no catch); test `__tests__/ingest-pipeline.test.ts` |
+| 5 | `src/lib/supabase.ts` `queryPolicyChunks`, `toRetrievedPolicyChunk`, `RpcClient`; test `__tests__/supabase.test.ts` |
+| 6 | `supabase/migrations/20260907154338_policy_chunks.sql` (`match_policy_chunks` with guards and tie-break ordering, `replace_document_chunks`, RLS, grants); verified on the hosted project — see Step-9 verification |
+| 7 | `src/lib/embeddings.ts` `EMBEDDING_DIMENSIONS`; test `__tests__/migration.test.ts` (also holds `MAX_MATCH_COUNT` and `DOCUMENT_KINDS` equal to the migration) |
+| 8 | `package.json`; test `__tests__/dependencies.test.ts` |
+| 9 | No environment access in the new modules; clients and the embedder take URL/keys as arguments |
+| 10 | Diff confined to the enumerated paths — see Step-9 verification |
+| 11 | `README.md` "Allowed source domains"; test `__tests__/readme-sources.test.ts` against `ALLOWED_SOURCE_HOSTS` |
+
+Also: `src/types/index.ts` gains `documentKind` and `chunkIndex`; `src/lib/embeddings.ts` is the Fireworks embedder with injected `fetch` (`__tests__/embeddings.test.ts`); `supabase/config.toml` is the CLI's generated project config.
+
 ## Loop record
 
 - frame/6 — ran (codex on glm-latest, 4 findings, 14 regressions) → reviews/policy-chunks-ingest.design.7bd2d96.json
