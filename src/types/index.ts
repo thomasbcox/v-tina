@@ -9,17 +9,29 @@
  * paraphrased, so the QA workstream's assertions and the backend's code agree.
  */
 
+import type { DocumentKind } from "../lib/ingest/metadata";
+import type { SafetyClassification } from "../lib/safety";
+
+// Re-exported so consumers get the whole boundary from one place, while the
+// runtime values they derive from stay in their own modules.
+export type { DocumentKind, SafetyClassification };
+
 /** Where a policy chunk came from. Every field is required: the verification UI
  *  (User Story 4) must be able to render a citation for any chunk it receives. */
 export interface PolicyChunkSource {
   /** Title of the source document, e.g. "EO 23-02". */
   documentTitle: string;
-  /** ISO-8601 date of the source document, e.g. "2023-01-10". */
+  /** The as-of date, ISO-8601, e.g. "2023-01-10": the date the content is
+   *  current as of — an order's signing date, a revised page's last revision.
+   *  Among equally similar chunks retrieval prefers the most recent. */
   date: string;
-  /** Canonical public URL for the document, e.g. an oregon.gov link. */
+  /** Canonical public URL for the document, on an allowed official domain. */
   url: string;
   /** The policy pillar this document belongs to. */
   pillar: string;
+  /** Executive file or legislative history; among equally similar chunks
+   *  retrieval prefers executive. */
+  documentKind: DocumentKind;
 }
 
 /** A stored passage plus its complete source metadata, as the ingestion pipeline
@@ -28,6 +40,8 @@ export interface PolicyChunkSource {
 export interface PolicyChunk {
   id: string;
   content: string;
+  /** Zero-based position of this chunk within its document. */
+  chunkIndex: number;
   source: PolicyChunkSource;
 }
 
@@ -44,12 +58,6 @@ export interface PolicyChunk {
 export interface RetrievedPolicyChunk extends PolicyChunk {
   similarity: number;
 }
-
-import type { SafetyClassification } from "../lib/safety";
-
-// Re-exported so consumers get the whole boundary from one place, while the
-// runtime value it derives from stays in the safety module.
-export type { SafetyClassification };
 
 /** Events streamed by `/api/chat`. A discriminated union on `type` — the four
  *  kinds the backend contract names, with no catch-all member, so consumers
