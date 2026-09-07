@@ -209,10 +209,73 @@ review, so its regression below is the author's own, stated as such.
 
 - The README lists the domains in prose that the test cannot find, or the test reads the list from the same constant the code reads, so the two "agree" while the README says something else. The test must parse the README's own text and compare it to the constant.
 
+## Step-9 verification (2026-09-07)
+
+### Demonstrate red — criteria 1–4, 7, 8 and 11
+
+Each ratified regression was applied to the committed implementation, the gate run, the failure
+observed, and the change reverted. Baseline was green before and after (101 tests).
+
+| Ratified regression | Gate | What failed |
+|---|---|---|
+| baseline, nothing modified | green | — |
+| AC1 — chunker cuts every 500 characters regardless of boundaries | **red** | paragraph-boundary, sentence-end and whitespace-fallback tests |
+| AC2 — error names every field, including valid ones | **red** | all five "names only *field* when it is missing" cases and the malformed-value cases |
+| AC2 — URL validation accepts any host with a scheme | **red** | the outside-allowlist and both lookalike-host refusals |
+| AC3 — pipeline reports the chunk count without checking the store's confirmation | **red** | "reports the count the store confirmed, and refuses a short count" |
+| AC4 — failure caught and returned as a success-shaped value | **red** | every rejection test in the pipeline suite |
+| AC4 — store written per chunk, partial rows left on failure | **red** | "stores them in one replacement" and "offered it the full row set exactly once" |
+| AC7 — `vector(768)` present elsewhere while the column is wrong | **red** | "declares the embedding column with the code's vector dimension" (the function parameter and comment still said 768) |
+| AC7 — both declarations changed together | *not demonstrated* | Out of reach of a network-free test, as ratified; caught at story 1b's first live embedding call, where `createFireworksEmbedder` refuses a vector of the wrong length. |
+| AC8 — dependency added with an unpinned `*` range | **red** | "adds the supabase CLI as a dev dependency with a pinned range" |
+| AC11 — README states the domains in prose the test cannot find | **red** | "lists at least one domain" and "lists every domain the code allows" |
+| restored | green | — |
+
+No dead assertions: every ratified regression that names a runnable test drove the gate red. The
+AC5 regression has no row because criterion 5 was narrowed at step 7 to what its oracle can
+falsify; the outcomes that regression describes now sit under AC6.
+
+### Other criteria
+
+- **AC5 — pass.** Fake-client tests assert the four parameters by name, the omitted pillar, and
+  the row mapping; a compile-time check confirms a real `SupabaseClient` satisfies the narrow
+  interface the fakes implement.
+- **AC6 — pending.** Needs the migration pushed to the hosted project, which needs Thomas's one-time
+  `npx supabase link` and `SUPABASE_DB_PASSWORD`. The manual checks (ordering including both
+  tie-breaks, count and threshold guards, `queryPolicyChunks` with the anon key, shrinking
+  replacement, anon-key write refusal) run after the push and are recorded here when done.
+- **AC9 — pass (reviewer).** The new modules read no environment at all: `createSupabaseClient`
+  and `createFireworksEmbedder` take their URL and keys as arguments, so the callers (story 1b's
+  operator script, the later chat route) build them from `getNodeEnv()` / `getEdgeEnv()`. No
+  literal, dynamic or `import.meta.env` access anywhere under `src/lib/ingest/`,
+  `src/lib/embeddings.ts` or `src/lib/supabase.ts`.
+- **AC10 — pass (reviewer).** `git diff --name-only main...HEAD -- . ':(exclude)reviews/'` lists
+  `README.md`, `package.json`, `package-lock.json`, `src/types/index.ts`, `src/lib/embeddings.ts`,
+  `src/lib/supabase.ts`, four files under `src/lib/ingest/`, nine test files and three fixtures
+  under `__tests__/`, and `supabase/.gitignore`, `supabase/config.toml` and the one migration —
+  nothing outside the enumerated paths. `.gitignore` was not needed: the CLI's own
+  `supabase/.gitignore` covers its temp directory.
+
+### Build notes
+
+- **Frontmatter keys are the human ones** (`title`, `date`, `url`, `pillar`, `kind`) and are
+  mapped to the `PolicyChunkSource` field names; the README's frontmatter reference documents
+  them.
+- **The embedding travels to SQL as pgvector's text form** (`"[x,y,...]"` inside the JSON row)
+  and is cast in `replace_document_chunks`, because `jsonb_to_recordset` cannot populate a
+  `vector` column from a JSON array directly.
+- **`match_policy_chunks` is `plpgsql`, not `sql`**, so the argument guards can `raise`; the
+  pillar parameter is named `filter_pillar` to avoid a plpgsql name clash with the returned
+  `pillar` column.
+- **`replace_document_chunks` has execute revoked from the public roles** in addition to RLS, so
+  the only-the-service-role-writes rule is stated twice, once at each layer.
+- **The chunker keeps each paragraph's trailing blank-line separator inside the chunk** so the
+  chunks concatenate to exactly the body; the whitespace is harmless to embedding.
+
 ## Loop record
 
 - frame/6 — ran (codex on glm-latest, 4 findings, 14 regressions) → reviews/policy-chunks-ingest.design.7bd2d96.json
-- frame/9 — not yet reached
+- frame/9 — demonstrated red for every ratified regression on the size-bearing criteria (AC1, AC2 ×2, AC3, AC4 ×2, AC7, AC8, AC11); baseline green, each regression red, restored green. AC5's regression is answered by the criterion's narrowing at step 7, and AC7's first regression is recorded as covered by story 1b, both per the ratified list. AC6 (`manual`, hosted database) is pending Thomas's CLI link and database password; the migration has not yet been pushed.
 - review/6 — not yet reached
 - review/8 — not yet reached
 - close/3b — not yet reached
