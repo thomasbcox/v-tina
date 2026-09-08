@@ -315,7 +315,7 @@ Also: `src/types/index.ts` gains `documentKind` and `chunkIndex`; `src/lib/embed
 - frame/6 — ran (codex on glm-latest, 4 findings, 14 regressions) → reviews/policy-chunks-ingest.design.7bd2d96.json
 - frame/9 — demonstrated red for every ratified regression on the size-bearing criteria (AC1, AC2 ×2, AC3, AC4 ×2, AC7, AC8, AC11); baseline green, each regression red, restored green. AC5's regression is answered by the criterion's narrowing at step 7, and AC7's first regression is recorded as covered by story 1b, both per the ratified list. AC6 (`manual`) ran against the hosted project on 2026-09-07 after the migration was pushed: all checks passed (see Step-9 verification).
 - review/6 — ran (codex on glm-latest, 2 findings) → reviews/policy-chunks-ingest.approach.4dfdeb9.json
-- review/8 — not yet reached
+- review/8 — ran (codex: deepseek-pro-latest correctness / gpt-oss-120b hidden-failure, 2 / 0 findings) → reviews/policy-chunks-ingest.correctness.4dfdeb9.json, reviews/policy-chunks-ingest.hidden-failure.4dfdeb9.json
 - close/3b — not yet reached
 - close/4 — not yet reached
 
@@ -498,3 +498,30 @@ Artifact: `reviews/policy-chunks-ingest.approach.4dfdeb9.json` · round `4dfdeb9
 - **Claim:** The unique (url, chunk_index) constraint already creates a B-tree index whose leading url column supports both replace_document_chunks' delete by URL and any URL equality lookup. The separate policy_chunks_url_idx duplicates that prefix and adds storage plus write amplification on every document replacement.
 - **Alternative:** Drop policy_chunks_url_idx and rely on the unique constraint's composite index for URL access.
 - **Win:** Removes one redundant index, reducing ingestion write cost and schema surface without losing any query path.
+
+## Codex (deepseek-pro-latest) correctness review (2026-09-07, base main, HEAD 5a93639)
+
+Artifact: `reviews/policy-chunks-ingest.correctness.4dfdeb9.json` · round `4dfdeb9` · 12 commands executed, 0 REACH-reported.
+
+**Summary.** This story delivers the Supabase/Fireworks retrieval foundation cleanly: injected I/O throughout, a frontmatter parser that validates every field against an official OSP domain allowlist, a chunker that preserves exact body reconstruction with paragraph/sentence boundary preference, a transactional document-scoped replace, a publicly-readable-but-not-writable RLS split, and argument guards inside the SQL function where a direct caller cannot bypass them. The unit suite is thorough (observable dimensions, chunk reconstruction, refusal-before-I/O, count-mismatch propagation, README/allowlist and migration/schema synchronization), every size-bearing regression was demonstrated red, and I found no BLOCKER or IMPORTANT correctness defect. Two low-severity robustness gaps remain: the embedding response schema accepts non-finite components, and the replace function does not refuse an empty row array, both of which are latent rather than reachable through the delivered pipeline.
+
+### NIT
+
+**Embedding response schema accepts NaN/Infinity components** — `src/lib/embeddings.ts:47`
+
+- **Claim:** z.array(z.number()) accepts non-finite numbers (NaN/±Infinity), so a degenerate embedding component would still pass response validation and the index-contiguity check. Because toStoredRow serializes the vector with row.embedding.join(","), a NaN survives as the literal string "NaN" into the SQL cast to vector(768) rather than being nulled out as JSON would; PostgreSQL then treats NaN as greater than every float, so such a row would pass every similarity threshold and rank first in match_policy_chunks — silently degrading retrieval rather than surfacing an error.
+- **Suggestion:** Add a finite check to the component schema, e.g. z.number().finite() (or validate each component is finite in createFireworksEmbedder), so a non-finite coordinate is refused as an EmbeddingError at ingest time instead of being stored and ranked first.
+
+**replace_document_chunks does not refuse an empty row array** — `supabase/migrations/20260907154338_policy_chunks.sql:135`
+
+- **Claim:** The validation block rejects a non-array p_rows and rows whose url differs from p_url, but a genuinely empty array ([]) passes, the delete removes every existing row for p_url, the insert adds nothing, and the function returns 0. A caller driving the service-role-only function directly with an empty set would therefore silently wipe a document's chunks. This is unreachable through the delivered pipeline (parseDocument refuses an empty body, so chunkText is never empty), but it is a latent all-or-nothing data-loss path that the function's own invariant ('the database holds exactly the current chunks') does not itself enforce.
+- **Suggestion:** Reject an empty input explicitly, e.g. `if jsonb_array_length(p_rows) = 0 then raise exception 'p_rows must not be empty' using errcode = '22023'; end if;`, so the delete is only ever reached with at least one replacement row.
+
+
+## Codex (gpt-oss-120b) hidden-failure review (2026-09-07, base main, HEAD 5a93639)
+
+Artifact: `reviews/policy-chunks-ingest.hidden-failure.4dfdeb9.json` · round `4dfdeb9` · 3 commands executed, 0 REACH-reported.
+
+**Summary.** The diff adds documentation, unit tests, and SQL migration functions. All error handling in the new code explicitly throws exceptions or propagates errors, and there are no bare try/catch blocks, silent catches, or fallback paths that hide failures. Consequently, no hidden‑failure patterns are present in the changes.
+
+No findings.
