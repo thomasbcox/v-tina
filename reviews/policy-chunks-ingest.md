@@ -326,7 +326,7 @@ Re-review of the round-1 fixes only (commits `de49d74`, `2de5322`); base `4dfdeb
 - frame/6 — ran (codex on glm-latest, 4 findings, 14 regressions) → reviews/policy-chunks-ingest.design.7bd2d96.json
 - frame/9 — demonstrated red for every ratified regression on the size-bearing criteria (AC1, AC2 ×2, AC3, AC4 ×2, AC7, AC8, AC11); baseline green, each regression red, restored green. AC5's regression is answered by the criterion's narrowing at step 7, and AC7's first regression is recorded as covered by story 1b, both per the ratified list. AC6 (`manual`) ran against the hosted project on 2026-09-07 after the migration was pushed: all checks passed (see Step-9 verification).
 - review/6 — n/a — round 2 is a re-review that only verifies approved fixes (no redesign last round), so the approach pass does not run; correctness only, base = last-reviewed SHA `4dfdeb9`
-- review/8 — not yet reached
+- review/8 — round 2: ran (codex: deepseek-pro-latest correctness / gpt-oss-120b hidden-failure, 0 / 0 findings — both CLEAN) → reviews/policy-chunks-ingest.correctness.b3272ba.json, reviews/policy-chunks-ingest.hidden-failure.b3272ba.json
 - close/3b — no activation (no guard-hook block and no runner refusal observed this session; the repo has no install.sh to drift-check, no BACKLOG.md and no .aar register). The permission classifier's refusal of the remote drop is a session tool limit, not a loop control, and is recorded under Fixes.
 - close/4 — presented: re-review or merge (approach fix touched the retrieval function's body, re-review recommended); Thomas chose **re-review** by invoking `/review` on 2026-09-07
 
@@ -618,3 +618,25 @@ nothing else) — his call, not taken here.
 tie-breaks, count, pillar and guard results as recorded in Step-9 verification; anon read-only
 behaviour unchanged; and the empty-set removal path removes exactly the one document. Fixture rows
 removed afterwards; the table is empty.
+
+## Codex (deepseek-pro-latest) correctness review — round 2 (2026-09-07, base 4dfdeb9, HEAD b3272ba)
+
+Artifact: `reviews/policy-chunks-ingest.correctness.b3272ba.json` · round `b3272ba` · 12 commands executed, 0 REACH-reported.
+
+**Summary.** Re-review of the fixes recorded in '## Decisions (2026-09-07)' / '## Fixes (2026-09-07)' finds all four disposed items correctly applied and no new defects. (1) The retrieval-rewrite fix restructures match_policy_chunks into a candidate CTE ordering by the raw `p.embedding <=> query_embedding` expression with a `limit match_count * 4` (bounded at 200 by the existing <=50 count guard), sets transaction-local `hnsw.ef_search` to the pool size and `hnsw.iterative_scan = relaxed_order`, then applies threshold, exact distance order and the kind/date/chunk tie-breaks in the outer query — the shape the reviewer prescribed, with the threshold/tie-break limits (`match_count`) never reaching the candidate-pool boundary so the top-N result remains the exact top-N of the pool. (2) The redundant `policy_chunks_url_idx` is dropped and the unique-constraint prefix documented. (3) `z.number().finite(...)` pins the non-finite-component guarantee with a raw-`1e999` test whose `/finite|Infinity/` assertion is robust to whichever layer rejects first. (4) The empty-set-removal path is named in the SQL comment, the `ChunkStore` interface doc and the README, consistent with the KEEP decision. All changed files sit within the AC10 scope allowlist (records under reviews/ are excluded), and the test change exercises the intended failure rather than giving a false pass. No BLOCKER, IMPORTANT, QUESTION or NIT findings.
+
+No findings.
+
+
+## Codex (gpt-oss-120b) hidden-failure review — round 2 (2026-09-07, base 4dfdeb9, HEAD b3272ba)
+
+Artifact: `reviews/policy-chunks-ingest.hidden-failure.b3272ba.json` · round `b3272ba` · 2 commands executed, 0 REACH-reported.
+
+**Summary.** The modifications introduce explicit validation and error propagation without swallowing exceptions. The embedding schema now rejects non-finite numbers, causing a validation exception; the SQL functions raise errors for out‑of‑range parameters and use explicit configuration calls, and no try/catch blocks hide failures. Consequently, any failures will surface directly and no hidden‑failure patterns were added.
+
+No findings.
+
+
+## Decisions (2026-09-07, round 2)
+
+Both critics returned empty findings arrays; nothing to decide. The round-1 dispositions stand unchanged. Routed to `/close` for the merge fork.

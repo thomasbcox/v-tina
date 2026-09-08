@@ -1,0 +1,4 @@
+{
+  "summary": "The modifications introduce explicit validation and error propagation without swallowing exceptions. The embedding schema now rejects non-finite numbers, causing a validation exception; the SQL functions raise errors for out‑of‑range parameters and use explicit configuration calls, and no try/catch blocks hide failures. Consequently, any failures will surface directly and no hidden‑failure patterns were added.",
+  "findings": []
+}
