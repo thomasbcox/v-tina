@@ -327,8 +327,8 @@ Re-review of the round-1 fixes only (commits `de49d74`, `2de5322`); base `4dfdeb
 - frame/9 — demonstrated red for every ratified regression on the size-bearing criteria (AC1, AC2 ×2, AC3, AC4 ×2, AC7, AC8, AC11); baseline green, each regression red, restored green. AC5's regression is answered by the criterion's narrowing at step 7, and AC7's first regression is recorded as covered by story 1b, both per the ratified list. AC6 (`manual`) ran against the hosted project on 2026-09-07 after the migration was pushed: all checks passed (see Step-9 verification).
 - review/6 — n/a — round 2 is a re-review that only verifies approved fixes (no redesign last round), so the approach pass does not run; correctness only, base = last-reviewed SHA `4dfdeb9`
 - review/8 — round 2: ran (codex: deepseek-pro-latest correctness / gpt-oss-120b hidden-failure, 0 / 0 findings — both CLEAN) → reviews/policy-chunks-ingest.correctness.b3272ba.json, reviews/policy-chunks-ingest.hidden-failure.b3272ba.json
-- close/3b — no activation (no guard-hook block and no runner refusal observed this session; the repo has no install.sh to drift-check, no BACKLOG.md and no .aar register). The permission classifier's refusal of the remote drop is a session tool limit, not a loop control, and is recorded under Fixes.
-- close/4 — presented: re-review or merge (approach fix touched the retrieval function's body, re-review recommended); Thomas chose **re-review** by invoking `/review` on 2026-09-07
+- close/3b — no activation (round 2: no fixes applied, no guard-hook block and no runner refusal observed; no install.sh, BACKLOG.md or .aar register in this repo)
+- close/4 — round 2: presented re-review or merge after a clean round; awaiting Thomas's answer (round 1 fork: chose re-review)
 
 **Earlier rounds of this story** (kept as prose, not as record lines: the record holds one line per
 step by design):
