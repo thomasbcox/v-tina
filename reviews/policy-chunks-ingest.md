@@ -328,7 +328,7 @@ Re-review of the round-1 fixes only (commits `de49d74`, `2de5322`); base `4dfdeb
 - review/6 — n/a — round 2 is a re-review that only verifies approved fixes (no redesign last round), so the approach pass does not run; correctness only, base = last-reviewed SHA `4dfdeb9`
 - review/8 — round 2: ran (codex: deepseek-pro-latest correctness / gpt-oss-120b hidden-failure, 0 / 0 findings — both CLEAN) → reviews/policy-chunks-ingest.correctness.b3272ba.json, reviews/policy-chunks-ingest.hidden-failure.b3272ba.json
 - close/3b — no activation (round 2: no fixes applied, no guard-hook block and no runner refusal observed; no install.sh, BACKLOG.md or .aar register in this repo)
-- close/4 — round 2: presented re-review or merge after a clean round; awaiting Thomas's answer (round 1 fork: chose re-review)
+- close/4 — round 2: presented re-review or merge after a clean round; Thomas chose **merge** (2026-09-08). (Round 1 fork: chose re-review.)
 
 **Earlier rounds of this story** (kept as prose, not as record lines: the record holds one line per
 step by design):
