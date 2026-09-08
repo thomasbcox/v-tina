@@ -128,9 +128,51 @@ bookkeeping and stay as numbered property assertions, per `AGENTS.md`.
 | 8 | `reviewer` | Read every configuration read in the script — literal `process.env`, the `env.ts` accessors, and any dynamic or indexed access — and confirm each key is already declared. The existing `.env.example` completeness test fails if `env.ts` grows an undocumented key. |
 | 9 | `reviewer` | Run the enumerated diff command and compare against the listed paths, and read what landed in each allowed directory to confirm it is this story's work and nothing else's. |
 
+### Regressions (ratified list — sourced from the step-6 design review)
+
+Proposed by the independent reviewer from the criteria, before any implementation existed.
+**Every criterion received at least one; there is no coverage gap.**
+Criteria 1, 6 and 7 name a size, so step 9 must demonstrate red against their entries here.
+
+**AC1** (oracle: `Small`)
+
+- The corpus contains one minimal file per pillar and kind with correct frontmatter, an allowed URL, and only a generic sentence or repeated title as its body. Every document parses, every vocabulary is covered, and the union tests pass, but the seed has no substantive policy text to ground real questions.
+
+**AC2** (oracle: `manual`)
+
+- The reviewer treats footnotes, section notes, signatures, or appendix passages as disposable page furniture and records the body as compared after checking only the main narrative. Title, date, URL, kind, and the order of the retained passages match, but committed material is silently incomplete.
+
+**AC3** (oracle: `manual`)
+
+- The command prints locally parsed chunk counts rather than the store-confirmed counts, and reports a failed document as zero chunks in the per-document table. It still prints a total, exits non-zero, and names the failed file, but a store shortcount or failure is presented as if it were a document with no chunks.
+
+**AC4** (oracle: `manual`)
+
+- The script recognizes a URL already present in the database and skips that document, reporting a cached count without parsing, embedding, or replacing it. On the unchanged corpus the row count and uniqueness checks pass, but the run never exercises replacement and would leave stale chunks after a source revision.
+
+**AC5** (oracle: `manual`)
+
+- The manual check uses questions that quote a target passage nearly verbatim, guaranteeing easy similarity hits, and satisfies the negative case by supplying an arbitrary unknown pillar filter. The letter is met, while ordinary paraphrased questions and unfiltered out-of-scope questions remain untested.
+
+**AC6** (oracle: `Small`)
+
+- The README contains the same three slugs as a bare comma-separated fragment under an unrelated heading. The bidirectional comparison passes, but operators cannot discover or understand the taxonomy, so the documentation requirement is satisfied only mechanically.
+
+**AC7** (oracle: `Small`)
+
+- Each manifest row names a real corpus file and carries a date, but its source URL is a generic official-domain homepage rather than the exact document. The bidirectional file comparison and nonempty URL/date assertions pass, while the manifest no longer identifies what was actually retrieved or checked.
+
+**AC8** (oracle: `reviewer`)
+
+- The script itself calls the env accessors, but passes the whole environment or a subprocess an ambient environment in which an undocumented variable controls logging, batching, or target selection. A direct read audit of the script passes while a hidden configuration dependency remains.
+
+**AC9** (oracle: `reviewer`)
+
+- Unrelated runtime logic or an extra package script is placed inside an allowed path such as __tests__/ or package.json. Every changed path appears on the allowlist, so the diff command passes despite work outside the story's scope.
+
 ## Loop record
 
-- frame/6 — not yet reached
+- frame/6 — ran (codex on glm-latest, 3 findings, 9 regressions) → reviews/seed-corpus-ingest.design.c246570.json
 - frame/9 — not yet reached
 - review/6 — not yet reached
 - review/8 — not yet reached
@@ -195,3 +237,34 @@ bookkeeping and stay as numbered property assertions, per `AGENTS.md`.
 - **Cross-cutting patterns kept from story 1a**: injected I/O, vocabularies as runtime constants
   held equal to their documentation by a test, errors that name every fault, and the extent of a
   test derived from the authoritative source rather than retyped.
+
+## Codex (glm-latest) design review (2026-09-08)
+
+Artifact: `reviews/seed-corpus-ingest.design.c246570.json` · round `c246570` · 7 commands executed, 0 REACH-reported.
+
+**Verdict.** 2026-09-08 10:26:33 PDT — The core shape is sound and modern: committing reviewed markdown as the corpus, deriving the pillar contract from one runtime constant and enforcing it with zod, reusing the already transactional document replacement, running the operator script sequentially with explicit per-document outcomes, and adding tsx as the purpose-built TypeScript runner are all the right choices. The main weaknesses are in the acceptance design rather than the architecture: the manifest collides with the corpus-document enumeration, the promised source checksum has no falsifiable criterion, and AC 5's absent-pillar negative case is undefined because AC 1 requires all three declared pillars to be present.
+
+### IMPORTANT
+
+**The manifest collides with the every-.md corpus extent** — reversibility: two-way · standing: kludgy
+
+- **Locus:** Test notes — AC 1 and AC 7; Design sketch — corpus/MANIFEST.md
+- **Claim:** AC 1 defines the corpus extent as every .md file in corpus/, and AC 7 compares the set of .md files in corpus/ to manifest rows, but the design also places MANIFEST.md inside that directory. As written, AC 1 would try to parse the manifest as a policy document and AC 7 would count the manifest as an unmatched document. The sketch never defines a reserved-name exception, so both Small oracles are incoherent rather than merely weak.
+- **Alternative:** Define one corpus-document enumeration rule: list .md files in corpus/ while excluding exactly MANIFEST.md, and assert that MANIFEST.md is the sole exclusion. Use that same rule for AC 1 and AC 7 so document membership cannot drift between the two tests, while keeping the file and manifest extents independent.
+- **Win:** Removes a guaranteed false failure, prevents the manifest from masquerading as a source document, and centralizes the one rule that defines what counts as a corpus document.
+
+**The manifest checksum has no acceptance criterion or oracle** — reversibility: two-way · standing: nonstandard
+
+- **Locus:** In scope — provenance manifest; Test notes — AC 7
+- **Claim:** The scope promises a SHA-256 of each retrieved source file, and the story calls provenance central to its faithfulness risk, but AC 7 and its test require only a source URL and retrieval date. A manifest row can omit the checksum, leave it blank, or carry a malformed value and still pass every named check. AC 2's manual source comparison does not validate the manifest's checksum field either.
+- **Alternative:** Extend AC 7 to require a checksum on every row and have the Small test validate the 64-character lowercase-hex shape. A later refresh story can additionally re-fetch the named source and compare the digest, but the current story should at least make presence and format falsifiable.
+- **Win:** Makes the provenance contract testable and catches a missing or corrupted manifest row before it undermines the hand comparison and later re-fetch workflow.
+
+### QUESTION
+
+**AC 5's absent-pillar case is undefined** — reversibility: one-way · standing: nonstandard
+
+- **Locus:** Acceptance criteria — AC 5; Test notes — AC 5
+- **Claim:** AC 1 requires the corpus to cover all three declared pillars, so there is no declared pillar absent from the seed. AC 5 nevertheless asks for a question about a pillar absent from the seed. Without a concrete absent topic, an implementation could satisfy the negative case by supplying an arbitrary unknown pillar filter, which tests SQL filtering rather than the intended product behavior: an ungrounded question returning nothing at the production threshold. Alternatively, an unfiltered out-of-scope question could return a loosely related chunk. Thomas needs to define which behavior is intended.
+- **Alternative:** Either name a concrete out-of-scope policy topic, embed it as a real query without a pillar filter, and require zero results at the documented production threshold; or narrow the negative case explicitly to an unknown filter_pillar value and test that SQL filtering returns none. Record the chosen threshold in the story.
+- **Win:** Turns the negative case into a reproducible, falsifiable check instead of an ambiguous instruction that can be satisfied by a mechanism unrelated to semantic grounding.
