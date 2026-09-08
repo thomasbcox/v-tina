@@ -525,3 +525,34 @@ Artifact: `reviews/policy-chunks-ingest.hidden-failure.4dfdeb9.json` · round `4
 **Summary.** The diff adds documentation, unit tests, and SQL migration functions. All error handling in the new code explicitly throws exceptions or propagates errors, and there are no bare try/catch blocks, silent catches, or fallback paths that hide failures. Consequently, no hidden‑failure patterns are present in the changes.
 
 No findings.
+
+## Decisions (2026-09-07)
+
+Thomas's call per finding, round `4dfdeb9`. "option 1 and drop extra index" (approach);
+"fix all as you recommend" (correctness).
+
+**Approach (glm-latest)**
+
+- **Retrieval SQL cannot use the HNSW index** (IMPORTANT, two-way, nonstandard): **FIX** — as
+  an ordinary fix, not a redesign: the shape (SQL owns ranking, HNSW index, function contract)
+  is unchanged, so the correctness pass ran in the same round. Rewrite `match_policy_chunks` to
+  take nearest-neighbour candidates through the index on the raw distance expression, then
+  apply threshold, pillar filter and the kind/date tie-breaks. Verify with `EXPLAIN` on the
+  hosted project at close.
+- **Redundant `policy_chunks_url_idx`** (NIT, two-way, kludgy): **ACCEPT — tidy**: drop it; the
+  unique `(url, chunk_index)` index serves URL lookups.
+
+Both land in the existing migration file, which has only ever been applied to the development
+project; it is re-applied there at close rather than corrected by a second migration.
+
+**Correctness (deepseek-pro-latest)**
+
+- **Embedding response accepts non-finite components** (NIT): **FIX** — `z.number().finite()`
+  on each component, refused as an `EmbeddingError`, with a test.
+- **`replace_document_chunks` accepts an empty set** (NIT): **KEEP the behaviour, name it** —
+  an empty set is the intended document-removal path (the hosted checks used it to remove
+  their fixtures, and story 1b will need it for withdrawn documents). Only the service role can
+  call the function and the pipeline never passes an empty set. The SQL comment and the
+  `ChunkStore` interface doc now say so explicitly.
+
+**Hidden-failure (gpt-oss-120b)** — no findings; nothing to decide.
