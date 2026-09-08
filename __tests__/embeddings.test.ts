@@ -14,8 +14,10 @@ const vector = (seed: number) =>
 type Sent = { url: string; init: RequestInit; body: { model: string; input: string[] } };
 
 /** A fetch that records requests and answers per the given handler. */
+type Reply = { status?: number; json?: unknown; raw?: string };
+
 function fakeFetch(
-  respond: (sent: Sent) => { status?: number; json: unknown } = (sent) => ({
+  respond: (sent: Sent) => Reply = (sent) => ({
     json: { data: sent.body.input.map((_, index) => ({ index, embedding: vector(index) })) },
   }),
 ) {
@@ -24,10 +26,21 @@ function fakeFetch(
     const body = JSON.parse(String(init?.body)) as Sent["body"];
     const record = { url: String(url), init: init ?? {}, body };
     sent.push(record);
-    const { status = 200, json } = respond(record);
-    return new Response(JSON.stringify(json), { status });
+    const { status = 200, json, raw } = respond(record);
+    return new Response(raw ?? JSON.stringify(json), { status });
   }) as typeof globalThis.fetch;
   return { fetch, sent };
+}
+
+/** A raw response body whose first component is the literal 1e999 — JSON that
+ *  parses to Infinity, which JSON.stringify could never produce. */
+function rawWithOverflow(sent: Sent): Reply {
+  const rows = sent.body.input.map((_, index) => {
+    const v = vector(index).map(String);
+    if (index === 0) v[0] = "1e999";
+    return `{"index":${index},"embedding":[${v.join(",")}]}`;
+  });
+  return { raw: `{"data":[${rows.join(",")}]}` };
 }
 
 describe("createFireworksEmbedder", () => {
@@ -78,6 +91,7 @@ describe("createFireworksEmbedder", () => {
     ["a missing vector", (s: Sent) => ({ json: { data: s.body.input.slice(1).map((_, index) => ({ index, embedding: vector(index) })) } }), /indices/],
     ["a duplicated index", (s: Sent) => ({ json: { data: s.body.input.map(() => ({ index: 0, embedding: vector(0) })) } }), /indices/],
     ["a response of the wrong shape", () => ({ json: { embeddings: [] } }), /expected shape/],
+    ["a non-finite component (an overflowing literal parsed as Infinity)", rawWithOverflow, /finite|Infinity/],
   ])("refuses %s", async (_label, respond, pattern) => {
     const { fetch } = fakeFetch(respond);
     const embed = createFireworksEmbedder({ apiKey: "k", task: "document", fetch });

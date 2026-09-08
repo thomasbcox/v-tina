@@ -24,8 +24,10 @@ export interface NewPolicyChunk extends DocumentChunk {
 /** Where chunks go. One document-scoped, all-or-nothing operation: the store
  *  ends up holding exactly `rows` for `url` — never a stale tail from an
  *  earlier, longer version, never a partial set after a failure — and reports
- *  how many rows it confirmed. The Supabase implementation is in
- *  `src/lib/supabase.ts`. */
+ *  how many rows it confirmed. An empty `rows` therefore REMOVES the document
+ *  and confirms 0; that is the intended path for a withdrawn source, and the
+ *  pipeline itself never takes it (an empty document is refused before
+ *  embedding). The Supabase implementation is in `src/lib/supabase.ts`. */
 export interface ChunkStore {
   replaceDocument(url: string, rows: NewPolicyChunk[]): Promise<number>;
 }

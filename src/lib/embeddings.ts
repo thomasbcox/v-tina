@@ -43,8 +43,11 @@ const responseSchema = z.object({
   data: z.array(
     z.object({
       index: z.number().int().nonnegative(),
+      // finite(): JSON cannot carry NaN, but an overflowing literal such as 1e999
+      // parses to Infinity, which pgvector would store and PostgreSQL would then
+      // sort above every real similarity — a silently wrong first result.
       embedding: z
-        .array(z.number())
+        .array(z.number().finite("embedding components must be finite numbers"))
         .length(
           EMBEDDING_DIMENSIONS,
           `each embedding must have exactly ${EMBEDDING_DIMENSIONS} dimensions`,

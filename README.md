@@ -129,6 +129,8 @@ Document text...
 The body is split into chunks of 500–1000 characters, preferring paragraph breaks, then sentence
 ends, so that each chunk is a coherent passage. Re-ingesting a document replaces all of its chunks
 in one transaction: the database never keeps a stale tail from an earlier, longer version.
+Replacing a document with an empty set of chunks removes it, which is how a withdrawn source is
+taken out of the store.
 
 ## Database
 
