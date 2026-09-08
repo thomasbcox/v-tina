@@ -1,0 +1,21 @@
+{
+  "summary": "This story delivers the Supabase/Fireworks retrieval foundation cleanly: injected I/O throughout, a frontmatter parser that validates every field against an official OSP domain allowlist, a chunker that preserves exact body reconstruction with paragraph/sentence boundary preference, a transactional document-scoped replace, a publicly-readable-but-not-writable RLS split, and argument guards inside the SQL function where a direct caller cannot bypass them. The unit suite is thorough (observable dimensions, chunk reconstruction, refusal-before-I/O, count-mismatch propagation, README/allowlist and migration/schema synchronization), every size-bearing regression was demonstrated red, and I found no BLOCKER or IMPORTANT correctness defect. Two low-severity robustness gaps remain: the embedding response schema accepts non-finite components, and the replace function does not refuse an empty row array, both of which are latent rather than reachable through the delivered pipeline.",
+  "findings": [
+    {
+      "severity": "NIT",
+      "title": "Embedding response schema accepts NaN/Infinity components",
+      "file": "src/lib/embeddings.ts",
+      "line": 47,
+      "claim": "z.array(z.number()) accepts non-finite numbers (NaN/±Infinity), so a degenerate embedding component would still pass response validation and the index-contiguity check. Because toStoredRow serializes the vector with row.embedding.join(\",\"), a NaN survives as the literal string \"NaN\" into the SQL cast to vector(768) rather than being nulled out as JSON would; PostgreSQL then treats NaN as greater than every float, so such a row would pass every similarity threshold and rank first in match_policy_chunks — silently degrading retrieval rather than surfacing an error.",
+      "suggestion": "Add a finite check to the component schema, e.g. z.number().finite() (or validate each component is finite in createFireworksEmbedder), so a non-finite coordinate is refused as an EmbeddingError at ingest time instead of being stored and ranked first."
+    },
+    {
+      "severity": "NIT",
+      "title": "replace_document_chunks does not refuse an empty row array",
+      "file": "supabase/migrations/20260907154338_policy_chunks.sql",
+      "line": 135,
+      "claim": "The validation block rejects a non-array p_rows and rows whose url differs from p_url, but a genuinely empty array ([]) passes, the delete removes every existing row for p_url, the insert adds nothing, and the function returns 0. A caller driving the service-role-only function directly with an empty set would therefore silently wipe a document's chunks. This is unreachable through the delivered pipeline (parseDocument refuses an empty body, so chunkText is never empty), but it is a latent all-or-nothing data-loss path that the function's own invariant ('the database holds exactly the current chunks') does not itself enforce.",
+      "suggestion": "Reject an empty input explicitly, e.g. `if jsonb_array_length(p_rows) = 0 then raise exception 'p_rows must not be empty' using errcode = '22023'; end if;`, so the delete is only ever reached with at least one replacement row."
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "verdict": "2026-09-07 10:33:46 PDT — The overall shape is sound and close to what I would build: yaml plus zod for frontmatter, injected I/O throughout, SQL owning ranking and argument guards, a transactional document replacement, and public-read/service-role-write separation are all the right choices. I would change the retrieval SQL so the HNSW index is actually usable, and remove the redundant URL index. No other higher-leverage shape concerns.",
+  "regressions": [],
+  "findings": [
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The retrieval SQL is written in a form the HNSW index cannot serve",
+      "locus": "supabase/migrations/20260907154338_policy_chunks.sql:33-103",
+      "claim": "The migration creates an HNSW index on embedding with vector_cosine_ops, but match_policy_chunks filters on 1 - (embedding <=> query_embedding) > match_threshold and orders by the inverse-expression alias similarity, followed by tie-break keys. pgvector's index path is matched by the raw distance operator expression, not an arithmetic wrapper around it, so the declared index is decorative and public retrieval will scan and sort the table instead. This undermines User Story 1's fast-semantic-lookup requirement as the real corpus grows, while the database still pays for HNSW maintenance on every replacement.",
+      "alternative": "Express the threshold as p.embedding <=> query_embedding < 1 - match_threshold and make the first ORDER BY key the raw p.embedding <=> query_embedding expression, with kind/date/chunk tie-breaks after it; if the secondary keys still prevent an index plan, use an indexed nearest-neighbor candidate CTE and then apply the exact tie-break sort. Verify the hosted plan with EXPLAIN ANALYZE before merge or in story 1b.",
+      "win": "Makes the HNSW index actually serve retrieval, keeping query latency bounded as the corpus grows instead of paying index maintenance cost for no read benefit."
+    },
+    {
+      "severity": "NIT",
+      "reversibility": "two-way",
+      "standing": "kludgy",
+      "title": "The standalone URL index duplicates the unique constraint's prefix",
+      "locus": "supabase/migrations/20260907154338_policy_chunks.sql:27-36",
+      "claim": "The unique (url, chunk_index) constraint already creates a B-tree index whose leading url column supports both replace_document_chunks' delete by URL and any URL equality lookup. The separate policy_chunks_url_idx duplicates that prefix and adds storage plus write amplification on every document replacement.",
+      "alternative": "Drop policy_chunks_url_idx and rely on the unique constraint's composite index for URL access.",
+      "win": "Removes one redundant index, reducing ingestion write cost and schema surface without losing any query path."
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+{
+  "summary": "The diff adds documentation, unit tests, and SQL migration functions. All error handling in the new code explicitly throws exceptions or propagates errors, and there are no bare try/catch blocks, silent catches, or fallback paths that hide failures. Consequently, no hidden‑failure patterns are present in the changes.",
+  "findings": []
+}
