@@ -310,14 +310,31 @@ falsify; the outcomes that regression describes now sit under AC6.
 
 Also: `src/types/index.ts` gains `documentKind` and `chunkIndex`; `src/lib/embeddings.ts` is the Fireworks embedder with injected `fetch` (`__tests__/embeddings.test.ts`); `supabase/config.toml` is the CLI's generated project config.
 
+## Build note (2026-09-07, round 2)
+
+Re-review of the round-1 fixes only (commits `de49d74`, `2de5322`); base `4dfdeb9`.
+
+| Finding fixed | Where |
+|---|---|
+| Retrieval SQL cannot use the HNSW index | `supabase/migrations/20260907154338_policy_chunks.sql` — `match_policy_chunks` candidate CTE + exact re-sort, `set_config` for `hnsw.ef_search` / `hnsw.iterative_scan` |
+| Redundant URL index | same migration — `policy_chunks_url_idx` removed, table comment |
+| Non-finite embedding components | `src/lib/embeddings.ts` (`.finite()`), `__tests__/embeddings.test.ts` (raw `1e999` body) |
+| Empty-set replacement named | same migration (function comment), `src/lib/ingest/pipeline.ts` (`ChunkStore` doc), `README.md` |
+
 ## Loop record
 
 - frame/6 — ran (codex on glm-latest, 4 findings, 14 regressions) → reviews/policy-chunks-ingest.design.7bd2d96.json
 - frame/9 — demonstrated red for every ratified regression on the size-bearing criteria (AC1, AC2 ×2, AC3, AC4 ×2, AC7, AC8, AC11); baseline green, each regression red, restored green. AC5's regression is answered by the criterion's narrowing at step 7, and AC7's first regression is recorded as covered by story 1b, both per the ratified list. AC6 (`manual`) ran against the hosted project on 2026-09-07 after the migration was pushed: all checks passed (see Step-9 verification).
-- review/6 — ran (codex on glm-latest, 2 findings) → reviews/policy-chunks-ingest.approach.4dfdeb9.json
-- review/8 — ran (codex: deepseek-pro-latest correctness / gpt-oss-120b hidden-failure, 2 / 0 findings) → reviews/policy-chunks-ingest.correctness.4dfdeb9.json, reviews/policy-chunks-ingest.hidden-failure.4dfdeb9.json
+- review/6 — n/a — round 2 is a re-review that only verifies approved fixes (no redesign last round), so the approach pass does not run; correctness only, base = last-reviewed SHA `4dfdeb9`
+- review/8 — not yet reached
 - close/3b — no activation (no guard-hook block and no runner refusal observed this session; the repo has no install.sh to drift-check, no BACKLOG.md and no .aar register). The permission classifier's refusal of the remote drop is a session tool limit, not a loop control, and is recorded under Fixes.
-- close/4 — not yet reached
+- close/4 — presented: re-review or merge (approach fix touched the retrieval function's body, re-review recommended); Thomas chose **re-review** by invoking `/review` on 2026-09-07
+
+**Earlier rounds of this story** (kept as prose, not as record lines: the record holds one line per
+step by design):
+
+- round 1 (`4dfdeb9`, base `main`): review/6 — ran (codex on glm-latest, 2 findings) → reviews/policy-chunks-ingest.approach.4dfdeb9.json; review/8 — ran (codex: deepseek-pro-latest correctness / gpt-oss-120b hidden-failure, 2 / 0 findings) → reviews/policy-chunks-ingest.correctness.4dfdeb9.json, reviews/policy-chunks-ingest.hidden-failure.4dfdeb9.json; close/3b — no activation; close/4 — Thomas
+  chose re-review.
 
 ## Open questions
 
