@@ -316,7 +316,7 @@ Also: `src/types/index.ts` gains `documentKind` and `chunkIndex`; `src/lib/embed
 - frame/9 — demonstrated red for every ratified regression on the size-bearing criteria (AC1, AC2 ×2, AC3, AC4 ×2, AC7, AC8, AC11); baseline green, each regression red, restored green. AC5's regression is answered by the criterion's narrowing at step 7, and AC7's first regression is recorded as covered by story 1b, both per the ratified list. AC6 (`manual`) ran against the hosted project on 2026-09-07 after the migration was pushed: all checks passed (see Step-9 verification).
 - review/6 — ran (codex on glm-latest, 2 findings) → reviews/policy-chunks-ingest.approach.4dfdeb9.json
 - review/8 — ran (codex: deepseek-pro-latest correctness / gpt-oss-120b hidden-failure, 2 / 0 findings) → reviews/policy-chunks-ingest.correctness.4dfdeb9.json, reviews/policy-chunks-ingest.hidden-failure.4dfdeb9.json
-- close/3b — not yet reached
+- close/3b — no activation (no guard-hook block and no runner refusal observed this session; the repo has no install.sh to drift-check, no BACKLOG.md and no .aar register). The permission classifier's refusal of the remote drop is a session tool limit, not a loop control, and is recorded under Fixes.
 - close/4 — not yet reached
 
 ## Open questions
@@ -556,3 +556,48 @@ project; it is re-applied there at close rather than corrected by a second migra
   `ChunkStore` interface doc now say so explicitly.
 
 **Hidden-failure (gpt-oss-120b)** — no findings; nothing to decide.
+
+## Fixes (2026-09-07)
+
+Applied per the Decisions above; gate green; commit `de49d74`.
+
+- **Retrieval SQL cannot use the HNSW index** (approach, FIX): `match_policy_chunks` is now two
+  steps. A candidate CTE orders by the raw `p.embedding <=> query_embedding` with
+  `limit match_count * 4` (bounded at 200 by the existing count guard), which is the one shape
+  pgvector routes through the index; the outer query applies the threshold, the exact similarity
+  order and the kind/date/ordinal tie-breaks to that pool. `hnsw.ef_search` is raised to the pool
+  size for the call (transaction-local `set_config`), and `hnsw.iterative_scan = relaxed_order` so
+  a pillar filter cannot starve the pool (pgvector 0.8.2 on the hosted project). **Verified on the
+  hosted project with `EXPLAIN` and `enable_seqscan = off`:** the new form plans as
+  `Index Scan using policy_chunks_embedding_idx`; the previous form still planned as
+  `Sort → Seq Scan`, confirming the reviewer's claim.
+- **Redundant `policy_chunks_url_idx`** (approach, ACCEPT/tidy): dropped from the migration; the
+  unique `(url, chunk_index)` index serves the delete-by-url. The table comment says so.
+- **Non-finite embedding components** (correctness, FIX): `z.number().finite()` on each
+  component, with a test feeding a raw response body containing `1e999` (which JSON parses to
+  `Infinity`). **Finding:** zod 4's `z.number()` already rejects `Infinity` and `NaN`
+  ("expected number, received Infinity"), so the original code refused them too; the explicit
+  check and the test make that guarantee stated and pinned rather than incidental.
+- **Empty-set replacement** (correctness, KEEP and name): the SQL comment, the `ChunkStore`
+  interface doc and the README now state that an empty set removes the document, that this is
+  the intended path for a withdrawn source, and that the pipeline never takes it. The hosted
+  check now exercises it explicitly.
+
+**How the amended migration reached the hosted project.** The migration had already been
+applied, so the amended file could not be replayed by `db push`. Re-applying it cleanly would
+have meant dropping the story's three objects and marking the migration reverted; that drop was
+refused by the session's permission classifier as a destructive action against the hosted
+database. Applied instead, non-destructively, through `psql` over the CLI's pooler URL:
+`create or replace function public.match_policy_chunks(...)` with the amended body, and
+`drop index if exists public.policy_chunks_url_idx`. **Consequence, stated plainly:** the remote
+migration history records version `20260907154338` as applied, and the remote schema now equals
+the amended file's content, but that equality was reached by hand rather than by replaying the
+file. A fresh project gets the file as committed. If Thomas wants the development project's
+history to match the file by replay, `npx supabase db reset --linked` does that (it re-creates
+the remote database from the committed migrations; the table is empty and the project holds
+nothing else) — his call, not taken here.
+
+**AC6 re-verified after the fixes** with the same synthetic fixtures: identical ordering,
+tie-breaks, count, pillar and guard results as recorded in Step-9 verification; anon read-only
+behaviour unchanged; and the empty-set removal path removes exactly the one document. Fixture rows
+removed afterwards; the table is empty.
