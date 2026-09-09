@@ -1,4 +1,4 @@
-Date: 2026-09-08 · Branch: claude/seed-corpus-ingest · Status: proposed · Class: deployed
+Date: 2026-09-08 · Branch: claude/seed-corpus-ingest · Status: approved · Class: deployed
 
 # seed-corpus-ingest — a real seed corpus, the operator ingest script, and live ingestion (story 1b)
 
@@ -36,9 +36,12 @@ recorded.
 1. **The seed corpus** — roughly twelve real documents under `corpus/`, as markdown with the
    frontmatter story 1a defined, covering all three pillars and both document kinds. Includes the
    four the specification names: EO 23-02, HB 4002, SB 1537 and Measure 110.
-2. **A provenance manifest** — `corpus/MANIFEST.md`: one row per document giving its file, title,
-   source URL, the date retrieved, and the SHA-256 of the source file as retrieved, so anyone can
-   re-fetch and check what was read.
+2. **A provenance manifest** — `CORPUS.md` at the repository root: one row per document giving its
+   file, title, source URL, the date retrieved, and the SHA-256 of the source file as retrieved, so
+   anyone can re-fetch and check what was read. *(Moved out of `corpus/` at the step-7 consult, per
+   design finding 1: a manifest living inside the directory that is defined as "every markdown file
+   is a policy document" would be parsed as one. Moving it removes the special case rather than
+   documenting an exception every future corpus tool would have to honour.)*
 3. **The pillar taxonomy** — one runtime constant, `POLICY_PILLARS`, with the parser validating
    against it and the README documenting the same list, held equal by a test (the pattern the
    domain allowlist already uses).
@@ -76,6 +79,8 @@ bookkeeping and stay as numbered property assertions, per `AGENTS.md`.
    **When** the parser processes every document in `corpus/`,
    **Then** each is accepted with complete metadata, every pillar is one of the declared pillars,
    every URL host is on the official-domain allowlist,
+   **And** each document carries enough substantive text to ground a question, yielding at least
+   three chunks,
    **And** the corpus as a whole covers all three pillars and both document kinds.
 
 2. **Given** a committed corpus document and the official source it names,
@@ -95,36 +100,45 @@ bookkeeping and stay as numbered property assertions, per `AGENTS.md`.
 
 5. **Given** the ingested corpus,
    **When** a real policy question is embedded and passed to the retrieval boundary function,
-   **Then** the chunks returned are topically relevant to the question, each carries a source URL
-   that resolves to the official document, and a question about a pillar absent from the seed
-   returns nothing rather than an unrelated chunk.
+   **Then** the chunks returned are topically relevant to the question and each carries a source
+   URL that resolves to the official document,
+   **And** a genuine policy question on a subject the seed does not cover — Oregon transportation
+   funding, which is real state policy and outside all three pillars — returns nothing at the
+   production similarity threshold of 0.7 that the specification names, rather than an unrelated
+   chunk. *(Amended at the step-7 consult, per design finding 3: the original wording asked for a
+   pillar absent from the seed while criterion 1 requires all three to be present, so the negative
+   case could only have been satisfied by passing a nonsense pillar filter — which tests database
+   filtering, not whether the product refuses to answer when it lacks grounding.)*
 
 6. The declared pillar list is a single runtime constant; every corpus document's pillar is a
    member of it; and the README documents that same list, equal in both directions.
 
-7. Every committed corpus document appears in `corpus/MANIFEST.md` with a source URL and a
-   retrieval date, and every manifest row names a committed document — equal in both directions.
+7. Every committed corpus document appears in `CORPUS.md` with a source URL, a retrieval date and
+   a SHA-256 checksum of the retrieved source, and every manifest row names a committed document —
+   equal in both directions. *(The checksum requirement was added at the step-7 consult, per design
+   finding 2: the scope promised one while nothing required it, so a blank or malformed value would
+   have passed.)*
 
 8. The ingest script reads configuration only through `src/lib/env.ts`'s accessors, so it needs no
    environment variable that is not already declared and documented.
 
 9. Scope containment: run
    `git diff --name-only main...HEAD -- . ':(exclude)reviews/'`
-   and verify no files appear beyond `corpus/`, `src/lib/ingest/pillars.ts`,
-   `src/lib/ingest/parse.ts`, `scripts/ingest-corpus.ts`, `__tests__/`, `package.json`,
-   `package-lock.json`, and `README.md`.
+   and verify no files appear beyond `corpus/` (policy documents only), `CORPUS.md`,
+   `src/lib/ingest/pillars.ts`, `src/lib/ingest/parse.ts`, `scripts/ingest-corpus.ts`,
+   `__tests__/`, `package.json`, `package-lock.json`, and `README.md`.
 
 ## Test notes
 
 | AC | Oracle mode | Mechanism |
 |---|---|---|
-| 1 | `Small` | A test that reads **every** `.md` file in `corpus/` — the extent comes from the directory, not a typed list, so a document added without validating fails without editing the test — and runs the real `parseDocument` over each. Asserts acceptance, pillar membership, host membership, and that the union of pillars equals the declared list while the union of kinds equals both declared kinds. Includes the empty case: the test fails if the directory yields no documents at all. |
+| 1 | `Small` | A test that reads **every** `.md` file in `corpus/` — the extent comes from the directory, not a typed list, so a document added without validating fails without editing the test — and runs the real `parseDocument` over each. Asserts acceptance, pillar membership, host membership, and that the union of pillars equals the declared list while the union of kinds equals both declared kinds. Also runs `prepareDocument` over each and asserts at least three chunks, which a one-line stub cannot satisfy. Includes the empty case: the test fails if the directory yields no documents at all. |
 | 2 | `manual` | Per document, open the official source named in the manifest and compare against the committed markdown: the four metadata fields, then the body read through for dropped, duplicated or reordered passages and for extraction artifacts (page furniture, joined or split words, mangled ligatures, lost list structure). **No automated oracle can judge faithfulness to a source PDF** — a checksum proves what was downloaded, not what the extraction produced — so this is a person reading, recorded per document in the story file with what was compared and what was found. |
 | 3 | `manual` | Run the command against the hosted project with the real corpus. Read the reported per-document counts and total, and confirm the total equals the row count in the database. Then force a failure (a deliberately malformed document in a scratch copy of the corpus) and confirm a non-zero exit naming that document. Cannot be judged locally: it needs live Fireworks and Supabase. |
 | 4 | `manual` | Record the row count after the first run, run the command again unchanged, and confirm the count is identical and that no `(url, chunk_index)` pair appears twice. |
-| 5 | `manual` | Embed several real questions whose answers are in the seed (one per pillar), retrieve, and read the returned chunks for topical relevance and correct citation. **Relevance is a human judgment and is named as one rather than dressed up as an assertion.** Includes the negative case: a question about a pillar absent from the seed must return nothing at the production threshold, not a loosely related chunk. |
+| 5 | `manual` | Embed several real questions whose answers are in the seed, one per pillar, **paraphrased rather than quoting the target passage** so an easy verbatim match cannot stand in for retrieval quality. Retrieve with no pillar filter, then read the returned chunks for topical relevance and correct citation, following each source URL to confirm it resolves to the official document. **Relevance is a human judgment and is named as one rather than dressed up as an assertion.** The negative case is a real transportation-funding question, embedded the same way with no pillar filter, which must return zero rows at threshold 0.7. |
 | 6 | `Small` | Two comparisons, both directions: every corpus document's pillar against the constant, and the README's documented list against the constant, parsed from the README's own text rather than read from the constant it is compared to. Includes the empty case: the test fails if the README section yields no pillars. |
-| 7 | `Small` | Compare the set of `.md` files in `corpus/` against the set of rows parsed from `MANIFEST.md`, in both directions, and assert each row carries a source URL and a retrieval date. The extents come from the directory and the manifest, never from one another. Includes the empty case: the test fails if the manifest parses to no rows. |
+| 7 | `Small` | Compare the set of `.md` files in `corpus/` against the set of rows parsed from `CORPUS.md`, in both directions. Assert each row carries a retrieval date and a checksum of exactly 64 lowercase hex characters, and that its source URL is a document URL on an allowed host rather than a bare origin or a directory root. The extents come from the directory and the manifest, never from one another. Includes the empty case: the test fails if the manifest parses to no rows. |
 | 8 | `reviewer` | Read every configuration read in the script — literal `process.env`, the `env.ts` accessors, and any dynamic or indexed access — and confirm each key is already declared. The existing `.env.example` completeness test fails if `env.ts` grows an undocumented key. |
 | 9 | `reviewer` | Run the enumerated diff command and compare against the listed paths, and read what landed in each allowed directory to confirm it is this story's work and nothing else's. |
 
@@ -181,6 +195,10 @@ Criteria 1, 6 and 7 name a size, so step 9 must demonstrate red against their en
 
 ## Open questions
 
+**All four resolved at the step-7 consult (2026-09-08):** Q1 = **`tsx`** (ratified one-way door);
+Q2 = **no database constraint on `pillar`**, logged not asked; Q3 = **yes, `pillar` becomes an
+enum** (ratified one-way door); Q4 = **yes, the documents are committed**, logged not asked.
+
 1. **A TypeScript runner for scripts.** `scripts/ingest-corpus.ts` must import the library modules
    under `src/lib/`. Node 26 runs TypeScript natively, but **only with explicit `.ts` extensions in
    every import**, and this project's source uses extensionless imports throughout under Next.js's
@@ -211,8 +229,10 @@ Criteria 1, 6 and 7 name a size, so step 9 must demonstrate red against their en
 - **`corpus/`** — flat, one markdown file per document, named for its identifier and subject
   (`eo-23-02-homelessness-emergency.md`). Flat rather than foldered by pillar: the pillar is
   already in the frontmatter, and a directory hierarchy would be a second place for it to disagree.
-- **`corpus/MANIFEST.md`** — a markdown table: file, title, source URL, retrieved date, SHA-256 of
-  the retrieved source file. The checksum records **what was downloaded**, honestly not a stable
+- **`CORPUS.md`** (repository root, not inside `corpus/`) — a markdown table: file, title, source
+  URL, retrieved date, SHA-256 of the retrieved source file. At the root because `corpus/` is
+  defined as "every markdown file here is a policy document", and a manifest inside it would be
+  parsed as one. The checksum records **what was downloaded**, honestly not a stable
   identity (a re-publish changes bytes without changing content) and not evidence about the
   extraction. Its job is to let a later reader fetch the same thing and re-do the comparison.
 - **`src/lib/ingest/pillars.ts`** — `POLICY_PILLARS = ["housing-and-homelessness",
@@ -237,6 +257,39 @@ Criteria 1, 6 and 7 name a size, so step 9 must demonstrate red against their en
 - **Cross-cutting patterns kept from story 1a**: injected I/O, vocabularies as runtime constants
   held equal to their documentation by a test, errors that name every fault, and the extent of a
   test derived from the authoritative source rather than retyped.
+
+## Design decisions (2026-09-08)
+
+Thomas's disposition at the step-7 consult: *"scope is good; take all recommendations."* The
+approved shape is binding on step 9.
+
+- **Scope: APPROVED as written.**
+- **Door 1 — `tsx` as a dev dependency** (one-way): **RATIFIED.** Node 26's native TypeScript
+  execution requires explicit `.ts` extensions on every import, which this project does not use
+  under Next.js's bundler resolution; adopting it would mean rewriting every import in `src/`.
+  Wired as `npm run ingest`. This is the runner every future script copies.
+- **Door 2 — `pillar` becomes a closed enum at ingest** (one-way): **RATIFIED.** Tightens the
+  contract story 1a shipped as free text. Nothing else consumes the field yet.
+- **Logged, not asked:** no database check constraint on `pillar` (it is an open, growing
+  classification, unlike the two-value `document_kind` wired into ranking); the corpus documents
+  are committed to git (public records, small, and it makes both ingestion and the faithfulness
+  check reproducible).
+- **Finding 1 — the manifest collides with the corpus extent** (IMPORTANT, two-way, kludgy):
+  **FIX**, by the alternative Claude recommended over the reviewer's: move the manifest to
+  `CORPUS.md` at the repository root rather than keeping it in `corpus/` behind a reserved-name
+  exception. Removes the special case instead of documenting it; the two-directional test in
+  criterion 7 already supplies the coupling that adjacency was meant to provide.
+- **Finding 2 — the checksum has no criterion** (IMPORTANT, two-way, nonstandard): **FIX** —
+  criterion 7 now requires a checksum on every row and checks its shape.
+- **Finding 3 — the negative retrieval case is undefined** (QUESTION, one-way, nonstandard):
+  **ANSWERED — test real grounding.** A genuine transportation-funding question, no pillar filter,
+  must return zero rows at the production threshold of 0.7. The weaker reading, an unknown pillar
+  filter, was rejected: it exercises database filtering rather than the product's promise to refuse
+  when it has no grounding.
+- **Regression list:** all **9 ratified** with one amendment — criterion 1 now requires at least
+  three chunks per document, so the "stub documents that pass every check" regression has something
+  that can fail. The criterion-5 mechanism also takes the paraphrase requirement from its own
+  regression.
 
 ## Codex (glm-latest) design review (2026-09-08)
 
