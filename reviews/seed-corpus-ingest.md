@@ -199,6 +199,23 @@ Criteria 1, 6 and 7 name a size, so step 9 must demonstrate red against their en
 
 - Unrelated runtime logic or an extra package script is placed inside an allowed path such as __tests__/ or package.json. Every changed path appears on the allowlist, so the diff command passes despite work outside the story's scope.
 
+## Build note (2026-09-09)
+
+| AC | Where it is satisfied |
+|---|---|
+| 1 | `corpus/*.md` (11 documents), enumerated by `src/lib/ingest/corpus.ts`; test `__tests__/corpus.test.ts` |
+| 2 | The committed bodies themselves, plus `CORPUS.md`'s extraction column; verified by hand — see Step-9 verification |
+| 3 | `scripts/ingest-corpus.ts`; verified live against the hosted project |
+| 4 | `src/lib/supabase.ts` `createSupabaseChunkStore` over story 1a's transactional `replace_document_chunks`; verified live |
+| 5 | `src/lib/embeddings.ts` query-task embedding plus `queryPolicyChunks`, at `DEFAULT_MATCH_THRESHOLD`; verified live |
+| 6 | `src/lib/ingest/pillars.ts`, enforced in `src/lib/ingest/parse.ts`; tests `__tests__/corpus.test.ts`, `__tests__/readme-pillars.test.ts` |
+| 7 | `CORPUS.md`; test `__tests__/corpus-manifest.test.ts` |
+| 8 | `scripts/ingest-corpus.ts` reads only through `src/lib/env.ts`, plus a `.env.local` loader that never overrides the shell |
+| 9 | Scope containment — see Step-9 verification |
+| 10 | `DEFAULT_MATCH_THRESHOLD` in `src/lib/supabase.ts` and the README's retrieval-threshold section; test `__tests__/readme-threshold.test.ts` |
+
+Also: `package.json` gains `tsx` as a dev dependency and an `ingest` script.
+
 ## Loop record
 
 - frame/6 — ran (codex on glm-latest, 3 findings, 9 regressions) → reviews/seed-corpus-ingest.design.c246570.json
