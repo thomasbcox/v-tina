@@ -235,8 +235,8 @@ Re-review after the round-1 redesign. Base `21c3d53`; both approved fixes plus t
 - frame/9 — demonstrated red for every ratified regression on the size-bearing criteria (AC1, AC6, AC7) and for the added AC10; baseline green, each regression red, restored green. AC2 faithfulness verified by hand; AC3, AC4 and AC5 verified live against the hosted project after Thomas supplied a working Fireworks key. AC5 failed first at the specification's 0.7 threshold and passes at the measured 0.73 he adopted.
 - review/6 — round 2: ran (codex on glm-latest, 3 findings) → reviews/seed-corpus-ingest.approach.ec832be.json
 - review/8 — n/a — the approach gate short-circuited round 2: Thomas approved three shape-changing fixes, so the correctness pass does not run on a shape that is about to change.
-- close/3b — no activation (no guard-hook block and no `review_runner.py` refusal to promote this session; the round's REACH line was a reported-not-fatal false positive, which is the documented behaviour of an over-inclusive check rather than a novel finding. This repo has no `install.sh` to drift-check, no `BACKLOG.md` and no `.aar/` register.)
-- close/4 — presented: re-review only. Both approved fixes were approach/redesign changes, so per the loop's fork rule merge is not offered this round; the branch returns to `/review` for a fresh approach pass on the new shape.
+- close/3b — no activation (round 2: no guard-hook block and no `review_runner.py` refusal to promote; the repo has no `install.sh` to drift-check, no `BACKLOG.md` and no `.aar/` register).
+- close/4 — round 2: presented re-review only. All three approved fixes were approach/redesign changes, so per the fork rule merge is not offered; the branch returns to `/review`. (Round 1 fork: Thomas chose re-review.)
 
 **Earlier rounds of this story** (kept as prose: the record holds one line per step by design):
 
@@ -719,3 +719,68 @@ Thomas's call per finding, round `ec832be`: *"fix all."*
 
 **Gate.** All three are shape-changing, so the correctness pass does **not** run this round — the
 second consecutive redesign on this story. The branch returns for a third approach pass.
+
+## Fixes (2026-09-09, round 2)
+
+Applied per the round-2 Decisions; gate green at 198 tests; commit `44a9a3f`.
+
+### Finding 1 — keyset pagination for the deletion-driving catalogue
+
+`listDocumentUrls` no longer pages by numeric offset and no longer treats a short page as the last
+one. It orders by `url`, carries the last URL seen as a cursor, and **ends only on a genuinely
+empty page**. `URL_PAGE_SIZE` is now explicitly *not* load-bearing. The cursor also advances past
+every row sharing a URL, which is exactly right when only distinct URLs are wanted and guarantees
+forward progress. A read that fails to advance is **refused** rather than looped or silently
+skipped, because this list drives deletion. Six unit tests pin it, including a deliberately short
+middle page — the case that under the old code ended the read and truncated the list.
+
+### Finding 2 — the destructive precondition is now a type, not a habit
+
+- **`CompleteCorpus`** in `src/lib/ingest/corpus.ts`, with a **private constructor**: the only way
+  to obtain one is `CompleteCorpus.of`, which refuses an empty corpus and refuses two documents
+  claiming the same canonical URL, naming both files.
+- **`documentsToRemove` now takes a `CompleteCorpus`**, not an array, so a raw or partial URL list
+  can no longer be turned into a deletion plan. The compiler enforced this immediately: the
+  round-1 test that documented "an empty list proposes deleting everything" stopped compiling,
+  which is the finding made mechanical.
+- **`reconcileCorpus(corpus, store)`** is the one operation that deletes. It reads the stored
+  catalogue **itself** rather than trusting a caller's list, and removes by empty-set replacement.
+- **Validation moved before the work.** The whole corpus is parsed and validated at the start of
+  every full run, so a duplicate-URL corpus now fails before anything is embedded — whether or not
+  the run prunes, because two files sharing a URL silently overwrite each other regardless. The
+  script keeps only the run-entitlement checks: opt-in, real run, whole corpus, no failures.
+- The duplicate-URL gap was named by the reviewer and by neither the author nor round 1.
+
+### Finding 3 — one authoritative Node floor
+
+Lockfile regenerated with `npm install --package-lock-only`. Its root metadata now records
+`>=20.12.0`, matching `package.json`. **Verified before and after**: it read `>=20.9.0` before.
+
+### Verification
+
+| Check | Result |
+|---|---|
+| Flag refusals: `--prune` with `--dry-run`, with `--file`, unknown argument | refused, each naming the reason |
+| **New:** duplicate canonical URL | refused **before any work**, naming both files and the URL |
+| Normal offline dry run | 11/11 documents, 1375 chunks |
+| Keyset listing against the live database | ran on a clean 11/11 run and reported `nothing to prune: the store already matches the corpus` |
+| Prune refusal after a failed document | fired on **eight** separate live runs; the withheld document kept its rows every time |
+| Store integrity throughout | 1375 chunks, 11 documents, zero duplicates |
+
+**What is not claimed.** The composed removal path was **not** re-verified live under the new
+implementation. Eleven full-corpus attempts across this round each had at least one document fail,
+so the guard correctly refused to prune every time and the removal branch was never reached. Every
+component of that path is verified: `reconcileCorpus` by three unit tests including one proving it
+reads the store's own catalogue rather than a caller's list; the keyset listing by six unit tests
+and by the live `nothing to prune` run above; and empty-set replacement live in round 1 and in
+story 1a. The composition itself rests on those. This is stated rather than papered over.
+
+### The instability, now better characterised
+
+Fireworks `HTTP 503` responses continued and worsened. **A health probe of six single-input
+requests returned 200 six times in a row, immediately before a full-corpus run that failed four
+documents.** The failures land on the large documents, which send batches of 64 chunks. So this is
+**load-related rather than availability-related**: small requests succeed while large batch
+requests are rejected. That sharpens the earlier note — the remedy is likely a smaller batch size
+*and* a bounded retry, not retry alone. Still out of scope here, and still a real candidate for its
+own story.
