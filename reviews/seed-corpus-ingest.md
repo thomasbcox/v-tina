@@ -223,7 +223,7 @@ Also: `package.json` gains `tsx` as a dev dependency and an `ingest` script.
 - review/6 — ran (codex on glm-latest, 2 findings) → reviews/seed-corpus-ingest.approach.21c3d53.json
 - review/8 — not yet reached
 - close/3b — no activation (no guard-hook block and no `review_runner.py` refusal to promote this session; the round's REACH line was a reported-not-fatal false positive, which is the documented behaviour of an over-inclusive check rather than a novel finding. This repo has no `install.sh` to drift-check, no `BACKLOG.md` and no `.aar/` register.)
-- close/4 — not yet reached
+- close/4 — presented: re-review only. Both approved fixes were approach/redesign changes, so per the loop's fork rule merge is not offered this round; the branch returns to `/review` for a fresh approach pass on the new shape.
 
 ## Open questions
 
