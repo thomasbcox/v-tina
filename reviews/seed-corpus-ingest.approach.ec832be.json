@@ -1,0 +1,36 @@
+{
+  "verdict": "2026-09-09 07:50:29 PDT — The redesign direction is sound and close to what I would build: the corpus remains reviewed committed data, ingestion stays a thin sequential operator command, and pruning reuses the existing transactional empty-set replacement rather than adding a schema. I would preserve those choices and Thomas's opt-in/refuse-on-failure decisions. I would not ship the reconciliation exactly as built, though: the deletion-driving catalog infers completeness from page length, and the complete-corpus safety precondition lives only as procedural checks inside the command rather than in the reconciliation operation itself. I would also synchronize the lockfile after raising the Node floor.",
+  "regressions": [],
+  "findings": [
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "kludgy",
+      "title": "Reconciliation pagination infers completeness instead of asking for it",
+      "locus": "src/lib/supabase.ts:168-187",
+      "claim": "The list that drives deletion treats any page shorter than URL_PAGE_SIZE as the final page, while URL_PAGE_SIZE = 1000 is only the default PostgREST cap. A project or server configured with a lower row cap can return a short, non-final page; the method will then return a truncated URL list, and --prune will delete every live document missing from that list. The offset-based range query also has no deterministic order, so concurrent writes can move rows between pages. This is a safety-critical catalog read encoded as an inference about deployment configuration.",
+      "alternative": "Use the Supabase client's declarative keyset pagination: order by url, retain the last URL as a cursor, and request url greater than the cursor with a bounded page size; validate row shape and continue until an empty page. Because only distinct URL values are needed, skipping duplicate rows at the cursor is safe. Exact-count pagination would be an improvement, but keyset pagination removes both the server-cap and unstable-offset assumptions without a schema change.",
+      "win": "Eliminates the deployment-specific page-size assumption and unstable offset behavior; an incomplete catalog read fails or continues correctly rather than causing deletion of live documents."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "one-way",
+      "standing": "nonstandard",
+      "title": "The destructive-corpus precondition is not owned by the reconciliation operation",
+      "locus": "scripts/ingest-corpus.ts:161-186; src/lib/ingest/corpus.ts:32-37",
+      "claim": "The approved no-file, real-run, and no-failure guards are procedural facts inside main. The exported documentsToRemove remains a raw set difference: a partial or empty corpus URL list produces a deletion plan, and its unit test explicitly documents the all-delete behavior. Duplicate canonical URLs are also accepted, so two corpus files sharing one URL can silently overwrite one another while the command still reports a clean run and considers the corpus complete. Future corpus tooling can import the shared deletion rule without inheriting the script-local safety checks.",
+      "alternative": "Preserve the approved opt-in and refuse-on-failure semantics, but move them into one reconciliation operation. Load and parse the whole corpus first, reject an empty or duplicate-URL corpus, and expose a validated CompleteCorpus or complete URL set that reconcileCorpus requires before it lists and removes anything. Leave the script responsible only for argument parsing and reporting outcomes.",
+      "win": "Centralizes the destructive invariant where future tools inherit it; partial, failed, empty, and duplicate corpus states become unit-testable refusals rather than valid-looking deletion plans."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The lockfile still advertises the old Node floor",
+      "locus": "package-lock.json:31-33; package.json:36-38",
+      "claim": "The redesign raises package.json to Node >=20.12.0 because process.loadEnvFile requires it, but the lockfile's root package still records >=20.9.0. The runtime floor is therefore stated inconsistently, and a Node 20.9–20.11 environment can miss the intended compatibility warning and fail only when the ingest script calls the missing API.",
+      "alternative": "Regenerate the lockfile with npm after changing engines, for example npm install --package-lock-only, so the generated root metadata matches package.json. Keep the README's separate explanation of why the floor moved.",
+      "win": "Restores one authoritative runtime floor across the manifest and lockfile, causing unsupported Node versions to fail at installation rather than during a privileged operator command."
+    }
+  ]
+}

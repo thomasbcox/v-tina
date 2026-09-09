@@ -233,7 +233,7 @@ Re-review after the round-1 redesign. Base `21c3d53`; both approved fixes plus t
 
 - frame/6 — ran (codex on glm-latest, 3 findings, 9 regressions) → reviews/seed-corpus-ingest.design.c246570.json
 - frame/9 — demonstrated red for every ratified regression on the size-bearing criteria (AC1, AC6, AC7) and for the added AC10; baseline green, each regression red, restored green. AC2 faithfulness verified by hand; AC3, AC4 and AC5 verified live against the hosted project after Thomas supplied a working Fireworks key. AC5 failed first at the specification's 0.7 threshold and passes at the measured 0.73 he adopted.
-- review/6 — not yet reached
+- review/6 — round 2: ran (codex on glm-latest, 3 findings) → reviews/seed-corpus-ingest.approach.ec832be.json
 - review/8 — not yet reached
 - close/3b — no activation (no guard-hook block and no `review_runner.py` refusal to promote this session; the round's REACH line was a reported-not-fatal false positive, which is the documented behaviour of an over-inclusive check rather than a novel finding. This repo has no `install.sh` to drift-check, no `BACKLOG.md` and no `.aar/` register.)
 - close/4 — presented: re-review only. Both approved fixes were approach/redesign changes, so per the loop's fork rule merge is not offered this round; the branch returns to `/review` for a fresh approach pass on the new shape.
@@ -656,3 +656,35 @@ makes it acceptable long-term: every failure is reported and drives a non-zero e
 document's replacement is transactional, so a failed document keeps its previous rows and repeated
 runs converge — which is exactly what was observed. **A bounded retry with backoff is a real
 candidate for its own story.** It is out of scope here and is recorded so it is not rediscovered.
+
+## Codex (glm-latest) approach review — round 2 (2026-09-09, base 21c3d53, HEAD ec832be)
+
+Artifact: `reviews/seed-corpus-ingest.approach.ec832be.json` · round `ec832be` · 11 commands executed, 0 REACH-reported.
+
+**Verdict.** 2026-09-09 07:50:29 PDT — The redesign direction is sound and close to what I would build: the corpus remains reviewed committed data, ingestion stays a thin sequential operator command, and pruning reuses the existing transactional empty-set replacement rather than adding a schema. I would preserve those choices and Thomas's opt-in/refuse-on-failure decisions. I would not ship the reconciliation exactly as built, though: the deletion-driving catalog infers completeness from page length, and the complete-corpus safety precondition lives only as procedural checks inside the command rather than in the reconciliation operation itself. I would also synchronize the lockfile after raising the Node floor.
+
+### IMPORTANT
+
+**Reconciliation pagination infers completeness instead of asking for it** — reversibility: two-way · standing: kludgy
+
+- **Locus:** src/lib/supabase.ts:168-187
+- **Claim:** The list that drives deletion treats any page shorter than URL_PAGE_SIZE as the final page, while URL_PAGE_SIZE = 1000 is only the default PostgREST cap. A project or server configured with a lower row cap can return a short, non-final page; the method will then return a truncated URL list, and --prune will delete every live document missing from that list. The offset-based range query also has no deterministic order, so concurrent writes can move rows between pages. This is a safety-critical catalog read encoded as an inference about deployment configuration.
+- **Alternative:** Use the Supabase client's declarative keyset pagination: order by url, retain the last URL as a cursor, and request url greater than the cursor with a bounded page size; validate row shape and continue until an empty page. Because only distinct URL values are needed, skipping duplicate rows at the cursor is safe. Exact-count pagination would be an improvement, but keyset pagination removes both the server-cap and unstable-offset assumptions without a schema change.
+- **Win:** Eliminates the deployment-specific page-size assumption and unstable offset behavior; an incomplete catalog read fails or continues correctly rather than causing deletion of live documents.
+
+**The destructive-corpus precondition is not owned by the reconciliation operation** — reversibility: one-way · standing: nonstandard
+
+- **Locus:** scripts/ingest-corpus.ts:161-186; src/lib/ingest/corpus.ts:32-37
+- **Claim:** The approved no-file, real-run, and no-failure guards are procedural facts inside main. The exported documentsToRemove remains a raw set difference: a partial or empty corpus URL list produces a deletion plan, and its unit test explicitly documents the all-delete behavior. Duplicate canonical URLs are also accepted, so two corpus files sharing one URL can silently overwrite one another while the command still reports a clean run and considers the corpus complete. Future corpus tooling can import the shared deletion rule without inheriting the script-local safety checks.
+- **Alternative:** Preserve the approved opt-in and refuse-on-failure semantics, but move them into one reconciliation operation. Load and parse the whole corpus first, reject an empty or duplicate-URL corpus, and expose a validated CompleteCorpus or complete URL set that reconcileCorpus requires before it lists and removes anything. Leave the script responsible only for argument parsing and reporting outcomes.
+- **Win:** Centralizes the destructive invariant where future tools inherit it; partial, failed, empty, and duplicate corpus states become unit-testable refusals rather than valid-looking deletion plans.
+
+**The lockfile still advertises the old Node floor** — reversibility: two-way · standing: nonstandard
+
+- **Locus:** package-lock.json:31-33; package.json:36-38
+- **Claim:** The redesign raises package.json to Node >=20.12.0 because process.loadEnvFile requires it, but the lockfile's root package still records >=20.9.0. The runtime floor is therefore stated inconsistently, and a Node 20.9–20.11 environment can miss the intended compatibility warning and fail only when the ingest script calls the missing API.
+- **Alternative:** Regenerate the lockfile with npm after changing engines, for example npm install --package-lock-only, so the generated root metadata matches package.json. Keep the README's separate explanation of why the floor moved.
+- **Win:** Restores one authoritative runtime floor across the manifest and lockfile, causing unsupported Node versions to fail at installation rather than during a privileged operator command.
+
+**Claim check.** Finding 3 verified directly: `package.json` declares `>=20.12.0` while the
+lockfile's root package still records `>=20.9.0`. The mismatch is real.
