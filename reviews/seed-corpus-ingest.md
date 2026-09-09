@@ -190,7 +190,7 @@ Criteria 1, 6 and 7 name a size, so step 9 must demonstrate red against their en
 ## Loop record
 
 - frame/6 — ran (codex on glm-latest, 3 findings, 9 regressions) → reviews/seed-corpus-ingest.design.c246570.json
-- frame/9 — not yet reached
+- frame/9 — demonstrated red for every ratified regression on the size-bearing criteria (AC1, AC6, AC7); baseline green, each regression red, restored green. AC2's faithfulness verification is recorded below. **AC3, AC4 and AC5 are BLOCKED**: the estate-wide `FIREWORKS_API_KEY` is rejected by Fireworks as invalid, so no live ingestion has run.
 - review/6 — not yet reached
 - review/8 — not yet reached
 - close/3b — not yet reached
@@ -324,3 +324,100 @@ Artifact: `reviews/seed-corpus-ingest.design.c246570.json` · round `c246570` ·
 - **Claim:** AC 1 requires the corpus to cover all three declared pillars, so there is no declared pillar absent from the seed. AC 5 nevertheless asks for a question about a pillar absent from the seed. Without a concrete absent topic, an implementation could satisfy the negative case by supplying an arbitrary unknown pillar filter, which tests SQL filtering rather than the intended product behavior: an ungrounded question returning nothing at the production threshold. Alternatively, an unfiltered out-of-scope question could return a loosely related chunk. Thomas needs to define which behavior is intended.
 - **Alternative:** Either name a concrete out-of-scope policy topic, embed it as a real query without a pillar filter, and require zero results at the documented production threshold; or narrow the negative case explicitly to an unknown filter_pillar value and test that SQL filtering returns none. Record the chosen threshold in the story.
 - **Win:** Turns the negative case into a reproducible, falsifiable check instead of an ambiguous instruction that can be satisfied by a mechanism unrelated to semantic grounding.
+
+## Step-9 verification (2026-09-08)
+
+### Demonstrate red — criteria 1, 6 and 7
+
+Each ratified regression was applied to the committed work, the gate run, the failure observed,
+and the change reverted. Baseline green before and after, 178 tests.
+
+| Ratified regression | Gate | What failed |
+|---|---|---|
+| baseline, nothing modified | green | — |
+| AC1 — stub documents with correct frontmatter and no substance | **red** | `corpus/eo-25-09.md carries enough text to ground a question` |
+| AC6 — the pillar slugs present as prose under an unrelated heading | **red** | the README pillar section is no longer found, so its whole suite fails |
+| AC7 — a manifest row citing a site root instead of the document | **red** | `cites a specific document on an allowed host`, and the frontmatter-agreement check |
+| restored | green | — |
+
+The AC6 regression fails at collection rather than inside one named test, because the section
+parser is at module scope. The failure is real and specific to that file; it is recorded here
+rather than smoothed over.
+
+### AC2 — faithfulness (manual)
+
+**The finding that shaped this story: every Governor's executive order is published as a scanned
+image with no text layer.** Confirmed independently twice, across orders from 2023 to 2026. The
+legislative documents are the opposite — proper digital text that extracts exactly. One executive
+order, EO 24-07, also has an official text-only companion, and that is the source used for it.
+
+So four of the eleven documents required optical character recognition. macOS's built-in Vision
+engine was used, which needs no privileged install. Every OCR'd document was then proofread, and
+the corrections are listed here rather than summarised, because this is the story's central risk.
+
+**Method, per document.** Metadata was checked against the source: title, as-of date, URL and
+kind. The committed body was then scanned for tokens absent from both a system dictionary and the
+vocabulary of the machine-exact documents, and every unrecognised token was resolved by reading it
+in context. For the most statistics-heavy document, EO 23-02, the source pages were rendered and
+read directly to verify every figure.
+
+**Extraction repairs, all mechanical and conservative.** Line-break hyphens were rejoined only
+when the joined form was confirmed a real word, so `high-quality` could never become
+`highquality`; 3,500 or so were rejoined and the rest kept. 38 intra-word spaces from two-column
+extraction were closed under a rule that cannot join two real words, so `any one` was left alone
+while `determ ine` became `determine`. Roughly 180 running headers and letterhead lines were
+removed by exact pattern.
+
+**A false lead, recorded because it nearly caused harm.** An early detector flagged 274 "stray
+line numbers" in one bill. Sampling them showed they were legitimate statutory text — `section 2
+of this 2024 Act`, `60 days`. Removing them would have destroyed real content. No such removal was
+made.
+
+**OCR corrections, all 45, each verified in context.** Misread words: `Medtord`→`Medford`,
+`atfordable`→`affordable`, `Oftice`→`Office`, `EXECOTIVE`/`EAECOTIVE`→`EXECUTIVE`,
+`DISTRICIS`→`DISTRICTS`, `ATTESI:`/`ATTES:`→`ATTEST:`, `ili.`→`iii.`. Lost spaces:
+`thedevelopment`, `takeany`, `thetime`, `Thenumber`, `peoplewere`, `resourcesthat`,
+`EmergencyManagement`, `ComprehensiveEmergency`, `emergencyand`, `Ifind`, `tocontinue`,
+`totakeany`, `beat thedirection`, `arefacing`, `goalof`, `thebest`, `remainin`, `untilthe`,
+`ori inal`. Mangled ordinals in the signature blocks: `10"`, `10t"`, `9''` → `10th`, `10th`,
+`9th`. Six OCR-mangled running headers removed. **Handwritten signatures were being rendered as
+nonsense words** — `2Ctch`, `MYeck`, `P-Falek`, `IinKtet`, `S-tap`, `Zaune: Grifü-lalade`,
+`Tasio y Read` — and were removed, because a signature is an image and OCR text standing in for it
+is exactly the artifact this criterion forbids. After correction, no unrecognised token remains in
+any OCR'd document beyond modern words absent from the 1934 dictionary (`internet`, `laptop`,
+`rehoused`).
+
+**Visual verification of EO 23-02.** Pages 1 and 2 were rendered and read against the committed
+text. Every figure matches: a 63% rise, at least 18,000 individuals, about 62% unsheltered, the
+50%-or-more regions at 50.4% for the Metro region, 86% Central Oregon, 110% Eugene/Springfield,
+132% Medford/Ashland and 150% Salem/Marion. Both footnotes, the full eight-region list and the
+Syracuse University passage are present and correct. This is what confirmed the `Medford`
+correction.
+
+**Dates verified from each document's own words**, not from a catalogue: `Done at Salem, Oregon,
+this 10th day of January, 2023` for EO 23-02 and EO 23-04; `this 9th day of January, 2024` for
+EO 24-02; `this 30th day of January, 2024` for EO 24-07; `this 2nd day of July, 2025` for
+EO 25-09; `Approved by the Governor` lines for HB 4002 (2024-04-01), SB 755 (2021-07-19),
+SB 1537 (2024-04-17), HB 2001 (2023-03-29) and HB 3198 (2023-07-31); and for Measure 110 the
+proclamation date of 2020-12-03 printed in its own certification.
+
+**What is NOT claimed.** The bodies of the three long bills were not read end to end by a human.
+They come from machine-exact text layers, their structure was checked at the start, middle and
+end, and no unrecognised token survives in them. A word-by-word reading of 700,000 characters of
+statute was not done and is not claimed.
+
+### AC3, AC4, AC5 — blocked
+
+Live ingestion has not run. The `FIREWORKS_API_KEY` exported in `~/.zshrc` is rejected by
+Fireworks with `The API key you provided is invalid`, confirmed against the models endpoint and
+the embeddings endpoint. It is 25 characters, which is short for a Fireworks key, and the same
+variable is present but commented out in `~/.zshenv`. Codex authenticates to Fireworks
+successfully during reviews using its own `experimental_bearer_token` in `~/.codex/config.toml`,
+so a working credential exists on this machine, but copying a credential from one tool's
+configuration into another's is not something this session will do. **A valid key is needed from
+Thomas before criteria 3, 4 and 5 can be verified.**
+
+What the ingest script *has* demonstrated, offline: it reads all eleven documents, parses and
+chunks them into 1,375 chunks with no network and no credentials under `--dry-run`, and on the
+failed live attempt it reported every document's outcome individually and exited non-zero naming
+each one. That is the failure half of criterion 3, observed for real rather than simulated.

@@ -18,7 +18,7 @@
  * for a per-document report. Nothing is swallowed. Every failure is printed with
  * its cause, listed again in the summary, and drives a non-zero exit.
  */
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { relative } from "node:path";
 import { createFireworksEmbedder } from "../src/lib/embeddings";
 import { corpusDocumentPaths, CORPUS_DIR } from "../src/lib/ingest/corpus";
@@ -28,6 +28,26 @@ import {
   createSupabaseChunkStore,
   createSupabaseClient,
 } from "../src/lib/supabase";
+
+/**
+ * Next.js loads `.env.local` for the app; a standalone script does not, so it is
+ * loaded here to keep one documented place for credentials.
+ *
+ * Variables already present in the environment WIN: the Fireworks key is set
+ * estate-wide in the shell, and a stale copy in a file must not silently
+ * override the one the operator actually configured. Nothing is logged — these
+ * are secrets.
+ */
+function loadEnvFile(path = ".env.local"): void {
+  if (!existsSync(path)) return;
+  for (const line of readFileSync(path, "utf8").split("\n")) {
+    const m = /^([A-Z0-9_]+)=(.*)$/.exec(line.trim());
+    if (!m) continue;
+    const [, key, raw] = m;
+    if (process.env[key] !== undefined) continue;
+    process.env[key] = raw.replace(/^['"]|['"]$/g, "");
+  }
+}
 
 interface Options {
   dryRun: boolean;
@@ -77,6 +97,7 @@ async function main(): Promise<number> {
   const ingestInto = options.dryRun
     ? undefined
     : (() => {
+        loadEnvFile();
         const env = getNodeEnv();
         return {
           embed: createFireworksEmbedder({
