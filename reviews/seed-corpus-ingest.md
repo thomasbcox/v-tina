@@ -222,7 +222,7 @@ Also: `package.json` gains `tsx` as a dev dependency and an `ingest` script.
 - frame/9 — demonstrated red for every ratified regression on the size-bearing criteria (AC1, AC6, AC7) and for the added AC10; baseline green, each regression red, restored green. AC2 faithfulness verified by hand; AC3, AC4 and AC5 verified live against the hosted project after Thomas supplied a working Fireworks key. AC5 failed first at the specification's 0.7 threshold and passes at the measured 0.73 he adopted.
 - review/6 — ran (codex on glm-latest, 2 findings) → reviews/seed-corpus-ingest.approach.21c3d53.json
 - review/8 — not yet reached
-- close/3b — not yet reached
+- close/3b — no activation (no guard-hook block and no `review_runner.py` refusal to promote this session; the round's REACH line was a reported-not-fatal false positive, which is the documented behaviour of an over-inclusive check rather than a novel finding. This repo has no `install.sh` to drift-check, no `BACKLOG.md` and no `.aar/` register.)
 - close/4 — not yet reached
 
 ## Open questions
@@ -584,3 +584,56 @@ Thomas's call per finding, round `21c3d53`: *"fix both as you recommend."*
 **Gate.** Both are shape-changing fixes, so per the loop's approach gate the correctness pass does
 **not** run this round. The branch returns for a fresh review after the fixes land, and that round
 re-runs the approach pass on the new shape.
+
+## Fixes (2026-09-09)
+
+Applied per the Decisions above; gate green at 192 tests; commit `5e5fa7b`.
+
+### Finding 1 — corpus reconciliation (IMPORTANT, one-way)
+
+- **`documentsToRemove(storedUrls, corpusUrls)`** in `src/lib/ingest/corpus.ts`, beside the
+  enumeration rule it belongs with. It is a **pure function, unit-tested separately**, deliberately
+  not buried in the operator command: the rule that decides what gets deleted fails silently, so it
+  is the last thing that should live only inside a script.
+- **`ChunkStore.listDocumentUrls()`**, implemented in `src/lib/supabase.ts` over a narrow
+  `TableClient` interface so tests inject a fake. **It pages explicitly.** PostgREST caps a response
+  at 1000 rows by default and the store holds 1,375 chunks, so an unpaged read would have returned a
+  short list — and the caller of that list *deletes*. Three tests pin this: paging until a short
+  page, not stopping on a full page that contributed no new URL, and surfacing an error rather than
+  returning a truncated list.
+- **`--prune`** in `scripts/ingest-corpus.ts`, opt-in because it deletes. It refuses to combine with
+  `--dry-run` or `--file`, and **it does not run at all if any document failed**, because the corpus
+  list would then be incomplete and pruning against it could withdraw a live document. Every removal
+  is printed and counted in the summary.
+- Removal reuses story 1a's empty-set replacement, so nothing new touches the schema.
+
+**Verified live against the hosted project.** The refusal path fired on five separate runs where a
+document failed, each printing `NOT pruning`, and `eo-25-09` survived in the store throughout —
+which is the guard doing exactly its job. On a clean run with that document withdrawn from the
+corpus, the command reported `pruning 1 withdrawn document(s)`, printed the removed URL, and
+summarised `10/10 document(s), 1367 chunks, 1 removed`; the store went to 10 documents with zero
+`eo-25-09` rows. The document was then restored and re-ingested, and the store is back to **1,375
+chunks across 11 documents with zero duplicates**, each document's chunk count matching the offline
+dry run exactly.
+
+### Finding 2 — standard environment loading (NIT, two-way)
+
+- The hand-rolled `.env.local` parser is gone. `scripts/ingest-corpus.ts` now calls
+  `process.loadEnvFile` behind the existing existence check.
+- **Precedence was verified before the parser was deleted, not assumed.** A probe under Node 26
+  confirmed the loader leaves an already-set variable alone and fills in only what is missing. That
+  is the requirement, not a nicety: the Fireworks key is declared estate-wide in the shell, and a
+  stale file copy must never override it.
+- `engines.node` raised from `>=20.9.0` to `>=20.12.0`, the first release providing that API, and
+  the README's Node-version section now says why the floor moved.
+
+### Observed during verification, not fixed
+
+**Fireworks returned `HTTP 503` on roughly a fifth of embedding requests throughout this session.**
+Four consecutive full-corpus runs each failed two documents; a five-call health probe between
+bursts returned `200` five times, so it is intermittent rather than an outage. The embedder has no
+retry, so each burst ends a document's ingestion. Two things make this tolerable today and neither
+makes it acceptable long-term: every failure is reported and drives a non-zero exit, and each
+document's replacement is transactional, so a failed document keeps its previous rows and repeated
+runs converge — which is exactly what was observed. **A bounded retry with backoff is a real
+candidate for its own story.** It is out of scope here and is recorded so it is not rediscovered.
