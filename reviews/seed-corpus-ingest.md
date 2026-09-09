@@ -216,14 +216,33 @@ Criteria 1, 6 and 7 name a size, so step 9 must demonstrate red against their en
 
 Also: `package.json` gains `tsx` as a dev dependency and an `ingest` script.
 
+## Build note (2026-09-09, round 2)
+
+Re-review after the round-1 redesign. Base `21c3d53`; both approved fixes plus their tests.
+
+| Approved fix | Where |
+|---|---|
+| Corpus reconciliation — the deletion rule | `src/lib/ingest/corpus.ts` `documentsToRemove`, pure; test `__tests__/corpus-reconcile.test.ts` |
+| Corpus reconciliation — the store read | `src/lib/supabase.ts` `listDocumentUrls` over `TableClient`, paged by `URL_PAGE_SIZE`; tests in `__tests__/supabase.test.ts` |
+| Corpus reconciliation — the boundary | `src/lib/ingest/pipeline.ts` `ChunkStore.listDocumentUrls` |
+| Corpus reconciliation — the command | `scripts/ingest-corpus.ts` `--prune`, its flag refusals, and the refuse-on-failure guard |
+| Standard environment loading | `scripts/ingest-corpus.ts` `loadLocalEnv` via `process.loadEnvFile`; `package.json` `engines.node` |
+| Documentation of both | `README.md` — prune section and the Node-version floor |
+
 ## Loop record
 
 - frame/6 — ran (codex on glm-latest, 3 findings, 9 regressions) → reviews/seed-corpus-ingest.design.c246570.json
 - frame/9 — demonstrated red for every ratified regression on the size-bearing criteria (AC1, AC6, AC7) and for the added AC10; baseline green, each regression red, restored green. AC2 faithfulness verified by hand; AC3, AC4 and AC5 verified live against the hosted project after Thomas supplied a working Fireworks key. AC5 failed first at the specification's 0.7 threshold and passes at the measured 0.73 he adopted.
-- review/6 — ran (codex on glm-latest, 2 findings) → reviews/seed-corpus-ingest.approach.21c3d53.json
+- review/6 — not yet reached
 - review/8 — not yet reached
 - close/3b — no activation (no guard-hook block and no `review_runner.py` refusal to promote this session; the round's REACH line was a reported-not-fatal false positive, which is the documented behaviour of an over-inclusive check rather than a novel finding. This repo has no `install.sh` to drift-check, no `BACKLOG.md` and no `.aar/` register.)
 - close/4 — presented: re-review only. Both approved fixes were approach/redesign changes, so per the loop's fork rule merge is not offered this round; the branch returns to `/review` for a fresh approach pass on the new shape.
+
+**Earlier rounds of this story** (kept as prose: the record holds one line per step by design):
+
+- round 1 (`21c3d53`, base `main`): review/6 — ran (codex on glm-latest, 2 findings) → reviews/seed-corpus-ingest.approach.21c3d53.json; review/8 — n/a, the approach gate short-circuited the
+  round because Thomas approved two shape-changing fixes; close/3b — no activation; close/4 —
+  presented re-review only, and he took it.
 
 ## Open questions
 
