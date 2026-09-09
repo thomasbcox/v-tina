@@ -23,8 +23,9 @@ import { existsSync, readFileSync } from "node:fs";
 import { relative } from "node:path";
 import { createFireworksEmbedder } from "../src/lib/embeddings";
 import {
+  CompleteCorpus,
   corpusDocumentPaths,
-  documentsToRemove,
+  reconcileCorpus,
   CORPUS_DIR,
 } from "../src/lib/ingest/corpus";
 import { ingestDocument, prepareDocument } from "../src/lib/ingest/pipeline";
@@ -125,6 +126,21 @@ async function main(): Promise<number> {
         };
       })();
 
+  // Validate the WHOLE corpus before doing any work. Two documents sharing a
+  // canonical URL silently overwrite each other in the store, so it is a corpus
+  // defect whether or not this run prunes — and pruning may only ever be driven
+  // by a corpus proven complete. Skipped for --file, which is not a full run and
+  // therefore may not prune (refused in parseArgs).
+  let corpus: CompleteCorpus | undefined;
+  if (!options.file) {
+    corpus = CompleteCorpus.of(
+      paths.map((path) => ({
+        file: relative(".", path),
+        url: prepareDocument(readFileSync(path, "utf8"))[0].source.url,
+      })),
+    );
+  }
+
   process.stdout.write(
     `${options.dryRun ? "Checking" : "Ingesting"} ${paths.length} document(s)\n\n`,
   );
@@ -158,30 +174,24 @@ async function main(): Promise<number> {
   const failures = outcomes.filter((o) => o.error !== undefined);
   const total = outcomes.reduce((sum, o) => sum + (o.chunks ?? 0), 0);
 
-  // Reconciliation. Only reached when the WHOLE corpus was processed and every
-  // document succeeded: pruning against a partial or failed run would withdraw
-  // documents that are still live, which is the one irreversible thing this
-  // command can do. Removal is an empty-set replacement, the same transactional
-  // path an ordinary ingest uses.
+  // Reconciliation. The corpus value carries the completeness guarantee, and
+  // reconcileCorpus owns the deletion itself; the checks here are only about
+  // whether THIS RUN is entitled to reconcile — a failed document means the run
+  // did not establish that the store's extra documents are genuinely withdrawn.
   const removed: string[] = [];
-  if (options.prune && ingestInto && failures.length === 0) {
-    const stored = await ingestInto.store.listDocumentUrls();
-    const corpusUrls = outcomes.map((o) => o.url).filter((u): u is string => u !== undefined);
-    const stale = documentsToRemove(stored, corpusUrls);
+  if (options.prune && ingestInto && corpus && failures.length === 0) {
+    const stale = await reconcileCorpus(corpus, ingestInto.store);
     if (stale.length === 0) {
       process.stdout.write("\nnothing to prune: the store already matches the corpus\n");
     } else {
-      process.stdout.write(`\npruning ${stale.length} withdrawn document(s)\n`);
-      for (const url of stale) {
-        await ingestInto.store.replaceDocument(url, []);
-        removed.push(url);
-        process.stdout.write(`  removed  ${url}\n`);
-      }
+      process.stdout.write(`\npruned ${stale.length} withdrawn document(s)\n`);
+      for (const url of stale) process.stdout.write(`  removed  ${url}\n`);
+      removed.push(...stale);
     }
   } else if (options.prune && failures.length > 0) {
     process.stderr.write(
-      "\nNOT pruning: a document failed, so the corpus list is incomplete and " +
-        "pruning against it could withdraw a live document.\n",
+      "\nNOT pruning: a document failed, so this run did not establish that the " +
+        "store's extra documents are withdrawn rather than merely unprocessed.\n",
     );
   }
 

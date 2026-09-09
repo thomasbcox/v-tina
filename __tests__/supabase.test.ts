@@ -18,7 +18,7 @@ function fakeClient(
   pages: { data: unknown; error: { message: string } | null }[] = [],
 ) {
   const calls: { fn: string; args: Record<string, unknown> | undefined }[] = [];
-  const ranges: [number, number][] = [];
+  const cursors: string[] = [];
   const client: StoreClient = {
     rpc(fn, args) {
       calls.push({ fn, args });
@@ -28,18 +28,26 @@ function fakeClient(
       return {
         select() {
           return {
-            range(from: number, to: number) {
-              ranges.push([from, to]);
-              return Promise.resolve(
-                pages[ranges.length - 1] ?? { data: [], error: null },
-              );
+            gt(_column: string, value: string) {
+              cursors.push(value);
+              return {
+                order() {
+                  return {
+                    limit() {
+                      return Promise.resolve(
+                        pages[cursors.length - 1] ?? { data: [], error: null },
+                      );
+                    },
+                  };
+                },
+              };
             },
           };
         },
       };
     },
   };
-  return { client, calls, ranges };
+  return { client, calls, cursors };
 }
 
 const embedding = Array.from({ length: EMBEDDING_DIMENSIONS }, (_, i) => i / 1000);
@@ -177,7 +185,7 @@ describe("listDocumentUrls — the list that drives deletion", () => {
 
   it("returns each distinct document url once, sorted", async () => {
     const { client } = fakeClient({ data: null, error: null }, [
-      page(["https://oregon.gov/b", "https://oregon.gov/a", "https://oregon.gov/b"]),
+      page(["https://oregon.gov/a", "https://oregon.gov/b", "https://oregon.gov/b"]),
     ]);
     expect(await createSupabaseChunkStore(client).listDocumentUrls()).toEqual([
       "https://oregon.gov/a",
@@ -185,33 +193,48 @@ describe("listDocumentUrls — the list that drives deletion", () => {
     ]);
   });
 
-  // The whole point: a caller of this list DELETES what is missing from it, so a
-  // truncated read would withdraw live documents.
-  it("pages until a short page, so a full first page is never mistaken for the whole table", async () => {
-    const full = Array.from({ length: URL_PAGE_SIZE }, () => "https://oregon.gov/a");
-    const { client, ranges } = fakeClient({ data: null, error: null }, [
-      page(full),
-      page(["https://oregon.gov/z"]),
-    ]);
-    const urls = await createSupabaseChunkStore(client).listDocumentUrls();
-    expect(urls).toEqual(["https://oregon.gov/a", "https://oregon.gov/z"]);
-    expect(ranges).toEqual([
-      [0, URL_PAGE_SIZE - 1],
-      [URL_PAGE_SIZE, URL_PAGE_SIZE * 2 - 1],
-    ]);
-  });
-
-  it("does not stop on a full page that contributed no new url", async () => {
-    const same = Array.from({ length: URL_PAGE_SIZE }, () => "https://oregon.gov/a");
-    const { client } = fakeClient({ data: null, error: null }, [
-      page(same),
-      page(same),
-      page(["https://oregon.gov/last"]),
+  it("pages by cursor and ends on an EMPTY page, never on a short one", async () => {
+    // The middle page is deliberately shorter than URL_PAGE_SIZE. Under the old
+    // offset paging that alone ended the read, truncating the list that deletes.
+    const { client, cursors } = fakeClient({ data: null, error: null }, [
+      page(["https://oregon.gov/a", "https://oregon.gov/b"]),
+      page(["https://oregon.gov/c"]),
+      page(["https://oregon.gov/d"]),
     ]);
     expect(await createSupabaseChunkStore(client).listDocumentUrls()).toEqual([
       "https://oregon.gov/a",
-      "https://oregon.gov/last",
+      "https://oregon.gov/b",
+      "https://oregon.gov/c",
+      "https://oregon.gov/d",
     ]);
+    // First read starts from the empty cursor; each later read resumes past the
+    // last url seen, so no offset arithmetic is involved.
+    expect(cursors).toEqual([
+      "",
+      "https://oregon.gov/b",
+      "https://oregon.gov/c",
+      "https://oregon.gov/d",
+    ]);
+  });
+
+  it("makes progress when a whole page shares one url", async () => {
+    const many = Array.from({ length: URL_PAGE_SIZE }, () => "https://oregon.gov/a");
+    const { client } = fakeClient({ data: null, error: null }, [
+      page(many),
+      page(["https://oregon.gov/z"]),
+    ]);
+    expect(await createSupabaseChunkStore(client).listDocumentUrls()).toEqual([
+      "https://oregon.gov/a",
+      "https://oregon.gov/z",
+    ]);
+  });
+
+  it("refuses a read that does not advance rather than looping or skipping", async () => {
+    const stuck = page(["https://oregon.gov/a"]);
+    const { client } = fakeClient({ data: null, error: null }, [stuck, stuck]);
+    await expect(
+      createSupabaseChunkStore(client).listDocumentUrls(),
+    ).rejects.toThrow(/did not advance/);
   });
 
   it("surfaces a database error rather than returning a short list", async () => {

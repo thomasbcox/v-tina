@@ -54,23 +54,36 @@ export interface RpcClient {
 }
 
 /** The table read the reconciliation step needs, stated as narrowly as the RPC
- *  surface above so a test can hand in a recording fake. */
+ *  surface above so a test can hand in a recording fake. Keyset pagination:
+ *  `gt` on the ordered column is the cursor, so the read never depends on
+ *  offsets or on how many rows the server chose to return. */
 export interface TableClient {
   from(table: string): {
     select(columns: string): {
-      range(
-        from: number,
-        to: number,
-      ): PromiseLike<{ data: unknown; error: { message: string } | null }>;
+      gt(
+        column: string,
+        value: string,
+      ): {
+        order(
+          column: string,
+          options: { ascending: boolean },
+        ): {
+          limit(
+            count: number,
+          ): PromiseLike<{ data: unknown; error: { message: string } | null }>;
+        };
+      };
     };
   };
 }
 
 export type StoreClient = RpcClient & TableClient;
 
-/** PostgREST caps a response at a server-side maximum (1000 by default), so the
- *  URL listing pages explicitly. Reading only the first page would make every
- *  document beyond it look withdrawn, and the caller of that list DELETES. */
+/** Rows requested per page of the URL listing. Deliberately NOT load-bearing:
+ *  with keyset pagination the read ends on an EMPTY page, so a server that
+ *  returns fewer rows than asked is handled rather than mistaken for the end.
+ *  A short page used to mean "last page", which encoded someone else's server
+ *  configuration into the step that deletes. */
 export const URL_PAGE_SIZE = 1000;
 
 export function createSupabaseClient(url: string, key: string): SupabaseClient {
@@ -167,11 +180,17 @@ export function createSupabaseChunkStore(client: StoreClient): ChunkStore {
   return {
     async listDocumentUrls() {
       const urls = new Set<string>();
-      for (let start = 0; ; start += URL_PAGE_SIZE) {
+      // Every URL sorts above the empty string, so the first page needs no
+      // special case. The cursor advances past ALL rows sharing a URL, which is
+      // exactly right: only distinct URLs are wanted, and it guarantees progress.
+      let cursor = "";
+      for (;;) {
         const { data, error } = await client
           .from("policy_chunks")
           .select("url")
-          .range(start, start + URL_PAGE_SIZE - 1);
+          .gt("url", cursor)
+          .order("url", { ascending: true })
+          .limit(URL_PAGE_SIZE);
         if (error) throw new Error(`listing document urls failed: ${error.message}`);
         const rows = z.array(z.object({ url: z.string() })).safeParse(data);
         if (!rows.success) {
@@ -179,13 +198,22 @@ export function createSupabaseChunkStore(client: StoreClient): ChunkStore {
             `listing document urls returned rows of an unexpected shape:\n${z.prettifyError(rows.error)}`,
           );
         }
+        if (rows.data.length === 0) break;
         for (const row of rows.data) urls.add(row.url);
-        // A short page is the last page. Never break early on an empty set of
-        // NEW urls: many chunks share one document, so a full page can add none.
-        if (rows.data.length < URL_PAGE_SIZE) break;
+        const next = rows.data[rows.data.length - 1].url;
+        if (next <= cursor) {
+          // The server ignored the ordering or the cursor; continuing would loop
+          // forever or silently skip rows, and this list drives deletion.
+          throw new Error(
+            `listing document urls did not advance past ${JSON.stringify(cursor)}; ` +
+              `refusing to build a deletion plan from an unordered read`,
+          );
+        }
+        cursor = next;
       }
       return [...urls].sort();
     },
+
     async replaceDocument(url, rows) {
       const { data, error } = await client.rpc("replace_document_chunks", {
         p_url: url,
