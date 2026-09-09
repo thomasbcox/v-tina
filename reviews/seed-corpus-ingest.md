@@ -220,7 +220,7 @@ Also: `package.json` gains `tsx` as a dev dependency and an `ingest` script.
 
 - frame/6 — ran (codex on glm-latest, 3 findings, 9 regressions) → reviews/seed-corpus-ingest.design.c246570.json
 - frame/9 — demonstrated red for every ratified regression on the size-bearing criteria (AC1, AC6, AC7) and for the added AC10; baseline green, each regression red, restored green. AC2 faithfulness verified by hand; AC3, AC4 and AC5 verified live against the hosted project after Thomas supplied a working Fireworks key. AC5 failed first at the specification's 0.7 threshold and passes at the measured 0.73 he adopted.
-- review/6 — not yet reached
+- review/6 — ran (codex on glm-latest, 2 findings) → reviews/seed-corpus-ingest.approach.21c3d53.json
 - review/8 — not yet reached
 - close/3b — not yet reached
 - close/4 — not yet reached
@@ -530,3 +530,31 @@ constant and the README section entirely. The gate then failed for an unrelated 
 commit was made before the cause was understood. Both were repaired, the commit amended, and the
 demonstrate-red rerun from a committed baseline. The rule this violated is Thomas's own: checkpoint
 before anything that can churn files. It is written here rather than quietly fixed.
+
+## Codex (glm-latest) approach review (2026-09-09, base main, HEAD 21c3d53)
+
+Artifact: `reviews/seed-corpus-ingest.approach.21c3d53.json` · round `21c3d53` · 11 commands executed, 1 REACH-reported.
+
+The REACH line is a false positive of the over-inclusive check: it flagged `/tsx` as a path
+outside the review root, but that string is part of the regex `/tsx|dotenv/` inside a
+`node -e` script inspecting the lockfile. Reported, not fatal, and read as designed.
+
+**Verdict.** 2026-09-09 07:18:39 PDT — The core shape is sound and close to what I would build: reviewed markdown as committed data, one directory-enumeration rule, zod-backed closed pillar and metadata contracts, reuse of the transactional document replacement, a thin sequential operator script, and a purpose-built TypeScript runner. I would not replace those pieces with a fetcher or a broader ingestion framework in this story. The two shape changes I would make are to give the full-corpus command an explicit reconciliation/removal path so the hosted store cannot retain withdrawn or re-homed documents, and to replace the private .env.local parser with the runtime's standard environment-file loader.
+
+### IMPORTANT
+
+**Full-corpus ingestion has no removal or reconciliation path** — reversibility: one-way · standing: nonstandard
+
+- **Locus:** scripts/ingest-corpus.ts:86-149; src/lib/ingest/pipeline.ts:24-33
+- **Claim:** The command is presented as ingesting the whole corpus, and the store interface explicitly supports withdrawing a source by replacing it with zero rows, but the operator script only iterates the current corpus paths. If a document is later removed, or its canonical URL is corrected, the old URL's chunks remain publicly retrievable after a successful full run. The README even describes empty-set replacement as the way to withdraw a source, yet no operator command reaches that path. This leaves the hosted store and the reviewed committed corpus with different lifecycle semantics.
+- **Alternative:** Make corpus synchronization an explicit operator operation: after every current document succeeds, list stored document URLs and call replaceDocument(url, []) for URLs absent from the current corpus, preferably behind a clearly named --prune flag so destructive behavior is opt-in. Report removals alongside chunk counts and exit non-zero on any failure. This can be implemented without a schema change by extending the thin store boundary with a list/remove operation.
+- **Win:** Eliminates the stale-source failure mode and centralizes the invariant that a successful full ingest leaves the hosted store equal to the committed, reviewed corpus; withdrawn or re-homed documents can no longer continue to ground answers.
+
+### NIT
+
+**A private .env.local parser reinvents standard environment loading** — reversibility: two-way · standing: nonstandard
+
+- **Locus:** scripts/ingest-corpus.ts:32-50
+- **Claim:** The script hand-rolls dotenv parsing: key matching, quote stripping, and shell-over-file precedence. This is a small but foundational parser that future operator scripts are likely to copy, and it can diverge from standard .env semantics for comments, escaping, and multiline values. The repository pins Node 26, where the runtime already provides environment-file loading that preserves pre-existing variables.
+- **Alternative:** Use process.loadEnvFile('.env.local') behind the existing existsSync check, raising the declared engine floor to the Node version that provides that API; if support for Node 20.9 must remain exact, add dotenv as a direct dependency instead. Either way, delete the private parser and keep the precedence requirement documented and tested through the chosen standard loader.
+- **Win:** Removes roughly fifteen lines of bespoke parsing, eliminates a private error-prone configuration format, and gives future scripts one standard loading path rather than a copied regex implementation.
