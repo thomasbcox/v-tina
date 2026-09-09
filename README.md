@@ -143,6 +143,22 @@ in one transaction: the database never keeps a stale tail from an earlier, longe
 Replacing a document with an empty set of chunks removes it, which is how a withdrawn source is
 taken out of the store.
 
+## Retrieval threshold
+
+A chunk counts as grounding for an answer only if its similarity to the question is above
+**0.73**. This is the same number the code declares (`DEFAULT_MATCH_THRESHOLD` in
+`src/lib/supabase.ts`) and a test holds the two equal.
+
+It is measured rather than assumed. The product specification names 0.7, but that figure predates
+the corpus and does not separate relevant from irrelevant for the embedding model in use. Measured
+against the seed corpus on 2026-09-08, the worst in-scope question's best hit scored 0.732 while
+the best out-of-scope question's hit scored 0.718, so 0.7 admits noise: a question about highway
+funding retrieved an unrelated passage of a homelessness order.
+
+The margin is 0.014 across eleven questions. That is thin, and it will move as the corpus grows,
+so re-measure when the corpus changes. Erring high is deliberate: refusing a question V-Tina could
+have grounded is a smaller harm than answering one it could not.
+
 ## Ingesting the corpus
 
 The seed corpus lives in `corpus/`, one markdown file per document. Every markdown file in that

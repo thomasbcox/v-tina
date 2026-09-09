@@ -20,6 +20,30 @@ import type { ChunkStore, NewPolicyChunk } from "./ingest/pipeline";
  *  to the migration's value so the documented maximum is the enforced one. */
 export const MAX_MATCH_COUNT = 50;
 
+/**
+ * The similarity below which a chunk is not considered grounding for an answer.
+ *
+ * **Measured, not assumed.** The specification names 0.7, but that number was
+ * written before any corpus existed and it does not discriminate for the
+ * embedding model the specification also chose. Against the seed corpus on
+ * 2026-09-08, over six in-scope and five out-of-scope questions:
+ *
+ * - worst in-scope question's best hit: 0.732
+ * - best out-of-scope question's hit:   0.718
+ *
+ * So 0.7 admits noise: a question about highway funding retrieved an unrelated
+ * passage of EO 23-02 at 0.718. This value sits above every measured
+ * out-of-scope hit and below every measured in-scope one.
+ *
+ * **The margin is 0.014 over eleven questions, which is thin, and it will move
+ * as the corpus grows.** Treat this as a measured starting point to re-check
+ * when the corpus changes, not a settled constant. Erring high is deliberate:
+ * refusing to answer a question it could have grounded is a smaller harm than
+ * answering one it could not. The README documents this number and a test holds
+ * the two equal.
+ */
+export const DEFAULT_MATCH_THRESHOLD = 0.73;
+
 /** The one method this module needs from a Supabase client, stated narrowly so
  *  a test can hand in a recording fake. A real `SupabaseClient` satisfies it. */
 export interface RpcClient {
