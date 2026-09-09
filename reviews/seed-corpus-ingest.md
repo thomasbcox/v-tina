@@ -104,8 +104,10 @@ bookkeeping and stay as numbered property assertions, per `AGENTS.md`.
    URL that resolves to the official document,
    **And** a genuine policy question on a subject the seed does not cover — Oregon transportation
    funding, which is real state policy and outside all three pillars — returns nothing at the
-   production similarity threshold of 0.7 that the specification names, rather than an unrelated
-   chunk. *(Amended at the step-7 consult, per design finding 3: the original wording asked for a
+   project's declared retrieval threshold, rather than an unrelated chunk. *(Amended again
+   2026-09-08 after measurement: the specification's 0.7 was tried first and FAILED this criterion,
+   returning an unrelated chunk at 0.718. The threshold is now `DEFAULT_MATCH_THRESHOLD`, measured
+   at 0.73 — Thomas chose option 1 at the threshold consult.)* *(Amended at the step-7 consult, per design finding 3: the original wording asked for a
    pillar absent from the seed while criterion 1 requires all three to be present, so the negative
    case could only have been satisfied by passing a nonsense pillar filter — which tests database
    filtering, not whether the product refuses to answer when it lacks grounding.)*
@@ -126,10 +128,19 @@ bookkeeping and stay as numbered property assertions, per `AGENTS.md`.
    `git diff --name-only main...HEAD -- . ':(exclude)reviews/'`
    and verify no files appear beyond `corpus/` (policy documents only), `CORPUS.md`,
    `src/lib/ingest/pillars.ts`, `src/lib/ingest/corpus.ts`, `src/lib/ingest/parse.ts`,
-   `scripts/ingest-corpus.ts`, `__tests__/`, `package.json`, `package-lock.json`, and
-   `README.md`. *(`src/lib/ingest/corpus.ts` was added to this list during implementation: the
+   `src/lib/supabase.ts`, `scripts/ingest-corpus.ts`, `__tests__/`, `package.json`,
+   `package-lock.json`, and `README.md`. *(`src/lib/ingest/corpus.ts` was added during
+   implementation so the ingest script and the corpus tests share one rule for what counts as a
+   document — design finding 1 was about exactly those two extents drifting. `src/lib/supabase.ts`
+   was added when Thomas adopted a measured retrieval threshold, which lives beside the result-count
+   ceiling it belongs with.)* *(`src/lib/ingest/corpus.ts` was added to this list during implementation: the
    ingest script and the corpus tests must agree on which files are documents, and design finding
    1 was precisely about those two extents drifting. One exported rule, two consumers.)*
+
+10. The retrieval threshold is a single declared constant, and the README documents that same
+    number, equal in both directions. *(Added 2026-09-08 when Thomas adopted a measured threshold;
+    it is the same hold-the-docs-equal pattern the domain allowlist and the pillar list already
+    use, applied to the number that decides when the product refuses to answer.)*
 
 ## Test notes
 
@@ -143,6 +154,7 @@ bookkeeping and stay as numbered property assertions, per `AGENTS.md`.
 | 6 | `Small` | Two comparisons, both directions: every corpus document's pillar against the constant, and the README's documented list against the constant, parsed from the README's own text rather than read from the constant it is compared to. Includes the empty case: the test fails if the README section yields no pillars. |
 | 7 | `Small` | Compare the set of `.md` files in `corpus/` against the set of rows parsed from `CORPUS.md`, in both directions. Assert each row carries a retrieval date and a checksum of exactly 64 lowercase hex characters, and that its source URL is a document URL on an allowed host rather than a bare origin or a directory root. The extents come from the directory and the manifest, never from one another. Includes the empty case: the test fails if the manifest parses to no rows. |
 | 8 | `reviewer` | Read every configuration read in the script — literal `process.env`, the `env.ts` accessors, and any dynamic or indexed access — and confirm each key is already declared. The existing `.env.example` completeness test fails if `env.ts` grows an undocumented key. |
+| 10 | `Small` | Parse the bolded figure from the README's own retrieval-threshold section and compare it to `DEFAULT_MATCH_THRESHOLD`, plus assert the constant sits above the measured out-of-scope noise ceiling of 0.718, so reverting to the specification's 0.7 fails. Includes the empty case: the test fails if the section yields no figure. |
 | 9 | `reviewer` | Run the enumerated diff command and compare against the listed paths, and read what landed in each allowed directory to confirm it is this story's work and nothing else's. |
 
 ### Regressions (ratified list — sourced from the step-6 design review)
@@ -190,7 +202,7 @@ Criteria 1, 6 and 7 name a size, so step 9 must demonstrate red against their en
 ## Loop record
 
 - frame/6 — ran (codex on glm-latest, 3 findings, 9 regressions) → reviews/seed-corpus-ingest.design.c246570.json
-- frame/9 — demonstrated red for every ratified regression on the size-bearing criteria (AC1, AC6, AC7); baseline green, each regression red, restored green. AC2's faithfulness verification is recorded below. **AC3, AC4 and AC5 are BLOCKED**: the estate-wide `FIREWORKS_API_KEY` is rejected by Fireworks as invalid, so no live ingestion has run.
+- frame/9 — demonstrated red for every ratified regression on the size-bearing criteria (AC1, AC6, AC7) and for the added AC10; baseline green, each regression red, restored green. AC2 faithfulness verified by hand; AC3, AC4 and AC5 verified live against the hosted project after Thomas supplied a working Fireworks key. AC5 failed first at the specification's 0.7 threshold and passes at the measured 0.73 he adopted.
 - review/6 — not yet reached
 - review/8 — not yet reached
 - close/3b — not yet reached
@@ -435,25 +447,17 @@ re-inserted through the transactional replacement, rather than skipped because i
 present. That skip-and-report shortcut is exactly the ratified AC4 regression, and the id
 comparison is what falsifies it.
 
-### AC5 — real retrieval (manual, 2026-09-08) — PARTIAL, the negative case FAILS
+### AC5 — real retrieval (manual, 2026-09-08) — PASS at the measured threshold
 
 Questions were paraphrased rather than quoting the documents, embedded with the query task prefix,
 and passed through the real boundary function using **only the public key**.
 
-**The positive half passes, convincingly.** Each in-scope question returned chunks from exactly the
-right documents, and every citation resolves to the official source:
+**First attempt, at the specification's 0.7: FAILED.** "How is Oregon paying to repair its highways
+and bridges?" returned an unrelated passage of EO 23-02 at similarity 0.718. The criterion requires
+zero rows. That failure is kept in this record rather than erased, because it is what produced the
+threshold decision.
 
-| Question | Top hits |
-|---|---|
-| people sleeping outside without shelter | EO 24-02 and EO 23-02, the homelessness emergency orders |
-| someone caught carrying a small amount of drugs | Measure 110, SB 755, HB 4002 |
-| helping young children learn to read | HB 3198, five chunks, all Early Literacy Success Initiative |
-
-**The negative half fails.** "How is Oregon paying to repair its highways and bridges?" returned a
-chunk at similarity **0.718**, above the specification's 0.7 threshold. The chunk is an unrelated
-passage of EO 23-02 about agency coordination. The criterion requires zero rows.
-
-**Why, with measurements.** Across six in-scope and five out-of-scope questions:
+**Measurement across six in-scope and five out-of-scope questions:**
 
 | | value |
 |---|---|
@@ -461,14 +465,51 @@ passage of EO 23-02 about agency coordination. The criterion requires zero rows.
 | noise ceiling, best out-of-scope hit | 0.718 |
 | separation | 0.014 |
 
-The two populations do separate, but **the specification's 0.7 threshold sits below the noise
-ceiling**, so it cannot discriminate for this embedding model. `nomic-embed-text` with its
-task prefixes produces cosine similarities in a narrow band, which the specification's number does
-not account for. Out-of-scope questions otherwise scored 0.627 to 0.677; the transportation
-question is the hardest case because emergency orders discuss funding and infrastructure.
+The populations separate, but the specification's 0.7 sits below the noise ceiling, so it cannot
+discriminate for this embedding model. Other out-of-scope questions scored 0.627 to 0.677;
+transportation is the hardest case because emergency orders discuss funding and infrastructure.
 
-**This is a decision for Thomas, not a silent fix.** The threshold governs when the product refuses
-to answer for lack of grounding, which is its central promise, and every later workstream inherits
-it. It is recorded here unresolved rather than papered over by adjusting the number and re-running
-until the check passed.
+**Thomas's decision (option 1):** adopt a measured threshold as the project default.
+`DEFAULT_MATCH_THRESHOLD = 0.73` now sits above every measured out-of-scope hit and below every
+measured in-scope one, documented in the README with the evidence and held equal by criterion 10's
+test.
 
+**Re-run at 0.73 — all eleven cases pass:**
+
+| Expectation | Question | Result |
+|---|---|---|
+| grounded | people sleeping outside without shelter | 1 hit, EO 24-02, 0.732 |
+| grounded | someone caught carrying a small amount of drugs | 5 hits, Measure 110, 0.764 |
+| grounded | helping young children learn to read | 4 hits, HB 3198, 0.744 |
+| grounded | rules about phones in classrooms | 1 hit, EO 25-09, 0.733 |
+| grounded | fentanyl downtown | 2 hits, EO 24-07, 0.772 |
+| grounded | getting more homes built | 4 hits, EO 23-04, 0.802 |
+| refuse | highway and bridge funding | 0 hits |
+| refuse | commercial salmon fishing | 0 hits |
+| refuse | wildfire smoke warnings | 0 hits |
+| refuse | electric vehicle charging | 0 hits |
+| refuse | last Oregon Ducks game | 0 hits |
+
+Every in-scope question retrieved the correct document for its pillar, and every citation resolves
+to the official source. **Two cases sit right on the edge**: the shelter question at 0.732 and the
+classroom-phones question at 0.733, each returning exactly one chunk against a 0.73 threshold. The
+margin is real but thin, which is why the constant, the README and this record all say to
+re-measure as the corpus grows.
+
+### Demonstrate red — criterion 10
+
+| Ratified regression | Gate | What failed |
+|---|---|---|
+| baseline, nothing modified | green | 181 tests |
+| the code reverts to the specification's 0.7 | **red** | `states exactly the threshold the code uses`, and `uses a threshold above the measured out-of-scope noise ceiling` |
+| the README states a different number than the code | **red** | `states exactly the threshold the code uses` |
+| restored | green | 181 tests |
+
+### A process note, recorded because it cost real work
+
+The first demonstrate-red run for criterion 10 was done against **uncommitted** work, and
+`git checkout -- <path>` restored the files to their last committed state, discarding the new
+constant and the README section entirely. The gate then failed for an unrelated reason and a red
+commit was made before the cause was understood. Both were repaired, the commit amended, and the
+demonstrate-red rerun from a committed baseline. The rule this violated is Thomas's own: checkpoint
+before anything that can churn files. It is written here rather than quietly fixed.
