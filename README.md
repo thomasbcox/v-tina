@@ -101,6 +101,17 @@ list in the code when the corpus needs another official domain, and this section
 - `oregon.gov`
 - `oregonlegislature.gov`
 
+### Policy pillars
+
+Every document belongs to exactly one pillar, and retrieval can filter by it. These are Governor
+Kotek's three stated priorities. This is the same list the code declares (`POLICY_PILLARS` in
+`src/lib/ingest/pillars.ts`) and a test holds the two equal, so this section cannot drift from what
+ingestion accepts. Adding a pillar means editing the constant and this section together.
+
+- `housing-and-homelessness`
+- `behavioral-health`
+- `education`
+
 ### Frontmatter reference
 
 Every document carries all five fields. Ties on retrieval similarity are broken by `kind` (an
@@ -111,7 +122,7 @@ executive document outranks legislative history) and then by `date`, most recent
 | `title` | The document's title as it should appear in a citation, e.g. `EO 23-02` |
 | `date` | The **as-of date**, `YYYY-MM-DD`: the date the content is current as of — an order's signing date, a revised page's last revision |
 | `url` | The document's canonical URL on an allowed domain |
-| `pillar` | The policy pillar the document belongs to |
+| `pillar` | One of the policy pillars listed above |
 | `kind` | `executive` (the Governor's own files) or `legislative` (bills, legislative history) |
 
 ```markdown
@@ -131,6 +142,30 @@ ends, so that each chunk is a coherent passage. Re-ingesting a document replaces
 in one transaction: the database never keeps a stale tail from an earlier, longer version.
 Replacing a document with an empty set of chunks removes it, which is how a withdrawn source is
 taken out of the store.
+
+## Ingesting the corpus
+
+The seed corpus lives in `corpus/`, one markdown file per document. Every markdown file in that
+directory is a policy document; there is no reserved name. `CORPUS.md` at the repository root is
+the provenance manifest: one row per document giving its source URL, the date it was retrieved and
+the SHA-256 of the source file as retrieved, so anyone can fetch the same source and check the
+committed text against it. A test holds the manifest and the directory equal in both directions.
+
+```bash
+npm run ingest -- --dry-run
+```
+
+Parses and chunks every document with no network calls and no credentials, and reports the chunk
+count each would produce. This is how to check the corpus offline.
+
+```bash
+npm run ingest
+```
+
+Embeds and stores the whole corpus. Needs `.env.local` with the Fireworks key and the Supabase
+service-role key. Each document replaces its own chunks in one transaction, so re-running is safe
+and leaves no stale text from an earlier version. Add `--file corpus/<name>.md` to ingest one
+document. The command reports every document's outcome and exits non-zero if any failed.
 
 ## Database
 

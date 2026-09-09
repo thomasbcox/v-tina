@@ -125,8 +125,11 @@ bookkeeping and stay as numbered property assertions, per `AGENTS.md`.
 9. Scope containment: run
    `git diff --name-only main...HEAD -- . ':(exclude)reviews/'`
    and verify no files appear beyond `corpus/` (policy documents only), `CORPUS.md`,
-   `src/lib/ingest/pillars.ts`, `src/lib/ingest/parse.ts`, `scripts/ingest-corpus.ts`,
-   `__tests__/`, `package.json`, `package-lock.json`, and `README.md`.
+   `src/lib/ingest/pillars.ts`, `src/lib/ingest/corpus.ts`, `src/lib/ingest/parse.ts`,
+   `scripts/ingest-corpus.ts`, `__tests__/`, `package.json`, `package-lock.json`, and
+   `README.md`. *(`src/lib/ingest/corpus.ts` was added to this list during implementation: the
+   ingest script and the corpus tests must agree on which files are documents, and design finding
+   1 was precisely about those two extents drifting. One exported rule, two consumers.)*
 
 ## Test notes
 
