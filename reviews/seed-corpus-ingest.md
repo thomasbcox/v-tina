@@ -234,7 +234,7 @@ Re-review after the round-1 redesign. Base `21c3d53`; both approved fixes plus t
 - frame/6 — ran (codex on glm-latest, 3 findings, 9 regressions) → reviews/seed-corpus-ingest.design.c246570.json
 - frame/9 — demonstrated red for every ratified regression on the size-bearing criteria (AC1, AC6, AC7) and for the added AC10; baseline green, each regression red, restored green. AC2 faithfulness verified by hand; AC3, AC4 and AC5 verified live against the hosted project after Thomas supplied a working Fireworks key. AC5 failed first at the specification's 0.7 threshold and passes at the measured 0.73 he adopted.
 - review/6 — round 2: ran (codex on glm-latest, 3 findings) → reviews/seed-corpus-ingest.approach.ec832be.json
-- review/8 — not yet reached
+- review/8 — n/a — the approach gate short-circuited round 2: Thomas approved three shape-changing fixes, so the correctness pass does not run on a shape that is about to change.
 - close/3b — no activation (no guard-hook block and no `review_runner.py` refusal to promote this session; the round's REACH line was a reported-not-fatal false positive, which is the documented behaviour of an over-inclusive check rather than a novel finding. This repo has no `install.sh` to drift-check, no `BACKLOG.md` and no `.aar/` register.)
 - close/4 — presented: re-review only. Both approved fixes were approach/redesign changes, so per the loop's fork rule merge is not offered this round; the branch returns to `/review` for a fresh approach pass on the new shape.
 
@@ -688,3 +688,34 @@ Artifact: `reviews/seed-corpus-ingest.approach.ec832be.json` · round `ec832be` 
 
 **Claim check.** Finding 3 verified directly: `package.json` declares `>=20.12.0` while the
 lockfile's root package still records `>=20.9.0`. The mismatch is real.
+
+## Decisions (2026-09-09, round 2)
+
+Thomas's call per finding, round `ec832be`: *"fix all."*
+
+**Approach (glm-latest)**
+
+- **Reconciliation pagination infers completeness instead of asking for it** (IMPORTANT, two-way,
+  kludgy): **FIX.** Replace the offset-and-short-page inference with keyset pagination ordered by
+  `url`, carrying the last URL as a cursor and continuing until a genuinely empty page. The current
+  code encodes an assumption about someone else's server configuration into the step that deletes:
+  a project with a row cap below `URL_PAGE_SIZE` returns a short page that is not the last, and the
+  truncated list would drive deletion of live documents. Offsets also have no stable order under
+  concurrent writes.
+- **The destructive precondition is not owned by the reconciliation operation** (IMPORTANT,
+  one-way, nonstandard): **FIX.** The opt-in, real-run and refuse-on-failure guards Thomas approved
+  stay exactly as decided, but move from procedural checks inside `main` into one reconciliation
+  operation that requires a **validated complete corpus** before it lists or removes anything.
+  Parse the whole corpus first; refuse an empty corpus and refuse duplicate canonical URLs — the
+  latter is a gap neither the author nor the previous round named, where two corpus files sharing
+  one URL silently overwrite each other while the run still reports clean. The exported set
+  difference must stop being usable as a raw deletion plan, because future corpus tooling will
+  import it without inheriting script-local checks.
+- **The lockfile still advertises the old Node floor** (IMPORTANT, two-way, nonstandard): **FIX.**
+  Regenerate the lockfile so its root metadata matches `package.json`. **Verified directly before
+  accepting**: `package.json` declares `>=20.12.0` while the lockfile records `>=20.9.0`, so a Node
+  20.9–20.11 environment installs without warning and fails only when the ingest command calls
+  `process.loadEnvFile`.
+
+**Gate.** All three are shape-changing, so the correctness pass does **not** run this round — the
+second consecutive redesign on this story. The branch returns for a third approach pass.
