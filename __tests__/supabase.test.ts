@@ -2,23 +2,44 @@ import { describe, expect, it } from "vitest";
 import { EMBEDDING_DIMENSIONS } from "../src/lib/embeddings";
 import type { NewPolicyChunk } from "../src/lib/ingest/pipeline";
 import {
+  URL_PAGE_SIZE,
   createSupabaseChunkStore,
   createSupabaseClient,
   queryPolicyChunks,
   type MatchRow,
   type RpcClient,
+  type StoreClient,
 } from "../src/lib/supabase";
 
-/** Records every RPC and answers with whatever the test hands it. */
-function fakeClient(answer: { data: unknown; error: { message: string } | null }) {
+/** Records every RPC and answers with whatever the test hands it. `pages`, when
+ *  given, answers the paginated table read one page per `.range()` call. */
+function fakeClient(
+  answer: { data: unknown; error: { message: string } | null },
+  pages: { data: unknown; error: { message: string } | null }[] = [],
+) {
   const calls: { fn: string; args: Record<string, unknown> | undefined }[] = [];
-  const client: RpcClient = {
+  const ranges: [number, number][] = [];
+  const client: StoreClient = {
     rpc(fn, args) {
       calls.push({ fn, args });
       return Promise.resolve(answer);
     },
+    from() {
+      return {
+        select() {
+          return {
+            range(from: number, to: number) {
+              ranges.push([from, to]);
+              return Promise.resolve(
+                pages[ranges.length - 1] ?? { data: [], error: null },
+              );
+            },
+          };
+        },
+      };
+    },
   };
-  return { client, calls };
+  return { client, calls, ranges };
 }
 
 const embedding = Array.from({ length: EMBEDDING_DIMENSIONS }, (_, i) => i / 1000);
@@ -148,5 +169,66 @@ describe("createSupabaseChunkStore", () => {
     await expect(
       createSupabaseChunkStore(odd.client).replaceDocument("u", rows),
     ).rejects.toThrow(/row count/);
+  });
+});
+
+describe("listDocumentUrls — the list that drives deletion", () => {
+  const page = (urls: string[]) => ({ data: urls.map((url) => ({ url })), error: null });
+
+  it("returns each distinct document url once, sorted", async () => {
+    const { client } = fakeClient({ data: null, error: null }, [
+      page(["https://oregon.gov/b", "https://oregon.gov/a", "https://oregon.gov/b"]),
+    ]);
+    expect(await createSupabaseChunkStore(client).listDocumentUrls()).toEqual([
+      "https://oregon.gov/a",
+      "https://oregon.gov/b",
+    ]);
+  });
+
+  // The whole point: a caller of this list DELETES what is missing from it, so a
+  // truncated read would withdraw live documents.
+  it("pages until a short page, so a full first page is never mistaken for the whole table", async () => {
+    const full = Array.from({ length: URL_PAGE_SIZE }, () => "https://oregon.gov/a");
+    const { client, ranges } = fakeClient({ data: null, error: null }, [
+      page(full),
+      page(["https://oregon.gov/z"]),
+    ]);
+    const urls = await createSupabaseChunkStore(client).listDocumentUrls();
+    expect(urls).toEqual(["https://oregon.gov/a", "https://oregon.gov/z"]);
+    expect(ranges).toEqual([
+      [0, URL_PAGE_SIZE - 1],
+      [URL_PAGE_SIZE, URL_PAGE_SIZE * 2 - 1],
+    ]);
+  });
+
+  it("does not stop on a full page that contributed no new url", async () => {
+    const same = Array.from({ length: URL_PAGE_SIZE }, () => "https://oregon.gov/a");
+    const { client } = fakeClient({ data: null, error: null }, [
+      page(same),
+      page(same),
+      page(["https://oregon.gov/last"]),
+    ]);
+    expect(await createSupabaseChunkStore(client).listDocumentUrls()).toEqual([
+      "https://oregon.gov/a",
+      "https://oregon.gov/last",
+    ]);
+  });
+
+  it("surfaces a database error rather than returning a short list", async () => {
+    const { client } = fakeClient({ data: null, error: null }, [
+      { data: null, error: { message: "denied" } },
+    ]);
+    await expect(
+      createSupabaseChunkStore(client).listDocumentUrls(),
+    ).rejects.toThrow("denied");
+  });
+
+  it("refuses rows of an unexpected shape", async () => {
+    const { client } = fakeClient({ data: null, error: null }, [
+      { data: [{ href: "https://oregon.gov/a" }], error: null },
+    ]);
+    await expect(
+      createSupabaseChunkStore(client).listDocumentUrls(),
+    ).rejects.toThrow(/unexpected shape/);
   });
 });

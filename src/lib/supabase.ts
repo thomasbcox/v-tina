@@ -53,6 +53,26 @@ export interface RpcClient {
   ): PromiseLike<{ data: unknown; error: { message: string } | null }>;
 }
 
+/** The table read the reconciliation step needs, stated as narrowly as the RPC
+ *  surface above so a test can hand in a recording fake. */
+export interface TableClient {
+  from(table: string): {
+    select(columns: string): {
+      range(
+        from: number,
+        to: number,
+      ): PromiseLike<{ data: unknown; error: { message: string } | null }>;
+    };
+  };
+}
+
+export type StoreClient = RpcClient & TableClient;
+
+/** PostgREST caps a response at a server-side maximum (1000 by default), so the
+ *  URL listing pages explicitly. Reading only the first page would make every
+ *  document beyond it look withdrawn, and the caller of that list DELETES. */
+export const URL_PAGE_SIZE = 1000;
+
 export function createSupabaseClient(url: string, key: string): SupabaseClient {
   // No user sessions anywhere in V-Tina; nothing to persist.
   return createClient(url, key, { auth: { persistSession: false } });
@@ -143,8 +163,29 @@ function toStoredRow(row: NewPolicyChunk) {
 /** The ingestion pipeline's store, backed by the transactional
  *  `replace_document_chunks` function. Needs a service-role client: the public
  *  roles can neither write the table nor execute the function. */
-export function createSupabaseChunkStore(client: RpcClient): ChunkStore {
+export function createSupabaseChunkStore(client: StoreClient): ChunkStore {
   return {
+    async listDocumentUrls() {
+      const urls = new Set<string>();
+      for (let start = 0; ; start += URL_PAGE_SIZE) {
+        const { data, error } = await client
+          .from("policy_chunks")
+          .select("url")
+          .range(start, start + URL_PAGE_SIZE - 1);
+        if (error) throw new Error(`listing document urls failed: ${error.message}`);
+        const rows = z.array(z.object({ url: z.string() })).safeParse(data);
+        if (!rows.success) {
+          throw new Error(
+            `listing document urls returned rows of an unexpected shape:\n${z.prettifyError(rows.error)}`,
+          );
+        }
+        for (const row of rows.data) urls.add(row.url);
+        // A short page is the last page. Never break early on an empty set of
+        // NEW urls: many chunks share one document, so a full page can add none.
+        if (rows.data.length < URL_PAGE_SIZE) break;
+      }
+      return [...urls].sort();
+    },
     async replaceDocument(url, rows) {
       const { data, error } = await client.rpc("replace_document_chunks", {
         p_url: url,

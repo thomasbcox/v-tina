@@ -29,6 +29,9 @@ function fakeEmbedder(options: { failOnCall?: number } = {}) {
 function fakeStore(options: { confirm?: (rows: NewPolicyChunk[]) => number; fail?: boolean } = {}) {
   const calls: { url: string; rows: NewPolicyChunk[] }[] = [];
   const store: ChunkStore = {
+    async listDocumentUrls() {
+      return [...new Set(calls.map((c) => c.url))].sort();
+    },
     async replaceDocument(url, rows) {
       calls.push({ url, rows });
       if (options.fail) throw new Error("database unavailable");

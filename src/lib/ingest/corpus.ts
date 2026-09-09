@@ -19,3 +19,20 @@ export function corpusDocumentPaths(dir: string = CORPUS_DIR): string[] {
     .sort()
     .map((name) => join(dir, name));
 }
+
+/**
+ * Which stored documents are no longer in the committed corpus.
+ *
+ * Pure, and deliberately separate from the operator script so the rule that
+ * decides what gets DELETED is unit-tested rather than buried in a command.
+ * Comparison is by exact source URL: a document whose URL is corrected counts
+ * as a removal of the old URL and an ingest of the new one, which is the
+ * behaviour that keeps the store equal to the corpus.
+ */
+export function documentsToRemove(
+  storedUrls: readonly string[],
+  corpusUrls: readonly string[],
+): string[] {
+  const keep = new Set(corpusUrls);
+  return [...new Set(storedUrls)].filter((url) => !keep.has(url)).sort();
+}
