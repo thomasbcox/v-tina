@@ -406,18 +406,69 @@ They come from machine-exact text layers, their structure was checked at the sta
 end, and no unrecognised token survives in them. A word-by-word reading of 700,000 characters of
 statute was not done and is not claimed.
 
-### AC3, AC4, AC5 — blocked
+### AC3 — live ingestion (manual, 2026-09-08) — PASS
 
-Live ingestion has not run. The `FIREWORKS_API_KEY` exported in `~/.zshrc` is rejected by
-Fireworks with `The API key you provided is invalid`, confirmed against the models endpoint and
-the embeddings endpoint. It is 25 characters, which is short for a Fireworks key, and the same
-variable is present but commented out in `~/.zshenv`. Codex authenticates to Fireworks
-successfully during reviews using its own `experimental_bearer_token` in `~/.codex/config.toml`,
-so a working credential exists on this machine, but copying a credential from one tool's
-configuration into another's is not something this session will do. **A valid key is needed from
-Thomas before criteria 3, 4 and 5 can be verified.**
+Thomas replaced the stale key; the new one authenticates and the embeddings endpoint returns a
+768-dimension vector for the model the specification names, which independently confirms the
+dimension the schema declares.
 
-What the ingest script *has* demonstrated, offline: it reads all eleven documents, parses and
-chunks them into 1,375 chunks with no network and no credentials under `--dry-run`, and on the
-failed live attempt it reported every document's outcome individually and exited non-zero naming
-each one. That is the failure half of criterion 3, observed for real rather than simulated.
+First run: **10 of 11 documents ingested, 989 chunks**, and `corpus/hb-4002.md` failed on a
+transient `HTTP 503` from Fireworks. That was not staged — it is the criterion's failure half
+observed for real. The command reported each document's outcome on its own line, printed the
+totals, listed the failure again under `failed:`, and exited non-zero naming the document. The
+retry through `--file corpus/hb-4002.md` succeeded with 386 chunks.
+
+Database after ingestion: **1,375 chunks across 11 distinct documents, zero duplicate
+`(url, chunk_index)` pairs**, all three pillars and both document kinds present. That total equals
+the `--dry-run` count exactly, so nothing was lost or added between chunking and storage.
+
+**Observed, not fixed:** Fireworks returned `503` twice during this story's runs. The embedder has
+no retry, so a transient upstream failure ends a document's ingestion. That is honest behaviour
+rather than a hidden failure, and the operator can re-run, but a bounded retry is a real candidate
+for a later story. Out of scope here; recorded so it is not rediscovered.
+
+### AC4 — idempotency (manual, 2026-09-08) — PASS
+
+Row count before the second full run: 1,375. After: 1,375, with zero duplicate pairs. The
+**row ids all changed**, which is the point: it proves each document was genuinely deleted and
+re-inserted through the transactional replacement, rather than skipped because its URL was already
+present. That skip-and-report shortcut is exactly the ratified AC4 regression, and the id
+comparison is what falsifies it.
+
+### AC5 — real retrieval (manual, 2026-09-08) — PARTIAL, the negative case FAILS
+
+Questions were paraphrased rather than quoting the documents, embedded with the query task prefix,
+and passed through the real boundary function using **only the public key**.
+
+**The positive half passes, convincingly.** Each in-scope question returned chunks from exactly the
+right documents, and every citation resolves to the official source:
+
+| Question | Top hits |
+|---|---|
+| people sleeping outside without shelter | EO 24-02 and EO 23-02, the homelessness emergency orders |
+| someone caught carrying a small amount of drugs | Measure 110, SB 755, HB 4002 |
+| helping young children learn to read | HB 3198, five chunks, all Early Literacy Success Initiative |
+
+**The negative half fails.** "How is Oregon paying to repair its highways and bridges?" returned a
+chunk at similarity **0.718**, above the specification's 0.7 threshold. The chunk is an unrelated
+passage of EO 23-02 about agency coordination. The criterion requires zero rows.
+
+**Why, with measurements.** Across six in-scope and five out-of-scope questions:
+
+| | value |
+|---|---|
+| signal floor, worst in-scope best hit | 0.732 |
+| noise ceiling, best out-of-scope hit | 0.718 |
+| separation | 0.014 |
+
+The two populations do separate, but **the specification's 0.7 threshold sits below the noise
+ceiling**, so it cannot discriminate for this embedding model. `nomic-embed-text` with its
+task prefixes produces cosine similarities in a narrow band, which the specification's number does
+not account for. Out-of-scope questions otherwise scored 0.627 to 0.677; the transportation
+question is the hardest case because emergency orders discuss funding and infrastructure.
+
+**This is a decision for Thomas, not a silent fix.** The threshold governs when the product refuses
+to answer for lack of grounding, which is its central promise, and every later workstream inherits
+it. It is recorded here unresolved rather than papered over by adjusting the number and re-running
+until the check passed.
+
