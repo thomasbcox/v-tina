@@ -558,3 +558,29 @@ outside the review root, but that string is part of the regex `/tsx|dotenv/` ins
 - **Claim:** The script hand-rolls dotenv parsing: key matching, quote stripping, and shell-over-file precedence. This is a small but foundational parser that future operator scripts are likely to copy, and it can diverge from standard .env semantics for comments, escaping, and multiline values. The repository pins Node 26, where the runtime already provides environment-file loading that preserves pre-existing variables.
 - **Alternative:** Use process.loadEnvFile('.env.local') behind the existing existsSync check, raising the declared engine floor to the Node version that provides that API; if support for Node 20.9 must remain exact, add dotenv as a direct dependency instead. Either way, delete the private parser and keep the precedence requirement documented and tested through the chosen standard loader.
 - **Win:** Removes roughly fifteen lines of bespoke parsing, eliminates a private error-prone configuration format, and gives future scripts one standard loading path rather than a copied regex implementation.
+
+## Decisions (2026-09-09)
+
+Thomas's call per finding, round `21c3d53`: *"fix both as you recommend."*
+
+**Approach (glm-latest)**
+
+- **Full-corpus ingestion has no removal or reconciliation path** (IMPORTANT, one-way,
+  nonstandard): **FIX.** After every current document succeeds, the command lists the stored
+  document URLs and removes any the committed corpus no longer contains, through the existing
+  empty-set replacement. The removal is **opt-in behind a named flag** so nothing destructive
+  happens by default, removals are reported alongside chunk counts, and any failure exits
+  non-zero. This needs a list operation on the thin store boundary; no schema change. Taken
+  because the product's premise is that every answer traces to a *current* official document, so a
+  withdrawn or re-homed source that keeps grounding answers is the failure this product can least
+  afford — and the lifecycle contract set here is the one every later corpus tool inherits.
+- **A private `.env.local` parser reinvents standard environment loading** (NIT, two-way,
+  nonstandard): **FIX.** Replace the hand-rolled parser with the runtime's own environment-file
+  loader and raise `engines.node` to the version that provides it. **The shell-wins precedence is
+  a requirement, not an incidental**: the Fireworks key is declared estate-wide in the shell and a
+  stale file copy must never override it, so the loader's actual precedence is verified before the
+  hand-rolled one is deleted, not assumed.
+
+**Gate.** Both are shape-changing fixes, so per the loop's approach gate the correctness pass does
+**not** run this round. The branch returns for a fresh review after the fixes land, and that round
+re-runs the approach pass on the new shape.
