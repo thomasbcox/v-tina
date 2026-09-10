@@ -244,7 +244,7 @@ Re-review after the round-2 redesign. Base `ec832be`.
 
 - frame/6 — ran (codex on glm-latest, 3 findings, 9 regressions) → reviews/seed-corpus-ingest.design.c246570.json
 - frame/9 — demonstrated red for every ratified regression on the size-bearing criteria (AC1, AC6, AC7) and for the added AC10; baseline green, each regression red, restored green. AC2 faithfulness verified by hand; AC3, AC4 and AC5 verified live against the hosted project after Thomas supplied a working Fireworks key. AC5 failed first at the specification's 0.7 threshold and passes at the measured 0.73 he adopted.
-- review/6 — not yet reached
+- review/6 — round 3: ran (codex on glm-latest, 2 findings) → reviews/seed-corpus-ingest.approach.012dba3.json
 - review/8 — not yet reached
 - close/3b — no activation (round 2: no guard-hook block and no `review_runner.py` refusal to promote; the repo has no `install.sh` to drift-check, no `BACKLOG.md` and no `.aar/` register).
 - close/4 — round 2: presented re-review only. All three approved fixes were approach/redesign changes, so per the fork rule merge is not offered; the branch returns to `/review`. (Round 1 fork: Thomas chose re-review.)
@@ -798,3 +798,35 @@ documents.** The failures land on the large documents, which send batches of 64 
 requests are rejected. That sharpens the earlier note — the remedy is likely a smaller batch size
 *and* a bounded retry, not retry alone. Still out of scope here, and still a real candidate for its
 own story.
+
+## Codex (glm-latest) approach review — round 3 (2026-09-09, base ec832be, HEAD 012dba3)
+
+Artifact: `reviews/seed-corpus-ingest.approach.012dba3.json` · round `012dba3` · 15 commands executed, 1 REACH-reported.
+
+The REACH line is again a false positive of the over-inclusive check: it could not resolve a
+`$(...)` construct in a command inspecting the global npm root, so it reported rather than
+cleared it. Reported, never fatal, and read as designed.
+
+**Verdict.** 2026-09-09 19:50:52 PDT — The keyset redesign is the right shape: ordering by the indexed url, advancing past duplicate cursor rows, and ending only on an empty page correctly removes the server-cap and offset assumptions; errors and malformed rows surface, and a concurrent insert behind the cursor can leave a stale document unpruned but cannot make a live corpus document look withdrawn. The Node floor is also synchronized. I would not yet call the destructive invariant unbypassable, though: CompleteCorpus.of validates a caller-chosen list rather than owning the corpus-directory load, and reconcileCorpus completes its destructive batch before the operator command can report individual removals. Fix those two boundaries; the rest is close to what I would build.
+
+### IMPORTANT
+
+**CompleteCorpus validates a list, not an unbypassable corpus extent** — reversibility: one-way · standing: nonstandard
+
+- **Locus:** src/lib/ingest/corpus.ts:44-68,80-102; scripts/ingest-corpus.ts:129-152
+- **Claim:** The private constructor does not own the invariant because public CompleteCorpus.of accepts any non-empty, duplicate-free list supplied by a caller. It proves list coherence, not that the entries are the complete corpus directory: future tooling can mint a CompleteCorpus from one document and pass it to the still-exported documentsToRemove or reconcileCorpus, withdrawing every other stored document. The operator script also builds the value from one read of each file and then re-reads and re-parses the files for ingestion, so a file changed between those passes can leave the deletion plan driven by a stale corpus snapshot.
+- **Alternative:** Make the only public construction path a loader bound to the existing enumeration rule, such as loadCompleteCorpus(dir = CORPUS_DIR): enumerate, read, and parse once; reject empty and duplicate-URL corpora; and return an opaque CompleteCorpus together with the loaded documents the same run will ingest. Make documentsToRemove module-private so reconcileCorpus is the only exported deletion operation, and keep --file unable to produce a CompleteCorpus.
+- **Win:** Closes the partial- and stale-corpus bypass that future tools can inherit, removes the exported raw deletion-plan API, and eliminates the second full read/parse of every document.
+
+**A partial reconciliation can destroy rows invisibly** — reversibility: two-way · standing: nonstandard
+
+- **Locus:** src/lib/ingest/corpus.ts:96-102; scripts/ingest-corpus.ts:181-200
+- **Claim:** reconcileCorpus performs every empty-set replacement before returning, while the script prints removed URLs only after the whole promise resolves. If the second or later replacement fails, earlier documents have already been withdrawn, but the top-level error handler prints only the database error: no removed URL, no partial count, and no summary. Each withdrawal is atomic, but the reconciliation batch is not, and its partial destructive state is unauditable from the command output.
+- **Alternative:** Keep reconcileCorpus as the sole deletion operation, but give it an optional onRemoved(url) progress callback and invoke it immediately after each store-confirmed withdrawal; the script prints and counts each removal as it happens and still propagates the first failure. This preserves the approved per-document transaction without adding a schema-wide delete RPC.
+- **Win:** No confirmed destructive write can be invisible; a failed batch reports exactly which documents were already withdrawn, making the partial state auditable and safely rerunnable.
+
+**What it confirmed fixed.** The keyset redesign is judged the right shape: ordering by the
+indexed URL, advancing past duplicate cursor rows, and ending only on an empty page removes
+both the server-cap and offset assumptions. It also names the residual honestly — a concurrent
+insert behind the cursor can leave a stale document unpruned, but cannot make a live corpus
+document look withdrawn, which is the safe direction. The Node floor is confirmed synchronized.

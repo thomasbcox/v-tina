@@ -1,0 +1,26 @@
+{
+  "verdict": "2026-09-09 19:50:52 PDT — The keyset redesign is the right shape: ordering by the indexed url, advancing past duplicate cursor rows, and ending only on an empty page correctly removes the server-cap and offset assumptions; errors and malformed rows surface, and a concurrent insert behind the cursor can leave a stale document unpruned but cannot make a live corpus document look withdrawn. The Node floor is also synchronized. I would not yet call the destructive invariant unbypassable, though: CompleteCorpus.of validates a caller-chosen list rather than owning the corpus-directory load, and reconcileCorpus completes its destructive batch before the operator command can report individual removals. Fix those two boundaries; the rest is close to what I would build.",
+  "regressions": [],
+  "findings": [
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "one-way",
+      "standing": "nonstandard",
+      "title": "CompleteCorpus validates a list, not an unbypassable corpus extent",
+      "locus": "src/lib/ingest/corpus.ts:44-68,80-102; scripts/ingest-corpus.ts:129-152",
+      "claim": "The private constructor does not own the invariant because public CompleteCorpus.of accepts any non-empty, duplicate-free list supplied by a caller. It proves list coherence, not that the entries are the complete corpus directory: future tooling can mint a CompleteCorpus from one document and pass it to the still-exported documentsToRemove or reconcileCorpus, withdrawing every other stored document. The operator script also builds the value from one read of each file and then re-reads and re-parses the files for ingestion, so a file changed between those passes can leave the deletion plan driven by a stale corpus snapshot.",
+      "alternative": "Make the only public construction path a loader bound to the existing enumeration rule, such as loadCompleteCorpus(dir = CORPUS_DIR): enumerate, read, and parse once; reject empty and duplicate-URL corpora; and return an opaque CompleteCorpus together with the loaded documents the same run will ingest. Make documentsToRemove module-private so reconcileCorpus is the only exported deletion operation, and keep --file unable to produce a CompleteCorpus.",
+      "win": "Closes the partial- and stale-corpus bypass that future tools can inherit, removes the exported raw deletion-plan API, and eliminates the second full read/parse of every document."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "A partial reconciliation can destroy rows invisibly",
+      "locus": "src/lib/ingest/corpus.ts:96-102; scripts/ingest-corpus.ts:181-200",
+      "claim": "reconcileCorpus performs every empty-set replacement before returning, while the script prints removed URLs only after the whole promise resolves. If the second or later replacement fails, earlier documents have already been withdrawn, but the top-level error handler prints only the database error: no removed URL, no partial count, and no summary. Each withdrawal is atomic, but the reconciliation batch is not, and its partial destructive state is unauditable from the command output.",
+      "alternative": "Keep reconcileCorpus as the sole deletion operation, but give it an optional onRemoved(url) progress callback and invoke it immediately after each store-confirmed withdrawal; the script prints and counts each removal as it happens and still propagates the first failure. This preserves the approved per-document transaction without adding a schema-wide delete RPC.",
+      "win": "No confirmed destructive write can be invisible; a failed batch reports exactly which documents were already withdrawn, making the partial state auditable and safely rerunnable."
+    }
+  ]
+}
