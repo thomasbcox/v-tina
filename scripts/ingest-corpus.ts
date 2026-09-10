@@ -117,6 +117,12 @@ async function main(): Promise<number> {
           embed: createFireworksEmbedder({
             apiKey: env.FIREWORKS_API_KEY,
             task: "document",
+            // Retries are announced, never silent: a degrading service is
+            // something the operator should see even when the run succeeds.
+            onRetry: ({ attempt, of, reason, delayMs }) =>
+              process.stdout.write(
+                `  retry ${attempt}/${of} in ${delayMs}ms — ${reason}\n`,
+              ),
           }),
           store: createSupabaseChunkStore(
             createSupabaseClient(
