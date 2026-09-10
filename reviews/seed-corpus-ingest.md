@@ -229,17 +229,31 @@ Re-review after the round-1 redesign. Base `21c3d53`; both approved fixes plus t
 | Standard environment loading | `scripts/ingest-corpus.ts` `loadLocalEnv` via `process.loadEnvFile`; `package.json` `engines.node` |
 | Documentation of both | `README.md` — prune section and the Node-version floor |
 
+## Build note (2026-09-09, round 3)
+
+Re-review after the round-2 redesign. Base `ec832be`.
+
+| Approved fix | Where |
+|---|---|
+| Keyset pagination for the deletion-driving catalogue | `src/lib/supabase.ts` `listDocumentUrls` and `TableClient`; tests in `__tests__/supabase.test.ts` |
+| Completeness as a type, not a habit | `src/lib/ingest/corpus.ts` `CompleteCorpus` (private constructor), `documentsToRemove`, `reconcileCorpus`; tests `__tests__/corpus-reconcile.test.ts` |
+| Validation moved before the work | `scripts/ingest-corpus.ts` — the whole corpus is validated at the start of every full run |
+| One authoritative Node floor | `package-lock.json` root metadata regenerated to match `package.json` |
+
 ## Loop record
 
 - frame/6 — ran (codex on glm-latest, 3 findings, 9 regressions) → reviews/seed-corpus-ingest.design.c246570.json
 - frame/9 — demonstrated red for every ratified regression on the size-bearing criteria (AC1, AC6, AC7) and for the added AC10; baseline green, each regression red, restored green. AC2 faithfulness verified by hand; AC3, AC4 and AC5 verified live against the hosted project after Thomas supplied a working Fireworks key. AC5 failed first at the specification's 0.7 threshold and passes at the measured 0.73 he adopted.
-- review/6 — round 2: ran (codex on glm-latest, 3 findings) → reviews/seed-corpus-ingest.approach.ec832be.json
-- review/8 — n/a — the approach gate short-circuited round 2: Thomas approved three shape-changing fixes, so the correctness pass does not run on a shape that is about to change.
+- review/6 — not yet reached
+- review/8 — not yet reached
 - close/3b — no activation (round 2: no guard-hook block and no `review_runner.py` refusal to promote; the repo has no `install.sh` to drift-check, no `BACKLOG.md` and no `.aar/` register).
 - close/4 — round 2: presented re-review only. All three approved fixes were approach/redesign changes, so per the fork rule merge is not offered; the branch returns to `/review`. (Round 1 fork: Thomas chose re-review.)
 
 **Earlier rounds of this story** (kept as prose: the record holds one line per step by design):
 
+- round 2 (`ec832be`, base `21c3d53`): review/6 — round 2: ran (codex on glm-latest, 3 findings) → reviews/seed-corpus-ingest.approach.ec832be.json; review/8 — n/a, the approach gate
+  short-circuited again on three approved shape-changing fixes; close/3b — no activation;
+  close/4 — presented re-review only, and he took it.
 - round 1 (`21c3d53`, base `main`): review/6 — ran (codex on glm-latest, 2 findings) → reviews/seed-corpus-ingest.approach.21c3d53.json; review/8 — n/a, the approach gate short-circuited the
   round because Thomas approved two shape-changing fixes; close/3b — no activation; close/4 —
   presented re-review only, and he took it.
