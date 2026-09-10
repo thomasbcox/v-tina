@@ -245,7 +245,7 @@ Re-review after the round-2 redesign. Base `ec832be`.
 - frame/6 — ran (codex on glm-latest, 3 findings, 9 regressions) → reviews/seed-corpus-ingest.design.c246570.json
 - frame/9 — demonstrated red for every ratified regression on the size-bearing criteria (AC1, AC6, AC7) and for the added AC10; baseline green, each regression red, restored green. AC2 faithfulness verified by hand; AC3, AC4 and AC5 verified live against the hosted project after Thomas supplied a working Fireworks key. AC5 failed first at the specification's 0.7 threshold and passes at the measured 0.73 he adopted.
 - review/6 — round 3: ran (codex on glm-latest, 2 findings) → reviews/seed-corpus-ingest.approach.012dba3.json
-- review/8 — not yet reached
+- review/8 — n/a — the approach gate short-circuited round 3: Thomas approved two shape-changing fixes, so the correctness pass does not run on a shape that is about to change.
 - close/3b — no activation (round 2: no guard-hook block and no `review_runner.py` refusal to promote; the repo has no `install.sh` to drift-check, no `BACKLOG.md` and no `.aar/` register).
 - close/4 — round 2: presented re-review only. All three approved fixes were approach/redesign changes, so per the fork rule merge is not offered; the branch returns to `/review`. (Round 1 fork: Thomas chose re-review.)
 
@@ -830,3 +830,27 @@ indexed URL, advancing past duplicate cursor rows, and ending only on an empty p
 both the server-cap and offset assumptions. It also names the residual honestly — a concurrent
 insert behind the cursor can leave a stale document unpruned, but cannot make a live corpus
 document look withdrawn, which is the safe direction. The Node floor is confirmed synchronized.
+
+## Decisions (2026-09-09, round 3)
+
+Thomas's call per finding, round `012dba3`: *"fix both."* He was also offered the alternative of
+cutting reconciliation from this story into its own, and chose to continue.
+
+**Approach (glm-latest)**
+
+- **`CompleteCorpus` validates a list, not an unbypassable corpus extent** (IMPORTANT, one-way,
+  nonstandard): **FIX.** The only public construction path becomes a loader bound to the
+  directory-enumeration rule: enumerate, read and parse **once**, refuse empty and duplicate-URL
+  corpora, and return the validated corpus together with the parsed documents the same run will
+  ingest. `documentsToRemove` becomes module-private so `reconcileCorpus` is the only exported
+  operation that can delete, and `--file` still cannot produce one. This also removes the second
+  full read and parse of every document, which is where the stale-snapshot window came from.
+- **A partial reconciliation can destroy rows invisibly** (IMPORTANT, two-way, nonstandard):
+  **FIX.** `reconcileCorpus` reports each withdrawal through a callback the moment the store
+  confirms it, so a batch that fails part-way names exactly which documents were already removed.
+  The first failure still propagates. Each withdrawal stays individually transactional; what
+  changes is that a confirmed destructive write can no longer be invisible.
+
+**Gate.** Both are shape-changing, so the correctness pass does **not** run this round — the third
+consecutive redesign on this story, all on the prune path. The branch returns for a fourth approach
+pass.
