@@ -249,17 +249,32 @@ Re-review after the round-2 redesign. Base `ec832be`.
 | Validation moved before the work | `scripts/ingest-corpus.ts` — the whole corpus is validated at the start of every full run |
 | One authoritative Node floor | `package-lock.json` root metadata regenerated to match `package.json` |
 
+## Build note (2026-09-10, round 4)
+
+Re-review after the round-3 redesign plus the approved scope addition. Base `012dba3`.
+
+| Change | Where |
+|---|---|
+| Corpus loading owns the destructive precondition | `src/lib/ingest/corpus.ts` `loadCompleteCorpus`, private `CompleteCorpus` construction, module-private `documentsToRemove`; tests `__tests__/corpus-reconcile.test.ts` |
+| Removals reported as each is confirmed | `src/lib/ingest/corpus.ts` `reconcileCorpus` `onRemoved`; `scripts/ingest-corpus.ts` prints per removal |
+| Loader reads and parses once; the script ingests what it read | `scripts/ingest-corpus.ts` |
+| **Scope addition:** bounded retry on transient embedding failures | `src/lib/embeddings.ts`; tests `__tests__/embeddings.test.ts`; reported by `scripts/ingest-corpus.ts` |
+
 ## Loop record
 
 - frame/6 — ran (codex on glm-latest, 3 findings, 9 regressions) → reviews/seed-corpus-ingest.design.c246570.json
 - frame/9 — demonstrated red for every ratified regression on the size-bearing criteria (AC1, AC6, AC7) and for the added AC10; baseline green, each regression red, restored green. AC2 faithfulness verified by hand; AC3, AC4 and AC5 verified live against the hosted project after Thomas supplied a working Fireworks key. AC5 failed first at the specification's 0.7 threshold and passes at the measured 0.73 he adopted. **Scope addition 2026-09-10:** criterion 11 (bounded retry) demonstrated red three ways against author-written regressions; baseline green, each red, restored green.
-- review/6 — round 3: ran (codex on glm-latest, 2 findings) → reviews/seed-corpus-ingest.approach.012dba3.json
-- review/8 — n/a — the approach gate short-circuited round 3: Thomas approved two shape-changing fixes, so the correctness pass does not run on a shape that is about to change.
+- review/6 — not yet reached
+- review/8 — not yet reached
 - close/3b — no activation (round 3: no guard-hook block and no `review_runner.py` refusal to promote; the repo has no `install.sh` to drift-check, no `BACKLOG.md` and no `.aar/` register).
 - close/4 — round 3: presented re-review only. Both approved fixes were approach/redesign changes, so merge is not offered. (Rounds 1 and 2: Thomas chose re-review each time.)
 
 **Earlier rounds of this story** (kept as prose: the record holds one line per step by design):
 
+- round 3 (`012dba3`, base `ec832be`): review/6 — round 3: ran (codex on glm-latest, 2 findings) → reviews/seed-corpus-ingest.approach.012dba3.json; review/8 — n/a, the approach gate
+  short-circuited on two approved shape-changing fixes; close/3b — no activation; close/4 —
+  presented re-review only, and he took it. A bounded retry was added mid-close on his
+  instruction, as a recorded scope addition.
 - round 2 (`ec832be`, base `21c3d53`): review/6 — round 2: ran (codex on glm-latest, 3 findings) → reviews/seed-corpus-ingest.approach.ec832be.json; review/8 — n/a, the approach gate
   short-circuited again on three approved shape-changing fixes; close/3b — no activation;
   close/4 — presented re-review only, and he took it.
