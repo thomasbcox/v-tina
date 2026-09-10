@@ -1,6 +1,7 @@
-import { readdirSync } from "node:fs";
-import { join } from "node:path";
-import type { ChunkStore } from "./pipeline";
+import { readFileSync, readdirSync } from "node:fs";
+import { join, relative } from "node:path";
+import type { ChunkStore, DocumentChunk } from "./pipeline";
+import { prepareDocument } from "./pipeline";
 
 /**
  * What counts as a corpus document — one rule, used by both the ingest script
@@ -29,29 +30,38 @@ export class IncompleteCorpusError extends Error {
 }
 
 /**
- * A corpus proven complete and coherent: at least one document, every document
- * parsed, and no two documents claiming the same canonical URL.
+ * A corpus proven complete and coherent: read from the corpus directory itself,
+ * every document parsed, and no two documents claiming the same canonical URL.
  *
  * **This type is the destructive precondition, not a comment about it.** Removal
  * is driven by "stored, but not in the corpus", so a partial, empty, or
  * duplicate-URL corpus produces a deletion plan that looks valid and withdraws
- * live documents. Making the plan reachable only from a validated value means
- * any future corpus tool inherits the guarantee by construction rather than by
- * remembering to re-implement checks that used to live in one script.
+ * live documents.
  *
- * The constructor is private: {@link CompleteCorpus.of} is the only way in.
+ * There is deliberately **no public way to build one from a caller-supplied
+ * list**. {@link loadCompleteCorpus} is the only construction path, and it is
+ * bound to {@link corpusDocumentPaths} — the same rule that defines what a
+ * corpus document is. A caller therefore cannot mint a "complete" corpus from
+ * one document and use it to withdraw every other stored document.
  */
 export class CompleteCorpus {
-  private constructor(readonly urls: readonly string[]) {}
+  private constructor(
+    readonly urls: readonly string[],
+    /** The parsed documents, so the run that validated them is the run that
+     *  ingests them. Reading twice left a window in which a file could change
+     *  between validation and ingestion, making the deletion plan stale. */
+    readonly documents: readonly LoadedDocument[],
+  ) {}
 
-  static of(entries: readonly { file: string; url: string }[]): CompleteCorpus {
-    if (entries.length === 0) {
+  /** Module-private: the loader below is the only caller. */
+  private static of(documents: readonly LoadedDocument[]): CompleteCorpus {
+    if (documents.length === 0) {
       throw new IncompleteCorpusError(
         "the corpus is empty; refusing to treat that as 'every document is withdrawn'",
       );
     }
     const byUrl = new Map<string, string[]>();
-    for (const { file, url } of entries) {
+    for (const { file, url } of documents) {
       byUrl.set(url, [...(byUrl.get(url) ?? []), file]);
     }
     const clashes = [...byUrl.entries()].filter(([, files]) => files.length > 1);
@@ -64,20 +74,60 @@ export class CompleteCorpus {
           `overwrites the other in the store:\n${detail}`,
       );
     }
-    return new CompleteCorpus([...byUrl.keys()].sort());
+    return new CompleteCorpus([...byUrl.keys()].sort(), documents);
   }
+
+  /** Bound to `of` so the class keeps its own invariant; exported only through
+   *  {@link loadCompleteCorpus}. */
+  static fromLoaded(documents: readonly LoadedDocument[]): CompleteCorpus {
+    return CompleteCorpus.of(documents);
+  }
+}
+
+/** One corpus document, read and parsed once. */
+export interface LoadedDocument {
+  /** Path relative to the working directory, for reporting. */
+  readonly file: string;
+  readonly url: string;
+  readonly markdown: string;
+  readonly chunks: readonly DocumentChunk[];
+}
+
+/**
+ * Read, parse and validate the whole corpus directory — the only way to obtain
+ * a {@link CompleteCorpus}.
+ *
+ * Every document is read and parsed exactly once here, and the result carries
+ * those parsed documents, so the run that proved the corpus complete is the run
+ * that ingests it. A parse failure propagates: a corpus that cannot be read is
+ * not a corpus that can drive deletions.
+ */
+export function loadCompleteCorpus(dir: string = CORPUS_DIR): CompleteCorpus {
+  const documents = corpusDocumentPaths(dir).map((path): LoadedDocument => {
+    const markdown = readFileSync(path, "utf8");
+    const chunks = prepareDocument(markdown);
+    return {
+      file: relative(".", path),
+      url: chunks[0].source.url,
+      markdown,
+      chunks,
+    };
+  });
+  return CompleteCorpus.fromLoaded(documents);
 }
 
 /**
  * Which stored documents are no longer in the committed corpus.
  *
- * Pure, and takes a {@link CompleteCorpus} rather than a bare array so a raw or
- * partial URL list cannot be turned into a deletion plan. Comparison is by exact
+ * **Module-private.** It is the raw deletion plan, and an exported one is an API
+ * future tooling can call without the surrounding guarantees;
+ * {@link reconcileCorpus} is the only exported operation that deletes.
+ * Comparison is by exact
  * source URL: a document whose URL is corrected counts as a removal of the old
  * URL and an ingest of the new one, which is what keeps the store equal to the
  * corpus.
  */
-export function documentsToRemove(
+function documentsToRemove(
   storedUrls: readonly string[],
   corpus: CompleteCorpus,
 ): string[] {
@@ -88,16 +138,29 @@ export function documentsToRemove(
 /**
  * Make the store hold exactly the documents the committed corpus names.
  *
- * The one operation that deletes. It reads the stored catalogue itself rather
- * than trusting a caller-supplied list, and it can only be called with a
- * validated corpus. Removal reuses the transactional empty-set replacement, so
- * each withdrawal is atomic. Returns the URLs removed, in order.
+ * The one exported operation that deletes. It reads the stored catalogue itself
+ * rather than trusting a caller-supplied list, and it can only be called with a
+ * corpus loaded from the corpus directory. Removal reuses the transactional
+ * empty-set replacement, so each withdrawal is atomic.
+ *
+ * `onRemoved` is invoked **immediately after each store-confirmed withdrawal**,
+ * before the next one is attempted. The batch as a whole is NOT atomic — only
+ * each withdrawal is — so a failure part-way leaves earlier documents already
+ * removed. Reporting as it goes is what makes that partial state auditable: the
+ * caller has already printed every completed removal when the error propagates.
+ * Returns the URLs removed, in order.
  */
 export async function reconcileCorpus(
   corpus: CompleteCorpus,
   store: ChunkStore,
+  onRemoved: (url: string) => void = () => {},
 ): Promise<string[]> {
   const stale = documentsToRemove(await store.listDocumentUrls(), corpus);
-  for (const url of stale) await store.replaceDocument(url, []);
-  return stale;
+  const removed: string[] = [];
+  for (const url of stale) {
+    await store.replaceDocument(url, []);
+    removed.push(url);
+    onRemoved(url);
+  }
+  return removed;
 }

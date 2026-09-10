@@ -25,6 +25,7 @@ import { createFireworksEmbedder } from "../src/lib/embeddings";
 import {
   CompleteCorpus,
   corpusDocumentPaths,
+  loadCompleteCorpus,
   reconcileCorpus,
   CORPUS_DIR,
 } from "../src/lib/ingest/corpus";
@@ -126,30 +127,30 @@ async function main(): Promise<number> {
         };
       })();
 
-  // Validate the WHOLE corpus before doing any work. Two documents sharing a
-  // canonical URL silently overwrite each other in the store, so it is a corpus
-  // defect whether or not this run prunes — and pruning may only ever be driven
-  // by a corpus proven complete. Skipped for --file, which is not a full run and
-  // therefore may not prune (refused in parseArgs).
+  // Load the WHOLE corpus before doing any work. The loader is the only way to
+  // obtain the value that may drive a removal, and it reads and parses each
+  // document exactly ONCE — the same bytes this run then ingests, so no file can
+  // change between validation and use. Skipped for --file, which is not a full
+  // run and therefore may not prune (refused in parseArgs).
   let corpus: CompleteCorpus | undefined;
-  if (!options.file) {
-    corpus = CompleteCorpus.of(
-      paths.map((path) => ({
-        file: relative(".", path),
-        url: prepareDocument(readFileSync(path, "utf8"))[0].source.url,
-      })),
-    );
-  }
+  if (!options.file) corpus = loadCompleteCorpus();
 
   process.stdout.write(
     `${options.dryRun ? "Checking" : "Ingesting"} ${paths.length} document(s)\n\n`,
   );
 
+  // One entry per document to process: the corpus loader's own reads when this is
+  // a full run, or the single file named by --file.
+  const work = corpus
+    ? corpus.documents.map((d) => ({ name: d.file, markdown: d.markdown }))
+    : paths.map((path) => ({
+        name: relative(".", path),
+        markdown: readFileSync(path, "utf8"),
+      }));
+
   const outcomes: Outcome[] = [];
-  for (const path of paths) {
-    const name = relative(".", path);
+  for (const { name, markdown } of work) {
     try {
-      const markdown = readFileSync(path, "utf8");
       // In a real run the reported count is the one the STORE confirmed, never
       // the locally chunked length — a short write must not read as success.
       let chunks: number;
@@ -180,13 +181,20 @@ async function main(): Promise<number> {
   // did not establish that the store's extra documents are genuinely withdrawn.
   const removed: string[] = [];
   if (options.prune && ingestInto && corpus && failures.length === 0) {
-    const stale = await reconcileCorpus(corpus, ingestInto.store);
+    // Printed as each withdrawal is confirmed, not after the batch: the batch is
+    // not atomic, so a failure part-way must leave the operator knowing exactly
+    // what was already removed.
+    let announced = false;
+    const stale = await reconcileCorpus(corpus, ingestInto.store, (url) => {
+      if (!announced) {
+        process.stdout.write("\npruning withdrawn document(s)\n");
+        announced = true;
+      }
+      process.stdout.write(`  removed  ${url}\n`);
+      removed.push(url);
+    });
     if (stale.length === 0) {
       process.stdout.write("\nnothing to prune: the store already matches the corpus\n");
-    } else {
-      process.stdout.write(`\npruned ${stale.length} withdrawn document(s)\n`);
-      for (const url of stale) process.stdout.write(`  removed  ${url}\n`);
-      removed.push(...stale);
     }
   } else if (options.prune && failures.length > 0) {
     process.stderr.write(
