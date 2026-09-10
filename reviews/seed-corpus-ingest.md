@@ -246,8 +246,8 @@ Re-review after the round-2 redesign. Base `ec832be`.
 - frame/9 — demonstrated red for every ratified regression on the size-bearing criteria (AC1, AC6, AC7) and for the added AC10; baseline green, each regression red, restored green. AC2 faithfulness verified by hand; AC3, AC4 and AC5 verified live against the hosted project after Thomas supplied a working Fireworks key. AC5 failed first at the specification's 0.7 threshold and passes at the measured 0.73 he adopted.
 - review/6 — round 3: ran (codex on glm-latest, 2 findings) → reviews/seed-corpus-ingest.approach.012dba3.json
 - review/8 — n/a — the approach gate short-circuited round 3: Thomas approved two shape-changing fixes, so the correctness pass does not run on a shape that is about to change.
-- close/3b — no activation (round 2: no guard-hook block and no `review_runner.py` refusal to promote; the repo has no `install.sh` to drift-check, no `BACKLOG.md` and no `.aar/` register).
-- close/4 — round 2: presented re-review only. All three approved fixes were approach/redesign changes, so per the fork rule merge is not offered; the branch returns to `/review`. (Round 1 fork: Thomas chose re-review.)
+- close/3b — no activation (round 3: no guard-hook block and no `review_runner.py` refusal to promote; the repo has no `install.sh` to drift-check, no `BACKLOG.md` and no `.aar/` register).
+- close/4 — round 3: presented re-review only. Both approved fixes were approach/redesign changes, so merge is not offered. (Rounds 1 and 2: Thomas chose re-review each time.)
 
 **Earlier rounds of this story** (kept as prose: the record holds one line per step by design):
 
@@ -793,11 +793,10 @@ story 1a. The composition itself rests on those. This is stated rather than pape
 
 Fireworks `HTTP 503` responses continued and worsened. **A health probe of six single-input
 requests returned 200 six times in a row, immediately before a full-corpus run that failed four
-documents.** The failures land on the large documents, which send batches of 64 chunks. So this is
-**load-related rather than availability-related**: small requests succeed while large batch
-requests are rejected. That sharpens the earlier note — the remedy is likely a smaller batch size
-*and* a bounded retry, not retry alone. Still out of scope here, and still a real candidate for its
-own story.
+documents.** At the time this was read as load-related, with large batches being rejected while
+small requests succeeded. ***That inference was wrong and is corrected in round 3 below — the
+correction is left visible rather than edited away, because the wrong diagnosis is what made the
+remedy look like "smaller batches".***
 
 ## Codex (glm-latest) approach review — round 3 (2026-09-09, base ec832be, HEAD 012dba3)
 
@@ -854,3 +853,72 @@ cutting reconciliation from this story into its own, and chose to continue.
 **Gate.** Both are shape-changing, so the correctness pass does **not** run this round — the third
 consecutive redesign on this story, all on the prune path. The branch returns for a fourth approach
 pass.
+
+## Fixes (2026-09-09, round 3)
+
+Applied per the round-3 Decisions; gate green at 198 tests; commit `42103ad`.
+
+### Finding 1 — corpus loading now owns the destructive precondition
+
+- **`loadCompleteCorpus(dir = CORPUS_DIR)`** is the only public way to obtain a `CompleteCorpus`.
+  It is bound to the same `corpusDocumentPaths` rule that defines what a corpus document is, so a
+  caller can no longer present one document as a complete corpus and use it to withdraw every
+  other stored document. Both the constructor and the list-taking factory are private to the
+  module.
+- **The loader reads and parses each document exactly once**, and the returned value carries those
+  parsed documents. The script ingests what the loader already read, so the second full read is
+  gone and with it the window in which a file could change between validation and use.
+- **`documentsToRemove` is module-private.** `reconcileCorpus` is now the only exported operation
+  that can delete.
+- A parse failure propagates: a corpus that cannot be read is not a corpus that can drive
+  deletions. Verified live — an unparseable document refuses the whole run with a full field-level
+  diagnosis.
+
+### Finding 2 — no confirmed destructive write can be invisible
+
+`reconcileCorpus` takes an `onRemoved` callback and invokes it **immediately after each
+store-confirmed withdrawal**, before attempting the next. The command prints and counts each
+removal as it happens. The first failure still propagates, but the operator already has the exact
+list of what was withdrawn. A test drives a mid-batch store failure and asserts the earlier
+withdrawal was reported before the error arrived.
+
+### Verification
+
+| Check | Result |
+|---|---|
+| Flag refusals: `--prune` with `--dry-run`, with `--file` | refused, each naming the reason |
+| Duplicate canonical URL | refused before any work, naming both files and the URL |
+| **New:** an unparseable document | refuses the whole run, naming every faulty field |
+| Normal offline dry run | 11/11 documents, 1375 chunks |
+| Prune refusal after a failed document | fired on **eight more** live runs this round |
+| Store integrity throughout | 1375 chunks, 11 documents, unchanged |
+| Composed removal path, live | **still not reached** — see below |
+
+### The instability, correctly diagnosed at last
+
+Eight further full-corpus attempts this round all had at least one document fail, so the removal
+branch was never reached. That made the cause worth pinning down properly, and **the round-2
+diagnosis above was wrong**.
+
+Probing through the app's own client:
+
+| Probe | Result |
+|---|---|
+| One batch of 64 inputs, 50 KB, through Node `fetch` | HTTP 200 in ~420ms |
+| Batches of 8, 32 and 64 inputs | all HTTP 200; **batch size is not the trigger** |
+| 25 sequential 64-input batches, the shape of a full run | **21 succeeded, 4 failed** — a 16% failure rate |
+
+The 503 body is `upstream connect error or disconnect/reset before headers. reset reason:
+connection termination` — an **Envoy proxy error from Fireworks' own load balancer failing to
+reach its model server**. Not rate limiting: no `Retry-After`, no 429, and failures scattered
+randomly across the sequence (requests 1, 2, 10 and 22). Not Cloudflare: a separate 403 seen while
+probing with Python `urllib` was a Cloudflare browser-integrity block on that client and is
+unrelated to what the app sees.
+
+**Why this matters for the remedy.** The failures are *fast* — 100 to 280ms, before any work — and
+*independent*. A full run sends roughly 22 batches, so at a 16% per-batch failure rate the chance
+of a completely clean run is about **2%**, which is exactly why eight and then eleven attempts
+never produced one. A bounded retry of three attempts would take a batch's failure probability to
+about 0.4% and a full run's to roughly **8%** — turning an effectively unachievable clean run into
+a routine one, at a cost of a few hundred milliseconds. **A smaller batch size would not help and
+was never the problem.**
