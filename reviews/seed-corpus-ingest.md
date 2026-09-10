@@ -53,6 +53,10 @@ recorded.
 5. **The live ingestion run** against the hosted Supabase project, and retrieval checked with real
    questions.
 6. **README** — the pillar list, how to run ingestion, and what the manifest is for.
+7. **A bounded retry on transient embedding failures.** *(Added 2026-09-10, mid-close, at Thomas's
+   instruction. Not part of the original scope: it was carried for three rounds as an observation,
+   then promoted when it stopped being cosmetic and started preventing criterion 5's companion
+   checks from being verified at all — see the diagnosis under Fixes, round 3.)*
 
 ## Non-goals
 
@@ -128,8 +132,8 @@ bookkeeping and stay as numbered property assertions, per `AGENTS.md`.
    `git diff --name-only main...HEAD -- . ':(exclude)reviews/'`
    and verify no files appear beyond `corpus/` (policy documents only), `CORPUS.md`,
    `src/lib/ingest/pillars.ts`, `src/lib/ingest/corpus.ts`, `src/lib/ingest/parse.ts`,
-   `src/lib/supabase.ts`, `scripts/ingest-corpus.ts`, `__tests__/`, `package.json`,
-   `package-lock.json`, and `README.md`. *(`src/lib/ingest/corpus.ts` was added during
+   `src/lib/supabase.ts`, `src/lib/embeddings.ts`, `scripts/ingest-corpus.ts`, `__tests__/`,
+   `package.json`, `package-lock.json`, and `README.md`. *(`src/lib/ingest/corpus.ts` was added during
    implementation so the ingest script and the corpus tests share one rule for what counts as a
    document — design finding 1 was about exactly those two extents drifting. `src/lib/supabase.ts`
    was added when Thomas adopted a measured retrieval threshold, which lives beside the result-count
@@ -141,6 +145,10 @@ bookkeeping and stay as numbered property assertions, per `AGENTS.md`.
     number, equal in both directions. *(Added 2026-09-08 when Thomas adopted a measured threshold;
     it is the same hold-the-docs-equal pattern the domain allowlist and the pillar list already
     use, applied to the number that decides when the product refuses to answer.)*
+
+11. Transient embedding failures are retried a bounded number of times and each retry is
+    reported; a deterministic failure is not retried. *(Added 2026-09-10 with the scope addition
+    above.)*
 
 ## Test notes
 
@@ -155,6 +163,7 @@ bookkeeping and stay as numbered property assertions, per `AGENTS.md`.
 | 7 | `Small` | Compare the set of `.md` files in `corpus/` against the set of rows parsed from `CORPUS.md`, in both directions. Assert each row carries a retrieval date and a checksum of exactly 64 lowercase hex characters, and that its source URL is a document URL on an allowed host rather than a bare origin or a directory root. The extents come from the directory and the manifest, never from one another. Includes the empty case: the test fails if the manifest parses to no rows. |
 | 8 | `reviewer` | Read every configuration read in the script — literal `process.env`, the `env.ts` accessors, and any dynamic or indexed access — and confirm each key is already declared. The existing `.env.example` completeness test fails if `env.ts` grows an undocumented key. |
 | 10 | `Small` | Parse the bolded figure from the README's own retrieval-threshold section and compare it to `DEFAULT_MATCH_THRESHOLD`, plus assert the constant sits above the measured out-of-scope noise ceiling of 0.718, so reverting to the specification's 0.7 fails. Includes the empty case: the test fails if the section yields no figure. |
+| 11 | `Small` | Unit tests over `createFireworksEmbedder` with an injected `fetch` and an injected `sleep`, so nothing waits: a transient failure then success returns the real vectors; every retry is announced through `onRetry`; the backoff doubles; the attempt budget is bounded and the exhaustion error names the count; a `4xx` is attempted exactly **once**; a transport failure that produced no response is retried; `Retry-After` is honoured when supplied; and a malformed 200 response is **not** retried, being deterministic. |
 | 9 | `reviewer` | Run the enumerated diff command and compare against the listed paths, and read what landed in each allowed directory to confirm it is this story's work and nothing else's. |
 
 ### Regressions (ratified list — sourced from the step-6 design review)
@@ -243,7 +252,7 @@ Re-review after the round-2 redesign. Base `ec832be`.
 ## Loop record
 
 - frame/6 — ran (codex on glm-latest, 3 findings, 9 regressions) → reviews/seed-corpus-ingest.design.c246570.json
-- frame/9 — demonstrated red for every ratified regression on the size-bearing criteria (AC1, AC6, AC7) and for the added AC10; baseline green, each regression red, restored green. AC2 faithfulness verified by hand; AC3, AC4 and AC5 verified live against the hosted project after Thomas supplied a working Fireworks key. AC5 failed first at the specification's 0.7 threshold and passes at the measured 0.73 he adopted.
+- frame/9 — demonstrated red for every ratified regression on the size-bearing criteria (AC1, AC6, AC7) and for the added AC10; baseline green, each regression red, restored green. AC2 faithfulness verified by hand; AC3, AC4 and AC5 verified live against the hosted project after Thomas supplied a working Fireworks key. AC5 failed first at the specification's 0.7 threshold and passes at the measured 0.73 he adopted. **Scope addition 2026-09-10:** criterion 11 (bounded retry) demonstrated red three ways against author-written regressions; baseline green, each red, restored green.
 - review/6 — round 3: ran (codex on glm-latest, 2 findings) → reviews/seed-corpus-ingest.approach.012dba3.json
 - review/8 — n/a — the approach gate short-circuited round 3: Thomas approved two shape-changing fixes, so the correctness pass does not run on a shape that is about to change.
 - close/3b — no activation (round 3: no guard-hook block and no `review_runner.py` refusal to promote; the repo has no `install.sh` to drift-check, no `BACKLOG.md` and no `.aar/` register).
@@ -922,3 +931,56 @@ never produced one. A bounded retry of three attempts would take a batch's failu
 about 0.4% and a full run's to roughly **8%** — turning an effectively unachievable clean run into
 a routine one, at a cost of a few hundred milliseconds. **A smaller batch size would not help and
 was never the problem.**
+
+## Fixes (2026-09-10, scope addition)
+
+Thomas approved adding the bounded retry mid-close, after round 3's diagnosis showed it was no
+longer cosmetic. Gate green at 206 tests; commit `5790459`.
+
+### What was added
+
+`createFireworksEmbedder` retries a batch on **transient** failures only — 5xx, 408 and 429, plus a
+transport failure that produced no response at all. Three attempts, backoff doubling from 250ms,
+honouring `Retry-After` when the service supplies one. A `4xx` is attempted exactly once, because a
+bad key or a malformed request fails identically forever and retrying it turns one clear error into
+three. A malformed 200 response is not retried either, for the same reason.
+
+**Retries are announced, never silent.** The embedder calls `onRetry` before each wait and the
+operator command prints `retry 1/3 in 250ms — HTTP 503`. A service degrading under the operator is
+something they should see even when the run ultimately succeeds. This follows the callback shape
+the reviewer approved for reporting removals.
+
+### Demonstrate red — criterion 11
+
+These regressions are the **author's own**: criterion 11 was added after the round-3 design review,
+so no reviewer proposed them. Stated rather than presented as ratified.
+
+| Regression | Gate | What failed |
+|---|---|---|
+| baseline | green | 206 tests |
+| retries deterministic 4xx failures too | **red** | `does NOT retry a deterministic failure — a bad key fails once, clearly` |
+| retries silently, never reporting | **red** | `reports every retry rather than smoothing the failure over` |
+| retries without bound | **red** | `refuses an HTTP failure` — and took 5 seconds to do it, which is the unbounded loop made visible |
+| restored | green | 206 tests |
+
+### What it unblocked — every remaining criterion now verified live
+
+The first full-corpus run with the retry in place absorbed **four** transient failures, each printed,
+and completed **11/11 documents, 1375 chunks** — the first wholly clean run in three rounds, exactly
+as the 2%-to-92% estimate predicted.
+
+The prune cycle that had been unreachable for two rounds then verified end to end:
+
+| Step | Result |
+|---|---|
+| Prune with the store already matching | `nothing to prune: the store already matches the corpus` — 11/11, 1375 chunks |
+| Withdraw `eo-25-09`, then prune | `pruning withdrawn document(s)` then `removed https://www.oregon.gov/gov/eo/eo-25-09.pdf`, summarised `10/10 document(s), 1367 chunks, 1 removed` |
+| Restore and re-ingest | `nothing to prune` — back to 11/11 |
+| Final store | **1375 chunks, 11 documents, zero duplicates** |
+
+That closes the gap carried since round 2: the composed removal path, and the per-removal reporting
+added in round 3, are both now confirmed against the live database rather than resting on unit
+tests alone.
+
+*(Two `psql` connection errors appeared mid-sequence — Supabase pooler auth timeouts, unrelated to
+the application path. The final counts above were read successfully and confirm the end state.)*
