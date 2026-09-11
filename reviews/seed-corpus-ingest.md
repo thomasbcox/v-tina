@@ -264,7 +264,7 @@ Re-review after the round-3 redesign plus the approved scope addition. Base `012
 
 - frame/6 — ran (codex on glm-latest, 3 findings, 9 regressions) → reviews/seed-corpus-ingest.design.c246570.json
 - frame/9 — demonstrated red for every ratified regression on the size-bearing criteria (AC1, AC6, AC7) and for the added AC10; baseline green, each regression red, restored green. AC2 faithfulness verified by hand; AC3, AC4 and AC5 verified live against the hosted project after Thomas supplied a working Fireworks key. AC5 failed first at the specification's 0.7 threshold and passes at the measured 0.73 he adopted. **Scope addition 2026-09-10:** criterion 11 (bounded retry) demonstrated red three ways against author-written regressions; baseline green, each red, restored green.
-- review/6 — not yet reached
+- review/6 — round 4: ran (codex on glm-latest, 3 findings) → reviews/seed-corpus-ingest.approach.851aacf.json. First attempt was **refused, not promoted**: the reply carried two top-level JSON objects, which is the format category of stop, not a fabricated review; codex also logged an internal `exec_command` failure. Rerun once with an explicit single-object instruction and it completed with 15 commands executed, 0 REACH-reported.
 - review/8 — not yet reached
 - close/3b — no activation (round 3: no guard-hook block and no `review_runner.py` refusal to promote; the repo has no `install.sh` to drift-check, no `BACKLOG.md` and no `.aar/` register).
 - close/4 — round 3: presented re-review only. Both approved fixes were approach/redesign changes, so merge is not offered. (Rounds 1 and 2: Thomas chose re-review each time.)
@@ -999,3 +999,51 @@ tests alone.
 
 *(Two `psql` connection errors appeared mid-sequence — Supabase pooler auth timeouts, unrelated to
 the application path. The final counts above were read successfully and confirm the end state.)*
+
+## Codex (glm-latest) approach review — round 4 (2026-09-10, base 012dba3, HEAD 851aacf)
+
+Artifact: `reviews/seed-corpus-ingest.approach.851aacf.json` · round `851aacf` · 15 commands executed, 0 REACH-reported.
+
+**The first attempt was refused and promoted nothing.** The runner reported `final message holds
+2 top-level JSON objects ... the reply must be exactly one`, alongside a codex-internal
+`exec_command failed: CreateProcess` error. That is the **format** stop, not the fabrication
+stop: the review may have been sound and the check could not tell. Recorded here rather than
+allowed to read as a clean pass.
+
+**Verdict.** 2026-09-10 17:06:29 PDT — The overall direction is close to what I would build: load and parse the corpus once, ingest those exact bytes, keep deletion inside reconcileCorpus, report each store-confirmed withdrawal immediately, and keep the retry as a small injectable policy rather than adding the OpenAI SDK, whose broad client surface and version coupling would cost more than this one embeddings call justifies. The transient/deterministic split and onRetry reporting are the right shape. I would not ship the destructive invariant as written, though: CompleteCorpus.fromLoaded is a public list-taking constructor, so the claimed unbypassable precondition remains bypassable. The effective Node floor and the retry comment’s copied measurements also need correction.
+
+### BLOCKER
+
+**The destructive precondition still has a public list constructor** — reversibility: one-way · standing: kludgy
+
+- **Locus:** src/lib/ingest/corpus.ts:80-84,105-116; __tests__/corpus-reconcile.test.ts:88-99
+- **Claim:** CompleteCorpus.fromLoaded is a public static method on an exported class and accepts an arbitrary LoadedDocument[] list. Any future tool can construct a one-document CompleteCorpus, pass it to reconcileCorpus, and withdraw every other stored document. This directly defeats the round-3 approved fix and contradicts the module’s own claim that loadCompleteCorpus is the only construction path. The test does not catch it: it merely observes that the runtime object has the private of property and that loadCompleteCorpus is a function; it never attempts or rejects fromLoaded.
+- **Alternative:** Remove fromLoaded from the public class surface and make the validator/factory module-private, with loadCompleteCorpus constructing the value directly. For a stronger invariant, export CompleteCorpus only as an opaque branded type with a module-private constructor, so reconcileCorpus’s parameter cannot be satisfied by a caller-built list while documentsToRemove remains private.
+- **Win:** Closes the one-call partial-corpus deletion bypass, removes an exported destructive API, and makes the compiler enforce the invariant Thomas approved instead of relying on comments and a non-falsifiable test.
+
+### IMPORTANT
+
+**The declared Node floor is below the Supabase client’s own floor** — reversibility: two-way · standing: nonstandard
+
+- **Locus:** package.json:15-21,36-38; package-lock.json:2404-2418; README.md:54-71
+- **Claim:** The project advertises Node >=20.12.0, and the prior fix synchronized the lockfile root to that value. But the direct runtime dependency @supabase/supabase-js 2.115.0—and its @supabase/* subpackages—declare Node >=22.0.0. The ingest command imports this client, so Node 20.12 through 21 passes the project’s advertised compatibility floor while running a dependency that says it is unsupported. The previous synchronization fixed root-versus-lock drift, not root-versus-effective-dependency-floor drift.
+- **Alternative:** Raise package.json, the regenerated lockfile root, and the README compatibility floor to >=22.0.0; or, if Node 20 support is a real requirement, select a Supabase client version whose engine range supports it. State the chosen effective floor once and keep the pinned .nvmrc separate as the development major.
+- **Win:** Makes unsupported runtimes fail or warn at installation rather than during a privileged operator ingest, and restores one honest compatibility contract across the app, manifest, and documentation.
+
+**Retry rationale copies dated counts into living code** — reversibility: two-way · standing: nonstandard
+
+- **Locus:** src/lib/embeddings.ts:25-38
+- **Claim:** The retry comment hard-codes the historical sample and derived probabilities—25 batches, 21 successes, 4 failures, 16%, roughly 22 batches, 2%, 0.4%, 92%, and a prose restatement of the attempt count. Code comments are living text under the builder protocol, while these measurements already belong in the dated story record. They will decay as the corpus or service changes and can mislead future tuning. This is a placement defect, not a criticism of the bounded retry policy itself.
+- **Alternative:** Keep the code comment to the durable policy: bounded attempts, short exponential backoff, transient-only retries, and reported retries. Point to the dated measurement in reviews/seed-corpus-ingest.md without restating its numbers; leave the numeric parameters in the exported constants.
+- **Win:** Removes roughly ten copied numbers from living source, keeps the dated evidence in its single record, and prevents stale service measurements from becoming future operational folklore.
+
+**Claim checks, both confirmed by running them.**
+
+- The BLOCKER is real and was reproduced: a four-line script calling
+  `CompleteCorpus.fromLoaded` with **one** caller-supplied entry built a value the type system
+  accepts as a complete corpus, which `reconcileCorpus` would then use to withdraw every other
+  stored document. The round-3 fix is defeated by the very method added to wire it up, and the
+  test written to guard it asserts only that a property name exists — it never attempts the
+  bypass, so it could never have failed.
+- The Node floor claim is confirmed: the project declares `>=20.12.0` while
+  `@supabase/supabase-js` and all six of its subpackages declare `>=22.0.0`.
