@@ -10,6 +10,7 @@ import { CLASSIFIER_SYSTEM_PROMPT, REWRITE_SYSTEM_PROMPT } from "../prompts";
 import {
   CLASSIFY_DEADLINE_MS,
   CLASSIFY_MAX_TOKENS,
+  REWRITE_DEADLINE_MS,
   REWRITE_MAX_TOKENS,
   parseClassification,
 } from "../safety";
@@ -45,6 +46,18 @@ export const ANSWER_MAX_TOKENS = 4000;
  *  prompt; this only stops the prose reading like a database dump. */
 export const ANSWER_TEMPERATURE = 0.3;
 
+/**
+ * One signal carrying both a deadline and the reader's disconnection.
+ *
+ * `AbortSignal.any` + `AbortSignal.timeout` are the platform's own composition;
+ * they replace a hand-built `AbortController`/`setTimeout` pair that had to be
+ * cleared in a `finally` and could only ever express the deadline half.
+ */
+function deadline(ms: number, requestSignal?: AbortSignal): AbortSignal {
+  const timeout = AbortSignal.timeout(ms);
+  return requestSignal ? AbortSignal.any([requestSignal, timeout]) : timeout;
+}
+
 export function createChatDeps(env: EdgeEnv): ChatDeps {
   const chat = { apiKey: env.FIREWORKS_API_KEY };
   const embed = createFireworksEmbedder({ apiKey: env.FIREWORKS_API_KEY, task: "query" });
@@ -54,16 +67,15 @@ export function createChatDeps(env: EdgeEnv): ChatDeps {
   );
 
   return {
-    async classify(question) {
+    async classify(question, signal) {
       // ONE clock for the whole step, retries and backoff included. Without it
       // the deadline and the retry loop disagree: a full RETRY_MAX_ATTEMPTS run,
       // each attempt inside its own timeout, totals far more than the budget
       // declared here.
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), CLASSIFY_DEADLINE_MS);
+      // The reader's disconnection rides the same clock as the deadline.
       try {
         const reply = await createChatCompletion(
-          { ...chat, retry: { signal: controller.signal } },
+          { ...chat, retry: { signal: deadline(CLASSIFY_DEADLINE_MS, signal) } },
           {
             model: CLASSIFIER_MODEL,
             maxTokens: CLASSIFY_MAX_TOKENS,
@@ -79,29 +91,36 @@ export function createChatDeps(env: EdgeEnv): ChatDeps {
           ok: false,
           reason: error instanceof Error ? error.message : String(error),
         };
-      } finally {
-        clearTimeout(timer);
       }
     },
 
-    async rewrite(question) {
-      return createChatCompletion(chat, {
-        model: CLASSIFIER_MODEL,
-        maxTokens: REWRITE_MAX_TOKENS,
-        messages: [
-          { role: "system", content: REWRITE_SYSTEM_PROMPT },
-          { role: "user", content: question },
-        ],
-      });
+    async rewrite(question, signal) {
+      // This call had NO bound at all until 2026-09-11 — no deadline and no
+      // signal — so a hung rewrite hung the request. See REWRITE_DEADLINE_MS.
+      return createChatCompletion(
+        { ...chat, retry: { signal: deadline(REWRITE_DEADLINE_MS, signal) } },
+        {
+          model: CLASSIFIER_MODEL,
+          maxTokens: REWRITE_MAX_TOKENS,
+          messages: [
+            { role: "system", content: REWRITE_SYSTEM_PROMPT },
+            { role: "user", content: question },
+          ],
+        },
+      );
     },
 
-    async retrieve(question) {
-      const [vector] = await embed([question]);
+    async retrieve(question, signal) {
+      // Both halves take the signal: the embedding request and the database
+      // query are each a call made on behalf of one reader.
+      const [vector] = await embed([question], signal);
       return queryPolicyChunks(
         supabase,
         vector,
         DEFAULT_MATCH_THRESHOLD,
         ANSWER_CHUNK_COUNT,
+        undefined,
+        signal,
       );
     },
 

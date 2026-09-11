@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { RetrievedPolicyChunk } from "../../types";
+import { DOCUMENT_KINDS } from "../ingest/metadata";
 import { SAFETY_CLASSIFICATIONS } from "../safety";
 
 /**
@@ -33,7 +34,9 @@ const retrievedChunkSchema: z.ZodType<RetrievedPolicyChunk> = z.object({
     date: z.string(),
     url: z.string(),
     pillar: z.string(),
-    documentKind: z.enum(["executive", "legislative"]),
+    // The vocabulary's runtime authority, not a copy of its values — the same
+    // constant ingestion validates against and `matchRowSchema` already uses.
+    documentKind: z.enum(DOCUMENT_KINDS),
   }),
   similarity: z.number(),
 });

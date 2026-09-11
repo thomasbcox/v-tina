@@ -47,7 +47,7 @@ test suite.
 | `src/lib/ingest/` | The ingestion pipeline: frontmatter parsing, chunking, and the store interface |
 | `src/lib/embeddings.ts` | Fireworks embeddings, and the one declared vector dimension |
 | `src/lib/supabase.ts` | Retrieval (`queryPolicyChunks`) and the Supabase-backed chunk store |
-| `src/app/api/chat/route.ts` | The public chat endpoint, on the Edge runtime |
+| `src/app/api/chat/route.ts` | The public chat endpoint: Node runtime, request-path environment contract |
 | `src/lib/chat/` | The routing decision, the request contract, and the stream framing |
 | `src/lib/fireworks.ts` | The chat-completions client; `src/lib/retry.ts` is the shared transient-failure policy |
 | `src/lib/prompts.ts` | The classifier and rewrite prompts, and the **provisional** voice-bearing ones |

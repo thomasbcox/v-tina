@@ -44,13 +44,30 @@ export const MAX_MATCH_COUNT = 50;
  */
 export const DEFAULT_MATCH_THRESHOLD = 0.73;
 
+export type RpcResult = { data: unknown; error: { message: string } | null };
+
+/**
+ * What `rpc` hands back: awaitable, and — on the real client — able to carry a
+ * cancellation signal.
+ *
+ * `abortSignal` is **optional** so a recording fake can keep returning a plain
+ * promise. Where it exists the caller's signal reaches the database, so a query
+ * begun for a reader who has since disconnected does not run to completion.
+ */
+export interface RpcBuilder extends PromiseLike<RpcResult> {
+  abortSignal?(signal: AbortSignal): PromiseLike<RpcResult>;
+}
+
 /** The one method this module needs from a Supabase client, stated narrowly so
  *  a test can hand in a recording fake. A real `SupabaseClient` satisfies it. */
 export interface RpcClient {
-  rpc(
-    fn: string,
-    args?: Record<string, unknown>,
-  ): PromiseLike<{ data: unknown; error: { message: string } | null }>;
+  rpc(fn: string, args?: Record<string, unknown>): RpcBuilder;
+}
+
+/** Attaches the caller's signal when the client supports it, and otherwise
+ *  awaits the builder unchanged — which is what every test fake does. */
+function withSignal(builder: RpcBuilder, signal?: AbortSignal): PromiseLike<RpcResult> {
+  return signal && builder.abortSignal ? builder.abortSignal(signal) : builder;
 }
 
 export function createSupabaseClient(url: string, key: string): SupabaseClient {
@@ -99,6 +116,7 @@ export async function queryPolicyChunks(
   matchThreshold: number,
   matchCount: number,
   pillar?: string,
+  signal?: AbortSignal,
 ): Promise<RetrievedPolicyChunk[]> {
   if (embedding.length !== EMBEDDING_DIMENSIONS) {
     throw new Error(
@@ -113,7 +131,10 @@ export async function queryPolicyChunks(
   // Omitted, not sent empty: the SQL default (null) means "no filter".
   if (pillar !== undefined) args.filter_pillar = pillar;
 
-  const { data, error } = await client.rpc("match_policy_chunks", args);
+  const { data, error } = await withSignal(
+    client.rpc("match_policy_chunks", args),
+    signal,
+  );
   if (error) throw new Error(`match_policy_chunks failed: ${error.message}`);
 
   const rows = z.array(matchRowSchema).safeParse(data);

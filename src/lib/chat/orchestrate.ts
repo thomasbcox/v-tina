@@ -20,20 +20,29 @@ import { currentQuestion, type ChatRequestBody } from "./request";
  * This function emits events and writes no bytes. Framing is `stream.ts`.
  */
 
+/**
+ * Every collaborator takes the request's cancellation signal.
+ *
+ * Not decoration: each is a network call made on behalf of one reader, and a
+ * reader who disconnects should stop paying for all of them rather than only for
+ * the answer. Threading it to `answer` alone — where this started — left
+ * classification, rewriting, embedding and the database query running for nobody
+ * (approach review round 2, finding 1).
+ */
 export interface Retriever {
   /** The chunks grounding this question, above the project's declared
    *  threshold, most similar first. Throws if the store is unreachable — see
    *  the note on `retrieval` below for why that must not be swallowed. */
-  (question: string): Promise<RetrievedPolicyChunk[]>;
+  (question: string, signal?: AbortSignal): Promise<RetrievedPolicyChunk[]>;
 }
 
 export interface Rewriter {
   /** A neutral restatement of a hostile question. */
-  (question: string): Promise<string>;
+  (question: string, signal?: AbortSignal): Promise<string>;
 }
 
 export interface Classifier {
-  (question: string): Promise<ClassificationResult>;
+  (question: string, signal?: AbortSignal): Promise<ClassificationResult>;
 }
 
 export interface Answerer {
@@ -109,6 +118,17 @@ export async function* orchestrateChat(
   const log = deps.logError ?? ((context, error) => console.error(context, error));
   const asked = currentQuestion(body);
 
+  /**
+   * True once the reader has disconnected.
+   *
+   * Checked before each stage so an abort landing mid-exchange stops the next
+   * network call rather than merely cancelling it after it starts. When true the
+   * generator returns **without a terminating record**, and that does not break
+   * the always-terminates contract: the signal is aborted only when the request
+   * itself was, so there is no reader left to owe one to.
+   */
+  const gone = () => signal?.aborted === true;
+
   // --- classify -----------------------------------------------------------
   // Fails CLOSED. A verdict that did not arrive, did not parse, or was not a
   // member of SAFETY_CLASSIFICATIONS is treated exactly as out of bounds:
@@ -117,7 +137,7 @@ export async function* orchestrateChat(
   // which is the right way round for an avatar wearing a sitting governor's name.
   let verdict: ClassificationResult;
   try {
-    verdict = await deps.classify(asked);
+    verdict = await deps.classify(asked, signal);
   } catch (error) {
     log("classification failed", error);
     verdict = { ok: false, reason: "classifier call failed" };
@@ -130,6 +150,8 @@ export async function* orchestrateChat(
     return;
   }
   const classification = verdict.classification;
+
+  if (gone()) return;
 
   if (classification === "OUT-OF-BOUNDS") {
     yield { type: "safety_status", classification };
@@ -147,7 +169,7 @@ export async function* orchestrateChat(
   if (classification === "PARTISAN-TRAP") {
     let neutralised: string;
     try {
-      neutralised = (await deps.rewrite(asked)).trim();
+      neutralised = (await deps.rewrite(asked, signal)).trim();
     } catch (error) {
       log("rewrite failed", error);
       yield { type: "safety_status", classification: "OUT-OF-BOUNDS" };
@@ -173,9 +195,11 @@ export async function* orchestrateChat(
   // outage and a genuinely ungroundable question look identical to the reader —
   // the deferral says "the records do not support an answer", and saying that on
   // a night the database is down is a false claim about the corpus.
+  if (gone()) return;
+
   let chunks: RetrievedPolicyChunk[];
   try {
-    chunks = await deps.retrieve(question);
+    chunks = await deps.retrieve(question, signal);
   } catch (error) {
     log("retrieval failed", error);
     yield { type: "error", reason: "retrieval", notice: FAILURE_NOTICE };
@@ -194,6 +218,8 @@ export async function* orchestrateChat(
   }
 
   // --- answer -------------------------------------------------------------
+  if (gone()) return;
+
   try {
     for await (const text of deps.answer(
       buildAnswerMessages(body, question, chunks),

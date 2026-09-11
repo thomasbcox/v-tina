@@ -53,6 +53,21 @@ export const CLASSIFY_MAX_TOKENS = 384;
 export const REWRITE_MAX_TOKENS = 512;
 
 /**
+ * The wall-clock budget for the neutralising rewrite.
+ *
+ * **This call had no bound at all until 2026-09-11.** Unlike classification it
+ * carried neither a deadline nor a signal, and `fetchWithRetry` sets no timeout
+ * on `fetch` when given no signal — which Node's `fetch` does not supply either.
+ * A hung rewrite therefore hung the whole request, on the partisan path. Found
+ * while verifying approach finding 1 of round 2, which described the narrower
+ * problem of a call outliving a departed reader.
+ *
+ * Larger than the classification budget because the rewrite emits a sentence
+ * rather than a label, and it is on the rarer path.
+ */
+export const REWRITE_DEADLINE_MS = 5000;
+
+/**
  * A classification, or the reason there isn't one.
  *
  * Deliberately not `SafetyClassification | null`: the orchestrator treats every

@@ -68,6 +68,17 @@ function recorder(over: Partial<ChatDeps> = {}): Recorder {
   return r;
 }
 
+/** Collects an exchange, optionally under a cancellation signal. */
+async function collect2(
+  deps: ChatDeps,
+  body: ChatRequestBody,
+  signal?: AbortSignal,
+): Promise<ChatStreamEvent[]> {
+  const out: ChatStreamEvent[] = [];
+  for await (const e of orchestrateChat(deps, body, signal)) out.push(e);
+  return out;
+}
+
 async function collect(deps: ChatDeps, body: ChatRequestBody): Promise<ChatStreamEvent[]> {
   const out: ChatStreamEvent[] = [];
   for await (const e of orchestrateChat(deps, body)) out.push(e);
@@ -299,5 +310,84 @@ describe("AC5 — an in-bounds question nothing grounds is declined, not invente
     if (failure.type !== "error") throw new Error("expected a failure record");
     expect(failure.reason).toBe("generation");
     expect(failure.notice, "no provider detail crosses the wire").not.toContain("provider closed");
+  });
+});
+
+describe("a reader who disconnects stops every call made for them", () => {
+  type Stage = "classify" | "rewrite" | "retrieve" | "answer";
+  const ALL: Stage[] = ["classify", "rewrite", "retrieve", "answer"];
+
+  /**
+   * Records the signal each collaborator was handed and that it ran at all.
+   * `abortDuring` names the stage that aborts partway through, the way a real
+   * disconnect lands — declared up front rather than patched in afterwards, so
+   * the deps object stays typed.
+   */
+  function signalRecorder(controller: AbortController, abortDuring?: Stage) {
+    const seen: Partial<Record<Stage, AbortSignal | undefined>> = {};
+    const enter = (stage: Stage, signal?: AbortSignal) => {
+      seen[stage] = signal;
+      if (stage === abortDuring) controller.abort();
+    };
+    const deps: ChatDeps = {
+      classify: async (_q, signal) => {
+        enter("classify", signal);
+        return { ok: true, classification: "PARTISAN-TRAP" };
+      },
+      rewrite: async (_q, signal) => {
+        enter("rewrite", signal);
+        return "a neutral question";
+      },
+      retrieve: async (_q, signal) => {
+        enter("retrieve", signal);
+        return [chunk(1, "passage")];
+      },
+      answer: async function* (_m, signal) {
+        enter("answer", signal);
+        yield "words";
+      },
+      logError: () => {},
+    };
+    return { deps, seen };
+  }
+
+  it("hands the request signal to every collaborator, not just the answer", async () => {
+    // Threading it to `answer` alone left classification, the rewrite, embedding
+    // and the database query running for nobody.
+    const controller = new AbortController();
+    const { deps, seen } = signalRecorder(controller);
+    await collect2(deps, ask("Why are you flip-flopping on Measure 110?"), controller.signal);
+    for (const stage of ALL) {
+      expect(seen[stage], `${stage} must receive the request signal`).toBe(controller.signal);
+    }
+  });
+
+  const laterStages: Record<Exclude<Stage, "answer">, Stage[]> = {
+    classify: ["rewrite", "retrieve", "answer"],
+    rewrite: ["retrieve", "answer"],
+    retrieve: ["answer"],
+  };
+
+  for (const stage of ["classify", "rewrite", "retrieve"] as const) {
+    it(`starts no further call when the reader leaves during ${stage}`, async () => {
+      const controller = new AbortController();
+      const { deps, seen } = signalRecorder(controller, stage);
+      await collect2(deps, ask("A question"), controller.signal);
+      expect(stage in seen, `${stage} itself must have run`).toBe(true);
+      for (const later of laterStages[stage]) {
+        expect(later in seen, `${later} must not start for a reader who has gone`).toBe(false);
+      }
+    });
+  }
+
+  it("still runs every stage when the reader stays", async () => {
+    // The gate must not be a blanket early return: a live request completes.
+    const controller = new AbortController();
+    const { deps, seen } = signalRecorder(controller);
+    const events = await collect2(deps, ask("A question"), controller.signal);
+    for (const stage of ALL) {
+      expect(stage in seen, `${stage} must run for a connected reader`).toBe(true);
+    }
+    expect(kinds(events)).toContain("audit_log_status");
   });
 });

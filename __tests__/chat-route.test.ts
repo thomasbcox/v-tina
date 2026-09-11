@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { edgeEnvSchema, nodeEnvSchema, parseEnv, EnvValidationError } from "../src/lib/env";
+import { CLASSIFY_DEADLINE_MS, REWRITE_DEADLINE_MS } from "../src/lib/safety";
 import { createChatDeps } from "../src/lib/chat/deps";
 import * as route from "../src/app/api/chat/route";
 
@@ -121,4 +122,85 @@ describe("AC10 — the chat route runs on a supported runtime, on the request-pa
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({ error: "request body must be JSON" });
   });
+});
+
+describe("the request-scoped deadlines are real, and composed with the reader's signal", () => {
+  const edgeOnly = {
+    NEXT_PUBLIC_SUPABASE_URL: "https://project.supabase.co",
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: "anon-key",
+    FIREWORKS_API_KEY: "fireworks-key",
+  };
+
+  /**
+   * A `fetch` that hangs until its signal aborts — which is what a real `fetch`
+   * does, and the whole reason a signal is worth passing.
+   *
+   * This is what gives these tests teeth: if the code failed to hand a signal to
+   * `fetch` at all, nothing here would ever settle and the test would time out
+   * rather than pass. An earlier version used a promise that never settled under
+   * any circumstances, which could only ever time out — it tested the mock.
+   */
+  function hangUntilAborted() {
+    return vi.spyOn(globalThis, "fetch").mockImplementation(
+      (_input: unknown, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          const abort = () => reject(new DOMException("aborted", "AbortError"));
+          const signal = init?.signal;
+          if (!signal) return; // no signal reached fetch — hang, and fail loudly
+          if (signal.aborted) return abort();
+          signal.addEventListener("abort", abort, { once: true });
+        }) as Promise<Response>,
+    );
+  }
+
+  it("declares a deadline for the rewrite, not only for classification", () => {
+    // The rewrite carried NO bound at all until 2026-09-11: no deadline and no
+    // signal, and the retry helper sets no fetch timeout without one. A hung
+    // rewrite hung the request, on the partisan path.
+    expect(REWRITE_DEADLINE_MS).toBeGreaterThan(0);
+    expect(CLASSIFY_DEADLINE_MS).toBeGreaterThan(0);
+  });
+
+  it("abandons a hung classification at its deadline, failing closed", async () => {
+    const deps = createChatDeps(parseEnv(edgeEnvSchema, edgeOnly));
+    hangUntilAborted();
+    try {
+      const started = Date.now();
+      const result = await deps.classify("a question");
+      expect(result.ok, "an unanswerable classification must fail closed").toBe(false);
+      expect(Date.now() - started).toBeLessThan(CLASSIFY_DEADLINE_MS * 3);
+    } finally {
+      vi.restoreAllMocks();
+    }
+  }, 30_000);
+
+  it("abandons a hung rewrite at its deadline instead of hanging the request", async () => {
+    const deps = createChatDeps(parseEnv(edgeEnvSchema, edgeOnly));
+    hangUntilAborted();
+    try {
+      const started = Date.now();
+      await expect(deps.rewrite("a hostile question")).rejects.toThrow();
+      expect(Date.now() - started).toBeLessThan(REWRITE_DEADLINE_MS * 3);
+    } finally {
+      vi.restoreAllMocks();
+    }
+  }, 40_000);
+
+  it("stops at once when the reader has already gone, without waiting out the deadline", async () => {
+    // The composed signal must honour the request half, not only the timeout —
+    // otherwise a disconnect still waits the full budget before giving up.
+    const deps = createChatDeps(parseEnv(edgeEnvSchema, edgeOnly));
+    hangUntilAborted();
+    try {
+      const started = Date.now();
+      const result = await deps.classify("a question", AbortSignal.abort());
+      expect(result.ok).toBe(false);
+      expect(
+        Date.now() - started,
+        "an already-gone reader must not wait out the deadline",
+      ).toBeLessThan(CLASSIFY_DEADLINE_MS);
+    } finally {
+      vi.restoreAllMocks();
+    }
+  }, 20_000);
 });

@@ -58,7 +58,9 @@ const TASK_PREFIX: Record<EmbeddingTask, string> = {
   query: "search_query: ",
 };
 
-export type EmbedFn = (texts: string[]) => Promise<number[][]>;
+/** `signal` is per CALL, not per embedder: one embedder serves every request, so
+ *  a request-scoped deadline cannot live in its construction options. */
+export type EmbedFn = (texts: string[], signal?: AbortSignal) => Promise<number[][]>;
 
 export class EmbeddingError extends Error {
   constructor(message: string) {
@@ -113,7 +115,7 @@ export function createFireworksEmbedder(options: FireworksEmbedderOptions): Embe
    * error type is translated back to `EmbeddingError` so this module's callers
    * still catch one named thing — the policy is shared, the vocabulary is not.
    */
-  async function requestBatch(batch: string[]): Promise<Response> {
+  async function requestBatch(batch: string[], signal?: AbortSignal): Promise<Response> {
     try {
       return await fetchWithRetry(
         "Fireworks embeddings",
@@ -130,7 +132,7 @@ export function createFireworksEmbedder(options: FireworksEmbedderOptions): Embe
             input: batch.map((t) => prefix + t),
           }),
         },
-        { maxAttempts, onRetry, sleep },
+        { maxAttempts, onRetry, sleep, signal },
       );
     } catch (error) {
       if (error instanceof TransportError) throw new EmbeddingError(error.message);
@@ -138,11 +140,11 @@ export function createFireworksEmbedder(options: FireworksEmbedderOptions): Embe
     }
   }
 
-  return async (texts) => {
+  return async (texts, signal) => {
     const vectors: number[][] = [];
     for (let start = 0; start < texts.length; start += EMBEDDING_BATCH_SIZE) {
       const batch = texts.slice(start, start + EMBEDDING_BATCH_SIZE);
-      const response = await requestBatch(batch);
+      const response = await requestBatch(batch, signal);
       const parsed = responseSchema.safeParse(await response.json());
       if (!parsed.success) {
         throw new EmbeddingError(
