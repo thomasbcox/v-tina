@@ -3,6 +3,7 @@ import { dirname, join, resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { edgeEnvSchema, nodeEnvSchema, parseEnv, EnvValidationError } from "../src/lib/env";
 import { CLASSIFY_DEADLINE_MS, REWRITE_DEADLINE_MS } from "../src/lib/safety";
+import { EMBEDDING_DIMENSIONS } from "../src/lib/embeddings";
 import { createChatDeps } from "../src/lib/chat/deps";
 import * as route from "../src/app/api/chat/route";
 
@@ -199,6 +200,79 @@ describe("the request-scoped deadlines are real, and composed with the reader's 
         Date.now() - started,
         "an already-gone reader must not wait out the deadline",
       ).toBeLessThan(CLASSIFY_DEADLINE_MS);
+    } finally {
+      vi.restoreAllMocks();
+    }
+  }, 20_000);
+});
+
+describe("retrieve's own two network calls each carry the signal", () => {
+  const edgeOnly = {
+    NEXT_PUBLIC_SUPABASE_URL: "https://project.supabase.co",
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: "anon-key",
+    FIREWORKS_API_KEY: "fireworks-key",
+  };
+
+  /**
+   * Hangs until aborted, except for URLs matching `answerFor`, which get a
+   * canned reply. Lets one stage of `retrieve` succeed so the next is the one
+   * under test.
+   *
+   * The orchestrator suite proves `retrieve` is HANDED the signal; it cannot see
+   * what `retrieve` does with it, because there the whole retriever is a fake.
+   * These are the only checks covering the inside — and they were added because
+   * removing the signal from the embedding call broke nothing (2026-09-11).
+   */
+  function fetchHangingExcept(answerFor?: RegExp, reply?: unknown) {
+    return vi.spyOn(globalThis, "fetch").mockImplementation(
+      (input: unknown, init?: RequestInit) => {
+        const url = String(input);
+        if (answerFor && answerFor.test(url)) {
+          return Promise.resolve(
+            new Response(JSON.stringify(reply), {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            }),
+          );
+        }
+        return new Promise<Response>((_resolve, reject) => {
+          const abort = () => reject(new DOMException("aborted", "AbortError"));
+          const signal = init?.signal;
+          if (!signal) return; // no signal reached fetch — hang, and fail loudly
+          if (signal.aborted) return abort();
+          signal.addEventListener("abort", abort, { once: true });
+        }) as Promise<Response>;
+      },
+    );
+  }
+
+  it("gives the signal to the embedding call", async () => {
+    const deps = createChatDeps(parseEnv(edgeEnvSchema, edgeOnly));
+    fetchHangingExcept();
+    try {
+      const started = Date.now();
+      await expect(deps.retrieve("a question", AbortSignal.abort())).rejects.toThrow();
+      expect(Date.now() - started).toBeLessThan(5_000);
+    } finally {
+      vi.restoreAllMocks();
+    }
+  }, 20_000);
+
+  it("gives the signal to the database query too", async () => {
+    const deps = createChatDeps(parseEnv(edgeEnvSchema, edgeOnly));
+    // Let embedding succeed so the query is what the aborted signal must stop.
+    fetchHangingExcept(/\/embeddings$/, {
+      data: [
+        {
+          index: 0,
+          embedding: Array.from({ length: EMBEDDING_DIMENSIONS }, () => 0.01),
+        },
+      ],
+    });
+    try {
+      const started = Date.now();
+      await expect(deps.retrieve("a question", AbortSignal.abort())).rejects.toThrow();
+      expect(Date.now() - started).toBeLessThan(5_000);
     } finally {
       vi.restoreAllMocks();
     }
