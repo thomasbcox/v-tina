@@ -385,7 +385,7 @@ reviewer oracle is the only thing reading *what* changed inside the permitted pa
 - frame/6 — ran (codex on kimi-latest, 6 findings, 13 regressions) → reviews/chat-safety-routing.design.4ea399d.json
 - frame/9 — demonstrated red for all ten size-bearing criteria (1–6, 9–12) against the ratified regressions; each check failed on the violation and passed again on revert. Criteria 7 and 8 are `manual` (live runs recorded below); 13 is `reviewer`.
 - review/6 — ran (codex on glm-latest, 3 findings) → reviews/chat-safety-routing.approach.12b3d9a.json
-- review/8 — not yet reached
+- review/8 — n/a — the approach pass gated it: Thomas approved two shape-changing fixes (findings 1 and 2), so the correctness pass does not run against a shape that is about to change. It runs in the next round, on the redesigned shape.
 - close/3b — not yet reached
 - close/4 — not yet reached
 
@@ -1022,3 +1022,49 @@ claims were checked rather than taken on the reviewer's word:
   `src/types/index.ts` says "the four kinds" of a union that now has five members, and the
   README says "Five record kinds". The rule this breaks is the protocol's own *Counts are
   copies*, and the staleness it predicts had already happened.
+
+## Decisions (2026-09-10, approach round 12b3d9a)
+
+Round `12b3d9a`, base `main`. Three findings, **all three dispositioned FIX**. Two of them change
+the shape, which is what stops the correctness pass this round.
+
+**Approach (glm-latest)**
+
+- **The SSE bridge drains without backpressure and leaves the wire contract hand-validated**
+  (IMPORTANT, two-way, nonstandard): **FIX, in full.** Verified before presenting: `request.signal`
+  is threaded nowhere, so a disconnected reader leaves the answering model running — a recurring
+  cost on a public endpoint and an easy way to run up a bill deliberately. One part of the claim was
+  **checked and found overstated** and Thomas was told so: words do reach the reader as they are
+  produced, because an enqueued chunk is available to a waiting reader immediately. What is actually
+  absent is backpressure (a fast producer is not slowed by a slow reader) and cancellation. The
+  runtime-schema half was taken on its forward-looking merit: the event union exists only as a
+  TypeScript type, so the test hand-writes a checker and User Story 4 would write a second one that
+  can drift from the server's.
+
+- **Next.js 16 deprecates the runtime this one-way route choice depends on** (QUESTION, one-way,
+  dated): **FIX — move to the Node runtime.** This finding was raised by this story itself, under
+  *Discovered during implementation*, and the reviewer independently reached the same place. Thomas
+  chose to walk through the door now rather than record a trigger. The ground given at the consult:
+  it is a one-way door whose price rises with every story that inherits it, it is cheapest today
+  when exactly one route depends on it, and **the property Edge appeared to be protecting is not
+  protected by Edge** — keeping the service-role secret out of the request path comes from
+  `edgeEnvSchema`, which survives the runtime change untouched. What Edge buys (cold start, global
+  distribution) matters for a high-traffic public site and very little for something undeployed.
+
+  **This changes an approved acceptance criterion.** AC10 says the route "declares the Edge
+  runtime"; it must be reworded, and its test with it. Recorded here rather than done quietly,
+  because the criterion was approved at the step-7 frame consult and only Thomas may move it — which
+  he did, at this consult.
+
+- **Living comments hard-code sizes of sets the code already defines** (IMPORTANT, two-way, kludgy):
+  **FIX.** Verified before presenting, and the reviewer was right that the decay had already
+  happened rather than merely being possible: `src/lib/chat/request.ts` says "all five failure
+  modes" of a refusal table holding **eight**; `src/types/index.ts` says "the four kinds" of a union
+  with five members; the README says "Five record kinds". Also `src/lib/retry.ts` and
+  `src/lib/chat/deps.ts` ("three attempts") and `src/lib/prompts.ts` ("the two lists"). The rule is
+  the protocol's own *Counts are copies*. Comment-only, so this fix alone would not have stopped the
+  round.
+
+**Correctness and hidden-failure: not run this round.** The approach pass gates them, and a
+redesign was approved. Running two critics over a diff that is about to be rewritten spends two
+reviews on lines that will not survive. They run in the next round, against the new shape.
