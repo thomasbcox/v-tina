@@ -392,7 +392,7 @@ reviewer oracle is the only thing reading *what* changed inside the permitted pa
 
 - frame/6 — ran (codex on kimi-latest, 6 findings, 13 regressions) → reviews/chat-safety-routing.design.4ea399d.json
 - frame/9 — demonstrated red for all ten size-bearing criteria (1–6, 9–12) against the ratified regressions; each check failed on the violation and passed again on revert. Criteria 7 and 8 are `manual` (live runs recorded below); 13 is `reviewer`.
-- review/6 — ran (codex on glm-latest, 3 findings) → reviews/chat-safety-routing.approach.12b3d9a.json
+- review/6 — ran (codex on glm-latest, 3 findings) → reviews/chat-safety-routing.approach.1e1ac11.json  *(round 2; round 1 was reviews/chat-safety-routing.approach.12b3d9a.json)*
 - review/8 — n/a — the approach pass gated it: Thomas approved two shape-changing fixes (findings 1 and 2), so the correctness pass does not run against a shape that is about to change. It runs in the next round, on the redesigned shape.
 - close/3b — no activation (no guard-hook block, no promotion refused by the reviewer harness, and this repo ships no install.sh to drift)
 - close/4 — presented: re-review only. Two approved fixes (approach findings 1 and 2) reshaped the code rather than patching lines, so merge was not offered — the skill's conditional fork gives one route when a redesign was approved.
@@ -1173,3 +1173,82 @@ instance, and it strengthens the open observation already recorded under *Discov
 implementation*: with an eleven-document corpus at a 0.73 threshold, a fair number of reasonable
 questions are declined. Corpus size, threshold, or both — a real product question, and not one this
 story should settle.
+
+## Codex (glm-latest) approach review — round 2 (2026-09-11, base 12b3d9a, HEAD 1e1ac11)
+
+**Verdict.** 2026-09-11 05:59:40 PDT — If I built this from the spec, I would keep the redesigned shape: a
+thin route adapter, an injected orchestrator, a pull-based ReadableStream with a cancel path, a
+zod discriminated union as the wire authority, and the Node runtime. The stream bridge is the
+platform-idiomatic construct for event-level SSE framing and backpressure, and it is
+proportionate; I would not replace it with a framework or SDK. The event-schema ownership is
+right, with one small vocabulary copy to remove. The redesign's remaining material gap is
+cancellation scope: request.signal currently protects the answering call, but not the model and
+database calls needed to reach it.
+
+### IMPORTANT
+
+**Disconnect cancellation stops only the answer, not the pipeline that reaches it** — reversibility: two-way · standing: nonstandard
+
+- **Claim:** The route threads request.signal into orchestrateChat, but the orchestrator uses it
+only when calling deps.answer. Classification creates its own deadline-only AbortController; the
+rewrite call has no signal; and retrieve runs both the embedding request and the Supabase RPC
+without one. A reader who disconnects after the request is accepted but before generation
+therefore leaves those upstream calls running until they settle. Classification is bounded by
+its deadline, but the rewrite, embedding, and retrieval are not. The README's statement that
+disconnecting stops the work is broader than the implementation.
+- **Alternative:** Make the request signal a property of the whole collaborator pipeline:
+classify, rewrite, and retrieve would each accept the signal alongside their existing argument.
+In classify, replace the hand-built controller and timer with AbortSignal.any([requestSignal,
+AbortSignal.timeout(CLASSIFY_DEADLINE_MS)]); pass the signal through RetryOptions to the rewrite
+and embedding fetches; and pass it to the Supabase RPC call. Check signal.aborted before
+beginning each next stage. Keep the existing answer path unchanged.
+- **Win:** Every request-scoped model and database call stops when its reader disconnects, not
+only the final generation call. This also replaces the bespoke deadline controller with standard
+signal composition and keeps provider cost and connection lifetime coupled.
+
+### NIT
+
+**The wire schema copies the document-kind vocabulary instead of using its runtime authority** — reversibility: two-way · standing: nonstandard
+
+- **Claim:** The ownership direction is correct: chatStreamEventSchema is the runtime authority
+and ChatStreamEvent is derived from it. But retrievedChunkSchema restates documentKind as the
+literal enum ["executive", "legislative"]. The repository already declares DOCUMENT_KINDS as the
+runtime authority, and src/lib/supabase.ts uses z.enum(DOCUMENT_KINDS); this new boundary is the
+one place that copies the values. The z.ZodType<RetrievedPolicyChunk> annotation will catch some
+drift, but the vocabulary still has two living declarations and a less direct contract.
+- **Alternative:** Import DOCUMENT_KINDS from src/lib/ingest/metadata and use
+z.enum(DOCUMENT_KINDS), exactly as matchRowSchema already does. Keep the
+z.ZodType<RetrievedPolicyChunk> annotation as the interface-level guard.
+- **Win:** One runtime vocabulary serves ingestion, database-row validation, and the public wire
+schema; the literal copy and its second maintenance point disappear.
+
+**The repository map still calls the chat route an Edge route after the Node move** — reversibility: two-way · standing: dated
+
+- **Claim:** The detailed chat-endpoint section correctly records the 2026-09-10 move to the
+Node runtime, but the living repository map immediately above it still says the public chat
+endpoint is on the Edge runtime. User Stories 4 and 5 will inherit the runtime decision, and the
+two README statements point them in opposite directions.
+- **Alternative:** Update the repository-map row to name the Node runtime and the request-path
+environment contract. Leave edgeEnvSchema and EdgeEnv named as deliberately decided, since
+renaming that contract reaches outside this story.
+- **Win:** The README has one current statement of the route runtime, so the next workstream
+cannot accidentally build against the deprecated foundation by reading the map.
+
+**Verified against the repository before presenting.** All three claims hold:
+
+- Only `answer` receives the request signal. `classify` builds its own controller carrying
+  the deadline alone; `retrieve` passes none to either the embedding call or the database.
+- `DOCUMENT_KINDS` is already the runtime authority (`src/lib/ingest/metadata.ts`) and is
+  already inside this route's import closure via `src/lib/supabase.ts`, so removing the copy
+  in `events.ts` costs nothing.
+- `README.md:50` still says the chat route is "on the Edge runtime" while `README.md:182`
+  records the move to Node. Two contradictory statements in one file — the builder's error,
+  made while writing the very section that corrects it.
+
+**One thing the finding understates, found while verifying it.** `rewrite` passes **no retry
+options at all** — so unlike `classify`, which is bounded by `CLASSIFY_DEADLINE_MS`, it has
+**no deadline and no signal**. `fetchWithRetry` without a signal sets no timeout on `fetch`,
+and Node's `fetch` has no default one, so a hung rewrite hangs the request rather than
+merely outliving a disconnected reader. That is a stronger reason to act than the
+cancellation gap the finding leads with, and it is on the partisan path — the one the
+product's reputation rides on.
