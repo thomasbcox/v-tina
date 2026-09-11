@@ -1,0 +1,119 @@
+{
+  "verdict": "This is a sound, modern shape and I would build it substantially this way. The thin Edge adapter over a fully-injected orchestrator is the correct seam for a Next.js route that must be exercised offline — a route handler receives only a Request, so nothing else permits the failure paths (classifier timeout, empty retrieval, mid-answer death) to be Small. The sketch follows the repo's own established patterns (the embeddings.ts injected-fetch/zod/named-error shape, the edgeEnvSchema split made for exactly this story, the declared-list/README-paired-by-test convention used for the domain allowlist and the retrieval threshold), its fail-closed parse-by-exact-match is the right safety posture for an avatar wearing a sitting governor's name, and the oracle table is unusually honest about what an offline test cannot prove (ACs 7 and 8). The one place I would not build it this way is the wire protocol: hand-rolled newline-delimited JSON over a raw ReadableStream reinvents what the Vercel AI SDK exists to do for exactly this architecture, and the sketch itself declares the protocol a one-way door that User Stories 4 and 5 will code against — that decision deserves a concrete trade against the library, not the dismissal Open question 5 currently gives it. Findings below; all but the protocol question are two-way.",
+  "findings": [
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "one-way",
+      "standing": "nonstandard",
+      "title": "Hand-rolled NDJSON-over-ReadableStream protocol reinvents the Vercel AI SDK without a real trade",
+      "locus": "Design sketch — 'The wire protocol' / scope item 9 / Open question 5",
+      "claim": "For a Next.js Edge route streaming structured events to a browser client in 2026, the Vercel AI SDK (`ai`) is the standard construct: its Data Stream Protocol covers typed structured event parts (data parts, text parts, finish parts) from an Edge route to a browser reader, which is exactly what the four ChatStreamEvent kinds plus the new failure event are. The sketch rejects it in one line as 'a substantial new dependency that would own the protocol, the event shapes and the client-side parsing' — that asserts a cost without demonstrating one. The contract's own guardrail 4 applies: to reject the candidate, name a specific cost. Here there is a real candidate and a one-way door is being hung on a dismissal. Note the size cut both ways: the full AI SDK also pulls in tool-calling, agent loops and provider plumbing this product will never use, which may be a legitimate rejection — but the rejection must be argued, and the zero-dependency alternative is not 'NDJSON hand-rolled' alone; SSE with `data:` framing plus a fetch reader is the W3C-standard framing (EventSource being GET-only does not block SSE-as-server-format), and the existing union of four event kinds is already close to a data-part stream.",
+      "alternative": "Decide Open question 5 as an explicit three-way trade with the real candidate priced: (a) hand-rolled NDJSON + a ~30-line browser reader, owning the framing and the parse; (b) SSE `data:` framing over the same fetch/reader, gaining a standard wire format and devtools/observability for ~zero dependency cost; (c) the `ai` package's `createDataStream`/`toDataStreamResponse` on the Edge route with the client reading the data-stream protocol, gaining typed structured parts and a maintained client parser at the cost of a dependency whose unused surface (tools, agents) should be stated. Any of the three can be right; what the spec must not do is ratify (a) by default while (c) was never seriously priced, because Stories 4 and 5 both ossify against the choice.",
+      "win": "If (c) or (b) wins: the stream encoder, the browser-side line-splitting/JSON-parsing reader, and the 'tell a finished response from a truncated one' termination logic are all deleted or replaced by maintained standard code, and the mid-answer failure event becomes a first-class protocol part rather than a bespoke union member. If (a) still wins after a real comparison, the story file records *why* the dependency was rejected (specific cost), which protects the decision from being re-litigated at Story 4."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "kludgy",
+      "title": "The new `error` event carries a raw `message: string` to the reader — an untriaged surface in a fail-closed design",
+      "locus": "Design sketch — 'The two type changes' and scope item 11",
+      "claim": "The union gains `{ type: \"error\"; message: string }` so a mid-answer failure is distinguishable from truncation — the event's existence is right. But nothing says what goes in `message`. Everywhere upstream, errors carry internal detail: `EmbeddingError` includes HTTP statuses, `queryPolicyChunks` includes the SQL error text, the Fireworks client will include response bodies. This is a product whose whole posture is that an avatar wearing a governor's name must not leak or say the wrong thing; streaming an upstream provider's error string verbatim to a member of the public is exactly the kind of thing the fail-closed classification exists to prevent, and the design currently leaves the message's content to whoever writes the emit site. It is also in tension with AC 6's promise that the terminating record 'says how it ended' — the reader needs to know it failed, not why in provider-internal terms.",
+      "alternative": "Make the failure event carry a coarse, declared failure kind (e.g. `reason: \"classification\" | \"retrieval\" | \"generation\" | \"unknown\"`, drawn from a const array the way SAFETY_CLASSIFICATIONS works) plus a fixed reader-facing sentence from prompts.ts; log the detailed error server-side (the instrumentation/startup-error discipline already in the repo). The detailed message never crosses the wire.",
+      "win": "Eliminates a leak channel for provider internals and provider error text in the product's most safety-sensitive surface, and makes the error event testable by exact match against a declared vocabulary instead of by substring — consistent with the exact-match parse discipline the sketch itself chose for classification."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "AC 2's core transformation — that neutralisation actually strips the attack while keeping the subject — has no live oracle",
+      "locus": "Test notes, row 2",
+      "claim": "Row 2's Small test proves the plumbing: the neutral text is searched and the original is not. But the criterion's substance is 'the neutralised question … with the personal and party attack removed and the policy subject intact', and a rewriter that returns the original unchanged, or returns empty text, passes every offline assertion as long as the fake says so — the fake is told what to return. AC 7's live run verifies the classifier's verdicts, and AC 8's live run verifies answer grounding, but nothing live reads a real rewrite and judges whether the attack was actually removed. For this product, a rewriter that keeps 'Republican flip-flopping' in the searched question is a safety failure the gate cannot see. This is the same class of honesty the author applied to ACs 7 and 8, applied one step further down the path.",
+      "alternative": "Add a recorded live check to row 2 (or extend row 7's manual run): run the specification's own partisan example through the live rewrite call and record the neutralised output in the story file for a person to read, the way row 7 records verdicts. It need not be an assertion — a recorded artifact a reviewer reads is the honest oracle, matching the pattern the author already chose for grounding fidelity.",
+      "win": "The partisan path — the single most reputational path in the product, per the spec's own Problem section — gets at least one human-read check of the transformation it exists to perform, instead of shipping on plumbing assertions alone."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "kludgy",
+      "title": "AC 12's named oracle cannot fail in the way that matters: 'consistent with' is never defined",
+      "locus": "Test notes, row 12",
+      "claim": "The criterion says the README's documented latency must be 'equal to what the constant allows'. The mechanism says: parse the figure from the README and assert it is 'consistent with' the deadline constant. Consistent how is unstated — a README saying 'measured 1400ms average' against a 1500ms deadline is consistent; a README saying 'measured 9000ms' presumably is not, but nothing in the mechanism says the test must compare the parsed number against the constant. A test that parses a number and asserts it is a number satisfies the mechanism's letter and passes forever, whatever the README says. The closed set of oracle modes is fine; the mechanism as written is the check-that-cannot-fail shape the repo's AGENTS.md names a BLOCKER when it appears in a Then.",
+      "alternative": "State the comparison: the test parses the measured figure from the README's classification section and asserts measured ≤ declared deadline constant (the deadline exists precisely to bound what 'consistent' means). The empty-case check the author already included stays.",
+      "win": "One comparison operator turns a format check into the check the criterion actually asks for, at no cost — the constant and the figure both already exist as parsed values."
+    },
+    {
+      "severity": "NIT",
+      "reversibility": "two-way",
+      "standing": "standard",
+      "title": "Hand-rolled Fireworks chat client vs the official OpenAI SDK — the rejection is right but should name the real reason",
+      "locus": "Design sketch — 'Following the established patterns' / scope item 2",
+      "claim": "Fireworks serves an OpenAI-compatible chat-completions endpoint, so the ecosystem-standard client is `openai`, pointed at Fireworks' base URL — used at OpenAI-compatible providers everywhere. Mirroring embeddings.ts is strong internal-consistency grounds (guardrail 2) and I agree with the choice: the official SDK is Node-oriented and historically heavyweight on Edge, and this repo already owns a proven injected-fetch/zod/named-error client shape that a second model client should reuse verbatim. But the sketch never acknowledges the candidate exists, so the one future reader who asks 'why not the SDK?' gets no answer, and guardrail 4 asks for the candidate to be named even when rejected.",
+      "alternative": "One sentence in the sketch or the fireworks.ts header comment: the Fireworks endpoint is OpenAI-compatible; the official `openai` package was considered and declined because the repo's existing client shape covers the same contract with zod validation and edge-safe fetch injection, while the SDK adds Node-runtime coupling and surface area the Edge bundle doesn't need.",
+      "win": "Converts an invisible decision into a recorded trade, at the cost of one comment — and preempts a Story 3 or Story 4 author re-asking the question with less context."
+    },
+    {
+      "severity": "NIT",
+      "reversibility": "two-way",
+      "standing": "standard",
+      "title": "Multi-attempt classification under a single deadline needs the budget interaction stated",
+      "locus": "Design sketch — 'Retry, and where it must not apply'",
+      "claim": "The sketch says retries apply to the two non-streaming calls 'and their budget is bounded by the classification deadline'. The embeddings policy this is extracted from is per-batch: up to 3 attempts with exponential backoff — under a 1500ms deadline, attempt 1 waits 250ms, attempt 2 waits 500ms, and a slow-but-not-failing attempt 1 can consume the whole budget before attempt 2 starts. As written, the deadline and the retry loop are two clocks that can disagree; the Small test in row 4 asserts the deadline boundary but the interplay (does each attempt get its own sub-deadline? does a partial attempt abort at the wall clock?) is unspecified. Two-way and small, but it is exactly the kind of ambiguity that surfaces as a flaky integration later.",
+      "alternative": "State the rule in the sketch: one wall-clock deadline covers the whole classification step including retries; each attempt runs against the remaining budget (an AbortSignal with the shared deadline), and exhausting the budget mid-attempt is the fail-closed path. The retry policy's sleep is capped by the same signal.",
+      "win": "One shared AbortSignal makes the deadline and the retry loop provably the same clock; the row-4 boundary test then covers the retry interaction for free instead of testing two clocks that were never reconciled."
+    }
+  ],
+  "regressions": [
+    {
+      "criterion": "1 (in-bounds path: verdict, retrieved passages with source metadata, answer composed from those passages and no other grounding)",
+      "regression": "The orchestrator passes the retrieved chunks to the generator, but the answering model's system prompt is assembled with a hard-coded digest of the Governor's priorities (or a second, unlogged retrieval call with a broadened query) in addition to the chunks. Every observable record matches the letter — safety record first, passages record with full source metadata, an answer follows — and the row-1 test asserting 'generator received exactly the chunks the retriever returned' still passes, because the extra grounding travels in the prompt rather than the chunks parameter. The intent ('those passages and no other grounding material') is violated invisibly."
+    },
+    {
+      "criterion": "2 (partisan trap: neutralised question stated and searched, attack removed, policy subject intact, an answer rather than a refusal)",
+      "regression": "The rewriter strips *all* charged language rather than the attack specifically: 'Why are you bowing to Republican pressure and flip-flopping on Measure 110?' becomes 'What is Measure 110?' — the personal/party attack is gone (letter), but so is the actual policy subject the person asked about (flip-flopping / changing positions on it), and the searched question is blander than the asker intended. Alternatively: the neutralised question is stated in the safety record and searched, but the *answer-generation* step is handed the original hostile question as conversational context, so the model answers the attack on its own terms while the search trail looks clean."
+    },
+    {
+      "criterion": "3 (out-of-bounds: fixed deferral naming and linking Oregon's portal, no passages, no generated words)",
+      "regression": "The deferral constant is emitted verbatim and the retriever/generator are never called, but the constant links to `https://www.oregon.gov` via a bare domain that redirects, or the markdown-wrapped link text names the portal while the href points at a search URL — the 'names and links to' letter passes a string-contains check on 'oregon.gov' while a reader clicking it lands somewhere other than the official portal. Also: a stream that emits an empty `streamed_tokens` record (text: \"\") after the deferral satisfies 'no words written by the answering model' in every diff-visible sense while violating the intent that out-of-bounds produces the fixed text and nothing else."
+    },
+    {
+      "criterion": "4 (unusable classification — late, transport failure, or off-vocabulary reply — treated as out of bounds)",
+      "regression": "The parse is exact-match for the three verdicts but the trim/normalise step is applied to the *comparison* only, not the *emitted* value: a reply of 'in-bounds\\n' is classified as a failure (correct) but a reply of 'IN-BOUNDS ' with trailing whitespace is accepted and the safety record emits the untrimmed string, so a client matching the declared vocabulary exactly sees an unknown verdict. Alternatively: the deadline is enforced on the fetch but the retry loop's backoff sleeps are not counted against it, so a classification that takes three attempts inside per-attempt deadlines but 4 seconds in total is honoured — each individual check passes, the declared-deadline intent does not."
+    },
+    {
+      "criterion": "5 (in-bounds but ungroundable: empty passages record, deferral, generator never called)",
+      "regression": "The orchestrator checks `chunks.length === 0` after retrieval, but retrieval itself swallows a store error and returns an empty array (catch-and-`return []`), so a *database outage* and a *genuinely ungroundable question* both take the deferral path — the criterion's letter (empty passages, deferral, generator not called) is satisfied on a night when Supabase is down, while the intent (deferral means 'the corpus cannot ground this', an honest product claim) is violated and the outage is invisible. The row-5 test with a fake returning `[]` cannot tell these apart; only a test where the retriever *throws* does."
+    },
+    {
+      "criterion": "6 (one self-describing JSON record per line; first record is the verdict; exchange always terminates in a how-it-ended record)",
+      "regression": "A record's text payload contains a raw, unescaped newline — a generated answer paragraph with a line break written naïvely (`stream.write(JSON.stringify(event) + '\\n')` is safe only because JSON.stringify escapes newlines; a hand-built framing like `{\"type\":\"streamed_tokens\",\"text\":\"` + text + `\"}\\n` does not). Every record the *tests* emit parses, because the fakes emit single-line strings, while a real multi-line answer splits one record into two unparseable lines mid-stream. Also: the terminating record is emitted inside a `try`, so a failure *in the stream encoder itself* (backpressure rejection, client disconnect) produces a stream that ends with no terminator and no error record — the 'always terminates' letter fails exactly on the path it was written for."
+    },
+    {
+      "criterion": "7 (live classification run: the spec's three examples plus further real questions, each verdict recorded)",
+      "regression": "The live run is executed and recorded, but the 'further real questions' are all chosen from near the spec's own examples — same phrasing family, same pillar — so every verdict is the expected one and the record reads as a clean sweep, while the question the run exists to answer (does the prompt generalise to how members of the public actually phrase things: misspelled, multi-part, policy-adjacent-but-federal) is never put to it. The criterion's letter ('further real questions drawn from inside and outside the corpus's three pillars') is satisfied by three softballs; the intent — evidence the classifier discriminates where it is hard — is not."
+    },
+    {
+      "criterion": "8 (grounding fidelity: every factual claim in the answer supported by the retrieved passages)",
+      "regression": "The human read-through traces the answer's *explicit* claims to passages but the answer carries framing claims in its connective tissue — 'as I announced last year', 'my administration's top priority' — that are factual assertions about Oregon governance drawn from the model's priors, and a reader checking only the policy claims marks it grounded. Alternatively: a claim is traced to a passage that mentions the same program but asserts the opposite direction of it (the passage says funding was cut; the answer says increased) — 'supported by a passage' read as topical overlap rather than entailment satisfies the letter while inverting the passage's meaning, which the criterion's own tail ('no passage's meaning inverted') forbids but a lenient read will not catch."
+    },
+    {
+      "criterion": "9 (malformed body refused with a named reason; nothing downstream attempted)",
+      "regression": "The route parses and validates the body, and classification is correctly skipped on refusal — but the environment is read, the Supabase client is constructed, and a keepalive/analytics call fires *before* validation, so 'no classification, search, or answer is attempted' holds while work (a network touch, a client construction that can throw) still happens for garbage input. Also: the refusal response names the field but not in a way the caller can use — 'invalid request body' for all five failure modes satisfies 'told why' under a generous read while giving the API consumer nothing actionable; the intent is a reason that names what was wrong ('question is required' vs 'question exceeds 2000 characters')."
+    },
+    {
+      "criterion": "10 (Edge runtime declared; every config value from the edge contract; no server-only secret required)",
+      "regression": "The route declares `runtime = \"edge\"` and the constructor succeeds on the edge-only env map, but the orchestrator imports a module that transitively imports `src/lib/env.ts`'s `getNodeEnv` (or the ingestion pipeline, or a Node-only builtin) — the edge bundle either fails at build time in a way the unit test never exercises (vitest runs in Node, where every import resolves), or tree-shakes differently in the real edge build. The letter (declaration + constructor-succeeds test) passes in the gate while `next build` of the actual edge bundle is the only thing that would catch it. The intent — the route genuinely runs on the edge contract — is only proven by the build."
+    },
+    {
+      "criterion": "11 (one declared provisional-prompt list; README documents the same list, equal in both directions)",
+      "regression": "The two-direction comparison test is written, but both extents are parsed by the same helper: the test reads `PROVISIONAL_PROMPTS` and parses the README section with a regex that the author also used to *generate* the README section, so a prompt renamed in prompts.ts but not in the generator produces a README and a test that drift together. Also: a voice-bearing prompt that is not in `PROVISIONAL_PROMPTS` but is *concatenated into* a listed one at call time (e.g. the answering prompt built as `GROUNDING_PROMPT + VOICE_FRAGMENT` where only the former is listed) satisfies both lists being equal while an unlisted voice prompt ships."
+    },
+    {
+      "criterion": "12 (single declared deadline constant; README documents measured latency consistent with it)",
+      "regression": "The README figure is parsed and compared against the constant, but the measured number was recorded from a warm run against a local or cached endpoint, or is the *median* of a run whose p95 exceeded the deadline — 'the latency actually measured' is documented as a flattering aggregate while the constant purports to bound real behaviour. Alternatively the measurement predates the final prompt: the classifier prompt was edited after the latency run, the README number was never re-measured, and the constant and the documented figure still agree — both artifacts are internally consistent and both are stale."
+    },
+    {
+      "criterion": "13 (scope containment: only the enumerated paths change)",
+      "regression": "The enumerated command is run and matches, but a behaviour this story depends on is smuggled into an *already-permitted* file in a way that belongs to another story: e.g. `src/lib/embeddings.ts` is permitted only for the retry extraction, but gains a changed task prefix or a widened error type that the chat path relies on; or `src/types/index.ts` (permitted for two additive changes) has an existing member narrowed, breaking a contract User Story 1 shipped. The path list is the letter; 'nothing else's work landed' is the intent, and the row-13 reviewer oracle is the only thing reading *what* changed inside the permitted paths."
+    }
+  ]
+}
