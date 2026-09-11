@@ -394,7 +394,7 @@ reviewer oracle is the only thing reading *what* changed inside the permitted pa
 - frame/9 — demonstrated red for all ten size-bearing criteria (1–6, 9–12) against the ratified regressions; each check failed on the violation and passed again on revert. Criteria 7 and 8 are `manual` (live runs recorded below); 13 is `reviewer`.
 - review/6 — ran (codex on glm-latest, 3 findings) → reviews/chat-safety-routing.approach.12b3d9a.json
 - review/8 — n/a — the approach pass gated it: Thomas approved two shape-changing fixes (findings 1 and 2), so the correctness pass does not run against a shape that is about to change. It runs in the next round, on the redesigned shape.
-- close/3b — not yet reached
+- close/3b — no activation (no guard-hook block, no promotion refused by the reviewer harness, and this repo ships no install.sh to drift)
 - close/4 — not yet reached
 
 ## Build note (2026-09-10)
