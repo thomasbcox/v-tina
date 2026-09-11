@@ -392,7 +392,7 @@ reviewer oracle is the only thing reading *what* changed inside the permitted pa
 
 - frame/6 — ran (codex on kimi-latest, 6 findings, 13 regressions) → reviews/chat-safety-routing.design.4ea399d.json
 - frame/9 — demonstrated red for all ten size-bearing criteria (1–6, 9–12) against the ratified regressions; each check failed on the violation and passed again on revert. Criteria 7 and 8 are `manual` (live runs recorded below); 13 is `reviewer`.
-- review/6 — ran (codex on glm-latest, 3 findings) → reviews/chat-safety-routing.approach.1e1ac11.json  *(round 2; round 1 was reviews/chat-safety-routing.approach.12b3d9a.json)*
+- review/6 — ran (codex on glm-latest, 3 findings) → reviews/chat-safety-routing.approach.1e1ac11.json
 - review/8 — n/a — the approach pass gated it in BOTH rounds. Round 1: two shape-changing fixes approved. Round 2 (`1e1ac11`): finding 1 approved, which changes collaborator interfaces. The correctness and hidden-failure critics have therefore not yet run on any shape; they run in round 3, which is the round they should read.
 - close/3b — no activation. No guard-hook block and no promotion refused by the reviewer harness; this repo ships no install.sh to drift. **The destroyed-work incident is recorded under Post-fix verification and is deliberately NOT proposed as a lesson:** it is not an activation of either defined kind, and the candidate lesson would restate a rule that already exists and already covered it (the estate checkpoint discipline names `git checkout -- <path>` explicitly). The skill forbids restating an existing rule.
 - close/4 — presented twice. Round 1: re-review only (two shape-changing fixes). Round 2 (`1e1ac11`): re-review only again — approved finding 1 changed collaborator interfaces, so merge was not offered.
@@ -420,6 +420,28 @@ Gate green at **251 tests**; commit `3cd9b25`.
 Also: `src/lib/retry.ts` is the transient-failure policy extracted out of
 `src/lib/embeddings.ts` (scope item 3), and `src/lib/chat/failure.ts` holds the failure vocabulary —
 see the note on it under *Step-9 verification*.
+
+## Build note (2026-09-11, round 3)
+
+Re-review after the round-2 fixes. Base `1e1ac11`. Only the criteria the approved fixes moved are
+listed; every other AC is satisfied where the earlier build notes say.
+
+| AC | Where it is satisfied now |
+|---|---|
+| 1, 2, 5 | Unchanged in behaviour, but every collaborator in `src/lib/chat/orchestrate.ts` now takes the request's cancellation signal, and `gone()` gates each stage so no new call starts for a departed reader |
+| 6 | `src/lib/chat/events.ts` now uses `z.enum(DOCUMENT_KINDS)` — the vocabulary's one runtime authority — rather than repeating its values |
+| 10 | Unchanged; the README repository map now agrees with the endpoint section on the runtime |
+
+Also: `REWRITE_DEADLINE_MS` in `src/lib/safety.ts` bounds a call that previously had no bound at
+all; `deadline()` in `src/lib/chat/deps.ts` composes it with the reader's signal via
+`AbortSignal.any`; `EmbedFn` and `queryPolicyChunks` both take a per-call signal.
+
+**A note on this file's own bookkeeping.** The `review/6` line briefly carried round 1's artifact
+path inside a parenthetical as well as round 2's. That is prose a human reads without difficulty and
+a **mechanical check cannot** — `/close` step 3b derives the round id from exactly those lines and
+stops when it finds more than one, reading it as a split round. The parenthetical was removed; each
+round's artifact is already identified by its own review section heading, which is the right place
+for it.
 
 ## Build note (2026-09-11, round 2)
 
