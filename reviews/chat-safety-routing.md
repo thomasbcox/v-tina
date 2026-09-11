@@ -1492,3 +1492,88 @@ absorbed. The gate is doing its job — each round has found a real defect and t
 but the correctness altitude remains entirely uncovered, and every round adds code no line-level
 critic has read. The reason to fix the whole class now is precisely to make round 4 the round where
 they run, instead of the round that finds the fourth unbounded call.
+
+## Fixes (2026-09-11, approach round 3 — 560570c)
+
+Gate green at **268 tests**; commits `0bbf2b1` and the test commit following it. Production build
+re-run clean. Both approved findings applied.
+
+### Finding 1 (BLOCKER) — the class, not the instances
+
+| Change | Where |
+|---|---|
+| **The rule, written as a rule** | `src/lib/chat/deps.ts` — every outbound call on the request path carries a wall-clock bound, with the reasoning and all four budgets named in one place |
+| Retrieval bounded, both halves under one budget | `RETRIEVAL_DEADLINE_MS` composed once in `retrieve` and passed to `embed()` and `queryPolicyChunks()` |
+| The answer's **idle** bound | `ANSWER_IDLE_MS` + `withIdleBound()` in `src/lib/fireworks.ts` — per read, so the clock resets on every chunk and a long answer is never cut short for being long |
+| The answer's **connect** bound | `ANSWER_CONNECT_MS` — armed until the response arrives, then cleared. Two budgets because one cannot do both jobs |
+| The reader's signal forwarded for the life of the stream | an `AbortController` in `createChatStream`, with the listener removed in a `finally` |
+| Connections cancelled rather than leaked on a stall | `streamLines` cancels the reader before releasing the lock |
+
+**A gap found while writing the guard test, not by the review:** the answer stream's *initial
+connection* had no bound either — the idle clock only starts once a response arrives. That is a
+fifth instance of the same class, and it is exactly what the class-level fix is meant to catch. It
+is bounded now.
+
+**The guard is structural.** `__tests__/chat-route.test.ts` enumerates the collaborators
+`createChatDeps` actually returns — the extent comes from the code, not a typed list — and drives
+every one against a `fetch` that hangs until aborted, with **no** request signal supplied, so only a
+collaborator's own clock can end the call. A fifth collaborator added without a budget reaches the
+driver, has no case, and fails. They are driven concurrently, so the gate waits for the longest
+budget once rather than the sum of four.
+
+**Budgets were sized on their merits, then checked against gate cost.** Ten seconds to open an HTTP
+connection is roughly twenty times a normal connect; ten seconds for an embedding plus a vector
+query where the measured embedding is under a second. Both are generous for their jobs. The gate
+grew from about 8 s to about 19 s, which is the price of the guard actually waiting for a real
+budget to expire.
+
+### Finding 2 — cancellation required, not optional
+
+`RpcClient` and `QueryRpcClient` are now two types. The ingestion store keeps the plain awaitable —
+an operator script has no reader who can disconnect — while the request path's client **requires**
+`abortSignal`. `queryPolicyChunks` takes the query type, so there is no path on which a signal is
+silently dropped.
+
+## Post-fix verification (2026-09-11, round 3)
+
+### Two more dead assertions, both caught by sabotage
+
+- **The idle bound had no test.** Removing `withIdleBound` broke nothing: the suite never exercised
+  a stream that goes silent mid-answer. Now covered both ways — a stream that stalls after one chunk
+  is abandoned (and what arrived is still delivered), and a slow-but-alive stream whose total far
+  exceeds the budget is **not** truncated, which is the distinction the idle bound exists for.
+- **Requiring `abortSignal` could not fail at runtime.** A fake that provides the method behaves
+  identically whether the type demands it or not, so the runtime sabotage stayed green. The check is
+  now a **compile-time** one: a `@ts-expect-error` on assigning a cancellation-less client to
+  `QueryRpcClient`. Reverting the type to optional makes that directive unused and typecheck fails.
+  It also asserts the store's client is still accepted, so it is not merely "everything must have it".
+
+### Demonstrate red
+
+| Sabotage | Result |
+|---|---|
+| Retrieval back to the raw request signal | **RED** — the every-collaborator bound test |
+| The answer stream's connect bound disarmed | **RED** — same test |
+| The answer stream's idle bound removed | **RED** *(after the gap above was covered)* |
+| `abortSignal` made optional again | **RED** — typecheck, via the unused `@ts-expect-error` |
+
+A sabotage that failed to apply was reported and skipped rather than counted, so no result here
+rests on a run that changed nothing.
+
+### Live, through the running endpoint
+
+Rebuilt and exercised over HTTP, because the stream internals changed substantially.
+
+- **In bounds:** 227 records, **224 of them answer fragments**, arriving progressively, terminating
+  in `audit_log_status`. First token at 12.3 s, whole exchange 14.1 s.
+- **Partisan:** classified, neutralised question stated, and — as before — the rewritten question
+  retrieves nothing above threshold, so it ends in the deferral rather than an answer.
+
+### An observation about the loop's own tooling, recorded not acted on
+
+At the start of this round the codex catalog preflight **stopped**, reporting that
+`~/.codex/config.toml` sets no `model_catalog_json`. That was not true — the key is set, and the
+check passed minutes later. The catalog file was being regenerated at that moment, and the stop
+reported a *missing configuration key* for what was really a transient read. A stop whose stated
+cause is wrong sends the operator to the wrong place. This belongs to `claude-light-workflow`, not
+here, so it is recorded and nothing in that repository was touched.
