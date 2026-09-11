@@ -393,7 +393,7 @@ reviewer oracle is the only thing reading *what* changed inside the permitted pa
 - frame/6 — ran (codex on kimi-latest, 6 findings, 13 regressions) → reviews/chat-safety-routing.design.4ea399d.json
 - frame/9 — demonstrated red for all ten size-bearing criteria (1–6, 9–12) against the ratified regressions; each check failed on the violation and passed again on revert. Criteria 7 and 8 are `manual` (live runs recorded below); 13 is `reviewer`.
 - review/6 — ran (codex on glm-latest, 3 findings) → reviews/chat-safety-routing.approach.1e1ac11.json  *(round 2; round 1 was reviews/chat-safety-routing.approach.12b3d9a.json)*
-- review/8 — n/a — the approach pass gated it: Thomas approved two shape-changing fixes (findings 1 and 2), so the correctness pass does not run against a shape that is about to change. It runs in the next round, on the redesigned shape.
+- review/8 — n/a — the approach pass gated it in BOTH rounds. Round 1: two shape-changing fixes approved. Round 2 (`1e1ac11`): finding 1 approved, which changes collaborator interfaces. The correctness and hidden-failure critics have therefore not yet run on any shape; they run in round 3, which is the round they should read.
 - close/3b — no activation (no guard-hook block, no promotion refused by the reviewer harness, and this repo ships no install.sh to drift)
 - close/4 — presented: re-review only. Two approved fixes (approach findings 1 and 2) reshaped the code rather than patching lines, so merge was not offered — the skill's conditional fork gives one route when a redesign was approved.
 
@@ -1252,3 +1252,42 @@ and Node's `fetch` has no default one, so a hung rewrite hangs the request rathe
 merely outliving a disconnected reader. That is a stronger reason to act than the
 cancellation gap the finding leads with, and it is on the partisan path — the one the
 product's reputation rides on.
+
+## Decisions (2026-09-11, approach round 2 — 1e1ac11)
+
+Round `1e1ac11`, base `12b3d9a`. Three findings, **all three dispositioned FIX**. One changes
+interfaces, which stops the correctness pass for a second consecutive round.
+
+**Approach (glm-latest)**
+
+- **Disconnect cancellation stops only the answer, not the pipeline that reaches it** (IMPORTANT,
+  two-way, nonstandard): **FIX in full.** Verified before presenting: only `answer` receives the
+  request signal; `classify` builds its own controller carrying the deadline alone, and `retrieve`
+  passes none to either the embedding call or the database. **The decisive fact was found while
+  verifying, not in the finding:** `rewrite` passes no retry options at all, so unlike `classify` it
+  has **neither a deadline nor a signal** — and `fetchWithRetry` without a signal sets no timeout,
+  which Node's `fetch` does not supply either. A hung rewrite therefore hangs the request rather
+  than merely outliving a departed reader, and it sits on the partisan path. Thomas was given the
+  cheaper option of bounding the rewrite alone and deferring the rest, and chose the full fix
+  knowing it costs another round. The alternative also replaces the hand-built controller with
+  standard signal composition, so the bespoke timer goes away rather than being duplicated.
+
+- **The wire schema copies the document-kind vocabulary instead of using its runtime authority**
+  (NIT, two-way, nonstandard): **FIX.** Verified: `DOCUMENT_KINDS` is the authority in
+  `src/lib/ingest/metadata.ts`, `src/lib/supabase.ts` already imports it, and that module is already
+  inside this route's import closure — so removing the copy costs nothing at all, which is what
+  makes a NIT worth taking rather than deferring.
+
+- **The repository map still calls the chat route an Edge route after the Node move** (NIT, two-way,
+  dated): **FIX.** Verified: `README.md:50` and `README.md:182` state different runtimes for the same
+  route. **The builder's error**, made while writing the section that corrects it. It matters beyond
+  tidiness because the map is what User Stories 4 and 5 read to learn what they are building against.
+
+**Correctness and hidden-failure: not run, for the second round running.** This is a real cost and
+it is named rather than absorbed: two rounds of approach findings have been applied to code no
+line-level critic has read. The gate's reasoning still holds — running two critics over interfaces
+about to change spends two reviews on lines that will not survive — but round 3 carries an
+obligation the earlier rounds did not: **it is the round where the correctness pass must actually
+run**, and a third consecutive deferral would mean the loop never reached the altitude it exists to
+cover. Unless round 3's approach pass raises another shape change, the line-level critics read the
+final code there.
