@@ -42,9 +42,15 @@ export const ANSWER_CHUNK_COUNT = 6;
  * own guarantee broken. `fetchWithRetry` bounds *attempts*, never elapsed time,
  * and Node's `fetch` has no default timeout, so nothing supplies this by accident.
  *
- * The budgets: `CLASSIFY_DEADLINE_MS` and `REWRITE_DEADLINE_MS` live in
- * `../safety` with the steps they belong to; retrieval's is below, and the
- * answer's idle bound is `ANSWER_IDLE_MS` in `../fireworks`.
+ * The budgets, in full: `CLASSIFY_DEADLINE_MS` and `REWRITE_DEADLINE_MS` live in
+ * `../safety` with the steps they belong to; `RETRIEVAL_DEADLINE_MS` is below,
+ * covering the embedding call and the database query together; and the answer
+ * carries two in `../fireworks` — `ANSWER_CONNECT_MS` until the response arrives
+ * and `ANSWER_IDLE_MS` for silence after it. **Five, not four**: this comment
+ * listed four and omitted the connect bound, which was added to serve this same
+ * rule in the same change — the enumerate-then-drift failure the rule exists to
+ * prevent, committed by the comment written to prevent it. The guard test is what
+ * actually holds the rule; this is the map, and a map can go stale.
  *
  * A test enumerates the collaborators this module returns and holds **each** of
  * them to a bound, so a fifth collaborator added without one fails rather than

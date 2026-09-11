@@ -302,26 +302,63 @@ describe("EVERY outbound call on the request path is bounded", () => {
     FIREWORKS_API_KEY: "fireworks-key",
   };
 
+  /** A plausible reply for whichever service the URL belongs to, so an earlier
+   *  call can SUCCEED and the collaborator reaches its next outbound call. */
+  function cannedReply(url: string, body: string): Response {
+    const json = (value: unknown) =>
+      new Response(JSON.stringify(value), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    if (url.includes("/embeddings")) {
+      return json({
+        data: [
+          { index: 0, embedding: Array.from({ length: EMBEDDING_DIMENSIONS }, () => 0.01) },
+        ],
+      });
+    }
+    if (url.includes("/chat/completions")) {
+      if (body.includes('"stream":true')) {
+        return new Response("data: [DONE]\n\n", {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        });
+      }
+      return json({ choices: [{ message: { content: "IN-BOUNDS" } }] });
+    }
+    return json([]); // the policy store: no rows is a valid answer
+  }
+
   /**
-   * Hangs until its signal aborts — a faithful `fetch`.
+   * Answers the first `hangAt - 1` outbound calls, then hangs until aborted —
+   * which is what a real `fetch` does.
    *
-   * A fake that ignores the signal would be testing a scenario a real `fetch`
-   * cannot produce, and every collaborator would "fail" regardless of its
-   * budget. This one fails exactly the collaborators that arm no clock of their
-   * own: with no request signal supplied, only a collaborator's OWN deadline can
-   * end the call.
+   * **This is what makes the guard cover outbound CALLS rather than
+   * collaborators.** The previous version hung every call, so `retrieve` died on
+   * its embedding request and the database query was never reached: a `retrieve`
+   * that bounded embedding while leaving the database unbounded passed it.
+   * Confirmed by sabotage, 2026-09-11.
    */
-  function fetchHangingUntilAborted() {
-    return vi.spyOn(globalThis, "fetch").mockImplementation(
-      (_input: unknown, init?: RequestInit) =>
-        new Promise<Response>((_resolve, reject) => {
+  function fetchHangingAtCall(hangAt: number) {
+    const state = { calls: 0, hung: false };
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      (input: unknown, init?: RequestInit) => {
+        state.calls += 1;
+        const url = String(input);
+        if (state.calls < hangAt) {
+          return Promise.resolve(cannedReply(url, String(init?.body ?? "")));
+        }
+        state.hung = true;
+        return new Promise<Response>((_resolve, reject) => {
           const abort = () => reject(new DOMException("aborted", "AbortError"));
           const signal = init?.signal;
           if (!signal) return; // no clock at all — hang, and fail loudly
           if (signal.aborted) return abort();
           signal.addEventListener("abort", abort, { once: true });
-        }) as Promise<Response>,
+        }) as Promise<Response>;
+      },
     );
+    return state;
   }
 
   /** Drives one collaborator to completion, whatever its shape. */
@@ -344,33 +381,53 @@ describe("EVERY outbound call on the request path is bounded", () => {
     }
   }
 
-  it("holds every collaborator it exposes to a bound of its own", async () => {
-    // **The extent comes from the code under test, not a typed list.** A fifth
-    // collaborator added without a budget reaches `drive`, has no case, and
-    // fails — rather than waiting to be found by a fourth review round, which is
-    // what happened to retrieval and the answer.
-    //
-    // No request signal is passed on purpose: only the collaborator's OWN clock
-    // can end these calls, which is precisely the property under test.
-    //
-    // Driven CONCURRENTLY so the gate waits for the longest budget once rather
-    // than for the sum of all four.
-    fetchHangingUntilAborted();
-    const deps = createChatDeps(parseEnv(edgeEnvSchema, edgeOnly));
-    try {
-      const names = Object.keys(deps).filter((k) => k !== "logError") as Array<keyof ChatDeps>;
-      expect(names.sort()).toEqual(["answer", "classify", "retrieve", "rewrite"]);
-
+  /** Hangs each of one collaborator's outbound calls in turn, requiring every one
+   *  to be ended by a clock the collaborator supplies itself. Returns how many
+   *  distinct calls were exercised. */
+  async function everyCallOf(name: keyof ChatDeps): Promise<number> {
+    let bounded = 0;
+    for (let hangAt = 1; hangAt <= 6; hangAt += 1) {
+      const state = fetchHangingAtCall(hangAt);
+      const deps = createChatDeps(parseEnv(edgeEnvSchema, edgeOnly));
       const started = Date.now();
-      // Either outcome is fine — classification fails closed and returns, the
-      // others throw. What is NOT fine is never settling.
-      await Promise.all(names.map((n) => drive(deps, n).catch(() => {})));
-      expect(
-        Date.now() - started,
-        "every collaborator must give up within its own declared budget",
-      ).toBeLessThan(LONGEST_BUDGET_MS + 5_000);
-    } finally {
+      // No request signal on purpose: only the collaborator's OWN budget can end
+      // these calls, which is the property under test.
+      await drive(deps, name).catch(() => {});
+      const elapsed = Date.now() - started;
+      const hung = state.hung;
       vi.restoreAllMocks();
+      if (!hung) return bounded; // it makes fewer calls than this — done
+      expect(
+        elapsed,
+        `${name}: outbound call #${hangAt} is not bounded by any clock of its own`,
+      ).toBeLessThan(LONGEST_BUDGET_MS + 5_000);
+      bounded += 1;
     }
-  }, LONGEST_BUDGET_MS + 20_000);
+    return bounded;
+  }
+
+  it("holds every outbound call of every collaborator to a bound of its own", async () => {
+    // **The extent comes from the code under test, twice over:** the collaborator
+    // list is read off the deps object, and each collaborator's outbound calls are
+    // discovered by hanging them one after another until it makes no more. A new
+    // collaborator, or a new call inside an existing one, is covered without
+    // editing this test.
+    vi.restoreAllMocks();
+    const names = Object.keys(createChatDeps(parseEnv(edgeEnvSchema, edgeOnly)))
+      .filter((k) => k !== "logError") as Array<keyof ChatDeps>;
+    expect(names.sort()).toEqual(["answer", "classify", "retrieve", "rewrite"]);
+
+    const counts: number[] = [];
+    for (const n of names) counts.push(await everyCallOf(n));
+
+    for (const [i, count] of counts.entries()) {
+      expect(count, `${names[i]}: no outbound call was exercised at all`).toBeGreaterThan(0);
+    }
+    // retrieve makes two — the embedding request and the database query — and the
+    // second is the one the old guard could never reach.
+    expect(
+      counts[names.indexOf("retrieve")],
+      "retrieve's database call must be exercised, not just its embedding call",
+    ).toBeGreaterThanOrEqual(2);
+  }, LONGEST_BUDGET_MS * 6 + 60_000);
 });

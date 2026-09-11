@@ -252,3 +252,86 @@ describe("a stream that goes silent is abandoned, not waited on forever", () => 
     expect(out.join("")).toBe("012345");
   }, 20_000);
 });
+
+describe("a failing stream says WHICH failure it was", () => {
+  /** Hangs until aborted, like a real fetch. */
+  const hangs = (async (_u: unknown, init?: RequestInit) =>
+    new Promise<Response>((_r, reject) => {
+      const abort = () => reject(new DOMException("aborted", "AbortError"));
+      const s = init?.signal;
+      if (!s) return;
+      if (s.aborted) return abort();
+      s.addEventListener("abort", abort, { once: true });
+    })) as unknown as typeof globalThis.fetch;
+
+  const run = (signal?: AbortSignal, connectMs = 120) => async () => {
+    for await (const _ of createChatStream(
+      { apiKey: "k", fetch: hangs },
+      { model: ANSWER_MODEL, maxTokens: 50, messages: [] },
+      signal,
+      30_000,
+      connectMs,
+    )) {
+      void _;
+    }
+  };
+
+  it("names the connect timeout when the provider never answers", async () => {
+    // Both the timeout and a reader disconnect trip the SAME controller, so
+    // without this distinction a dead provider — the failure this bound exists
+    // to catch — was logged identically to someone closing a tab.
+    await expect(run()()).rejects.toThrow(/did not respond within 120ms/);
+  }, 20_000);
+
+  it("names the reader instead when the reader is the one who left", async () => {
+    // Same controller, same AbortError, different cause — and the message must
+    // say so, or the operational signal is absorbed.
+    await expect(run(AbortSignal.abort(), 30_000)()).rejects.toThrow(/reader disconnected/i);
+  }, 20_000);
+
+  it("does not blame the reader for a provider timeout, or vice versa", async () => {
+    await expect(run()()).rejects.not.toThrow(/reader disconnected/i);
+    await expect(run(AbortSignal.abort(), 30_000)()).rejects.not.toThrow(/did not respond within/);
+  }, 20_000);
+});
+
+describe("a connection that fails to close is reported, not discarded", () => {
+  it("hands the cleanup failure to the caller instead of swallowing it blindly", async () => {
+    // Swallowing is right — rethrowing from the finally would mask the stall that
+    // actually matters — but discarding it left a real resource leak with no
+    // trace anywhere.
+    const reported: unknown[] = [];
+    const encoder = new TextEncoder();
+    const doFetch = (async () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode('data: {"choices":[{"delta":{"content":"x"}}]}\n\n'),
+            );
+            // then silence, so the idle bound fires and cleanup runs
+          },
+          cancel() {
+            throw new Error("connection refused to close");
+          },
+        }),
+        { status: 200 },
+      )) as unknown as typeof globalThis.fetch;
+
+    const run = async () => {
+      for await (const _ of createChatStream(
+        { apiKey: "k", fetch: doFetch, onCleanupError: (e) => reported.push(e) },
+        { model: ANSWER_MODEL, maxTokens: 50, messages: [] },
+        undefined,
+        120,
+      )) {
+        void _;
+      }
+    };
+
+    // The PRIMARY error still surfaces — the cleanup failure must not mask it.
+    await expect(run()).rejects.toThrow(/stalled/i);
+    expect(reported, "the cleanup failure must reach the caller").toHaveLength(1);
+    expect(String(reported[0])).toMatch(/refused to close/);
+  }, 20_000);
+});

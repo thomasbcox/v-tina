@@ -126,6 +126,9 @@ export interface FireworksChatOptions {
   fetch?: typeof globalThis.fetch;
   /** Retry and the one wall-clock budget. See `retry.ts`. */
   retry?: RetryOptions;
+  /** Where a failure to close the stream's connection is reported. Defaults to
+   *  a warning. It is deliberately NOT rethrown — see `streamLines`. */
+  onCleanupError?: (error: unknown) => void;
 }
 
 function body(request: ChatRequest, stream: boolean): string {
@@ -202,6 +205,10 @@ export async function* createChatStream(
   connectMs: number = ANSWER_CONNECT_MS,
 ): AsyncGenerator<string> {
   const doFetch = options.fetch ?? globalThis.fetch;
+  const onCleanupError =
+    options.onCleanupError ??
+    ((error: unknown) =>
+      console.warn("Fireworks chat stream: failed to close the connection", error));
 
   // One controller for the whole call. The connect timer arms it until the
   // response arrives and is then cleared, so a dead connection is abandoned
@@ -211,7 +218,15 @@ export async function* createChatStream(
   const forwardAbort = () => controller.abort();
   if (signal?.aborted) controller.abort();
   signal?.addEventListener("abort", forwardAbort, { once: true });
-  const connectTimer = setTimeout(() => controller.abort(), connectMs);
+  // WHY the timer records its own firing: the connect timeout and the reader
+  // disconnecting trip the SAME controller, so the resulting AbortError is
+  // identical for both. Reported undistinguished, a dead provider — exactly what
+  // this bound was added to catch — reads in the log as ordinary client churn.
+  let connectTimedOut = false;
+  const connectTimer = setTimeout(() => {
+    connectTimedOut = true;
+    controller.abort();
+  }, connectMs);
 
   let response: Response;
   try {
@@ -223,6 +238,12 @@ export async function* createChatStream(
     });
   } catch (error) {
     signal?.removeEventListener("abort", forwardAbort);
+    if (connectTimedOut) {
+      throw new ChatError(`Fireworks chat stream did not respond within ${connectMs}ms`);
+    }
+    if (signal?.aborted) {
+      throw new ChatError("Fireworks chat stream abandoned: the reader disconnected");
+    }
     throw new ChatError(
       `Fireworks chat stream could not be opened: ${
         error instanceof Error ? error.message : String(error)
@@ -231,6 +252,11 @@ export async function* createChatStream(
   } finally {
     clearTimeout(connectTimer);
   }
+  // The two throws below previously sat OUTSIDE this try, between the catch above
+  // and the finally at the end — so a refused response or an empty body left the
+  // abort listener attached to the reader's signal. One cleanup site now covers
+  // every exit.
+  try {
   if (!response.ok) {
     throw new ChatError(
       `Fireworks chat stream failed: HTTP ${response.status}`,
@@ -241,8 +267,7 @@ export async function* createChatStream(
 
   const decoder = new TextDecoder();
   let buffer = "";
-  try {
-  for await (const chunk of streamLines(response.body, decoder, idleMs)) {
+  for await (const chunk of streamLines(response.body, decoder, idleMs, onCleanupError)) {
     buffer += chunk;
     // Records are separated by a blank line; anything after the last separator
     // is a partial record and stays in the buffer until the rest arrives.
@@ -303,6 +328,7 @@ async function* streamLines(
   body: ReadableStream<Uint8Array>,
   decoder: TextDecoder,
   idleMs: number,
+  onCleanupError: (error: unknown) => void,
 ): AsyncGenerator<string> {
   const reader = body.getReader();
   try {
@@ -314,7 +340,17 @@ async function* streamLines(
   } finally {
     // Cancel before releasing: on a stall or an abort the connection is still
     // open, and releasing the lock alone would leak it.
-    await reader.cancel().catch(() => {});
+    //
+    // The failure is SWALLOWED but no longer BLIND. Rethrowing here would mask
+    // the primary stall or abort error, which is the one worth having — but
+    // discarding it entirely left a connection that genuinely fails to close with
+    // no trace anywhere, which is the invisible degradation this module spent a
+    // round removing everywhere else.
+    try {
+      await reader.cancel();
+    } catch (error) {
+      onCleanupError(error);
+    }
     reader.releaseLock();
   }
 }
