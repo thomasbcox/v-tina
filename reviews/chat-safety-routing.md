@@ -394,7 +394,7 @@ reviewer oracle is the only thing reading *what* changed inside the permitted pa
 - frame/9 — demonstrated red for all ten size-bearing criteria (1–6, 9–12) against the ratified regressions; each check failed on the violation and passed again on revert. Criteria 7 and 8 are `manual` (live runs recorded below); 13 is `reviewer`.
 - review/6 — ran (codex on glm-latest, 2 findings) -> reviews/chat-safety-routing.approach.560570c.json
 - review/8 — n/a — the approach pass gated it in all THREE rounds: round 1 (two shape-changing fixes), round 2 (interface change), round 3 (a BLOCKER plus an interface change). The correctness and hidden-failure critics have therefore never run on any shape. Round 4 is the round they must.
-- close/3b — no activation. No guard-hook block and no promotion refused by the reviewer harness; this repo ships no install.sh to drift. **The destroyed-work incident is recorded under Post-fix verification and is deliberately NOT proposed as a lesson:** it is not an activation of either defined kind, and the candidate lesson would restate a rule that already exists and already covered it (the estate checkpoint discipline names `git checkout -- <path>` explicitly). The skill forbids restating an existing rule.
+- close/3b — no activation. No guard-hook block; no promotion refused (all three reviewer artifacts promoted — the round-3 REACH line is a report, not a refusal); this repo ships no install.sh to drift. The transient catalog-preflight stop is recorded under Post-fix verification as a tooling observation, not proposed as a lesson: a preflight stop is not one of the two defined activation kinds, and it belongs to another repository.
 - close/4 — presented twice. Round 1: re-review only (two shape-changing fixes). Round 2 (`1e1ac11`): re-review only again — approved finding 1 changed collaborator interfaces, so merge was not offered.
 
 ## Build note (2026-09-10)
@@ -1495,7 +1495,7 @@ they run, instead of the round that finds the fourth unbounded call.
 
 ## Fixes (2026-09-11, approach round 3 — 560570c)
 
-Gate green at **268 tests**; commits `0bbf2b1` and the test commit following it. Production build
+Gate green at **269 tests**; commits `0bbf2b1` and the test commits following it. Production build
 re-run clean. Both approved findings applied.
 
 ### Finding 1 (BLOCKER) — the class, not the instances
