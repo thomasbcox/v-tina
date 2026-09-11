@@ -247,8 +247,12 @@ describe("retrieve's own two network calls each carry the signal", () => {
   }
 
   it("gives the signal to the embedding call", async () => {
-    const deps = createChatDeps(parseEnv(edgeEnvSchema, edgeOnly));
+    // The mock MUST be installed before the deps are built: the embedder resolves
+    // `globalThis.fetch` at construction, not per call. Built the other way round
+    // these tests silently made REAL network calls and passed on a 401 rather
+    // than on the property (caught 2026-09-11 by sabotage that stayed green).
     fetchHangingExcept();
+    const deps = createChatDeps(parseEnv(edgeEnvSchema, edgeOnly));
     try {
       const started = Date.now();
       await expect(deps.retrieve("a question", AbortSignal.abort())).rejects.toThrow();
@@ -259,7 +263,6 @@ describe("retrieve's own two network calls each carry the signal", () => {
   }, 20_000);
 
   it("gives the signal to the database query too", async () => {
-    const deps = createChatDeps(parseEnv(edgeEnvSchema, edgeOnly));
     // Let embedding succeed so the query is what the aborted signal must stop.
     fetchHangingExcept(/\/embeddings$/, {
       data: [
@@ -269,6 +272,7 @@ describe("retrieve's own two network calls each carry the signal", () => {
         },
       ],
     });
+    const deps = createChatDeps(parseEnv(edgeEnvSchema, edgeOnly));
     try {
       const started = Date.now();
       await expect(deps.retrieve("a question", AbortSignal.abort())).rejects.toThrow();
