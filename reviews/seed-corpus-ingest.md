@@ -278,7 +278,7 @@ Re-review after the round-3 redesign plus the approved scope addition. Base `012
 - review/6 — round 4: ran (codex on glm-latest, 3 findings) → reviews/seed-corpus-ingest.approach.851aacf.json. First attempt was **refused, not promoted**: the reply carried two top-level JSON objects, which is the format category of stop, not a fabricated review; codex also logged an internal `exec_command` failure. Rerun once with an explicit single-object instruction and it completed with 15 commands executed, 0 REACH-reported.
 - review/8 — n/a — round 4 did not reach the correctness pass: the approach pass returned a BLOCKER, and Thomas resolved it by cutting the feature rather than by another fix.
 - close/3b — no activation (round 4: no guard-hook block and no `review_runner.py` refusal to promote. The first approach attempt WAS refused for a malformed reply, but that is the runner validating a reply, not refusing to promote a result it judged unsafe; it is recorded under review/6. The repo has no `install.sh`, `BACKLOG.md` or `.aar/` register.)
-- close/4 — round 4: to be presented — the cut removed the feature the findings were about, so no approach/redesign fix remains on the retained work; re-review or merge.
+- close/4 — round 4: presented — the cut removed the feature the findings were about, so no approach/redesign fix remains on the retained work; **re-review or merge**, awaiting Thomas's answer.
 
 **Earlier rounds of this story** (kept as prose: the record holds one line per step by design):
 
