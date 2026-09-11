@@ -1,0 +1,1296 @@
+{
+  "verdict": "2026-09-11 13:57:21 PDT — I would keep the overall shape. The budget scheme is coherent because ownership follows the seam: classification and rewrite deadlines live with safety policy, the retrieval deadline lives at the composition point that spans embedding plus the database call, and the answer's connect and idle bounds live with the streaming transport. I would not replace those five values with a central config object merely for tidiness. The manual AbortController in createChatStream is also justified: AbortSignal.timeout cannot be cleared, so using it for the connect phase would later abort a healthy long answer; a clearable controller is the right way to stop the connect timer when response headers arrive. The per-read withIdleBound and connect-versus-idle split are correct. The RpcClient/QueryRpcClient split is the right seam: ingestion has no reader to disconnect, while the request path requires a cancellation-capable client. The collaborator-bound test is worth its roughly ten-second cost and should not be deleted, but it is not yet structural over the actual outbound-call set: it never reaches the database half of retrieve. Apart from the two findings below, the story is not over-built relative to the ACs; the added budgets and interface split are what AC6 and the approved class-level cancellation fix require.",
+  "regressions": [],
+  "findings": [
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The structural guard stops at collaborators, not outbound calls",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs every fetch, but retrieve's first outbound call is the embedding. When that call is aborted by the retrieval deadline, retrieve throws and queryPolicyChunks is never reached. The separate database test at lines 277-295 supplies an already-aborted request signal, so it proves request cancellation, not that the database call has its own wall-clock bound. A future retrieve could give the deadline to embedding and only the raw request signal, or no signal, to the database and this guard would remain green. The invariant is 'every outbound call is bounded,' but the test's extent is one level above that, at ChatDeps methods.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until aborted, then assert the call ends within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing all-collaborator case, ideally in one driver, so the gate still pays the longest budget once rather than an additional ten seconds.",
+      "win": "The guard would exercise both network calls inside retrieve and actually enforce the approved class-level rule, without deleting the valuable structural test or increasing its wall-clock cost."
+    },
+    {
+      "severity": "NIT",
+      "reversibility": "two-way",
+      "standing": "kludgy",
+      "title": "Manual stream-abort cleanup is split across exits and misses two of them",
+      "locus": "src/lib/fireworks.ts:210-276",
+      "claim": "The manual controller is justified, but its lifecycle cleanup is structurally fragile. The request-signal listener is removed in the fetch catch and again in the body-loop finally, while a non-ok response or a response with no body throws before the body-loop try begins. Those two early exits leave the listener attached to the request signal. This is exactly the cleanup obligation a hand-built controller creates.",
+      "alternative": "Keep the clearable controller, but put one try/finally around everything after listener and timer setup: fetch, response validation, and body iteration. The finally should idempotently clear the connect timer and remove the listener. Alternatively extract a small helper that owns forwarding the request signal and clearing the connect timer.",
+      "win": "One cleanup path replaces two, and every exit—including HTTP failure and missing-body failure—releases the listener without adding a dependency or sacrificing the necessary clearable connect bound."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "Budget policy is scattered across modules and the guard pays production time for it",
+      "locus": "src/lib/chat/deps.ts:35-53; src/lib/fireworks.ts:50-70; __tests__/chat-route.test.ts:11-19,347-375",
+      "claim": "The five request-path budgets live in three modules, the composition-root comment claims to name them in one place but omits ANSWER_CONNECT_MS, and the structural test must import every constant individually and wait for real production deadlines. The per-stage ownership is semantically coherent, but the cross-cutting rule is not represented by a single declarative structure, making the invariant harder to tune and inviting deletion of the slow guard.",
+      "alternative": "Introduce one REQUEST_BUDGETS_MS object at the chat composition root (or src/lib/chat/budgets.ts), pass its values explicitly to classification, rewrite, retrieval, and the stream client, and let createChatDeps accept an optional budget override for tests. Replace createChatStream's two positional numeric parameters with a stream-options object carrying signal, idleMs, and connectMs.",
+      "win": "One authority holds the request-path budget policy, the omitted connect budget cannot drift, and the structural guard can run with millisecond test budgets instead of costing roughly ten seconds of gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "kludgy",
+      "title": "The database half of retrieval lacks a wall-clock-bound test",
+      "locus": "__tests__/chat-route.test.ts:277-295,347-375",
+      "claim": "The collaborator guard aborts at the embedding call before retrieve reaches queryPolicyChunks, and the only database-specific test uses an already-aborted request signal rather than a connected reader with no signal. Nothing currently proves that a hung database call is ended by RETRIEVAL_DEADLINE_MS. This leaves the class-level fix unguarded at exactly one of its outbound calls.",
+      "alternative": "Mock the embedding fetch to return a valid vector, leave the Supabase fetch hanging, call deps.retrieve with no request signal, and assert completion within RETRIEVAL_DEADLINE_MS. Combine this case with the existing concurrent collaborator driver so the gate does not wait twice.",
+      "win": "Every outbound call in the approved class is exercised under its own clock, closing the remaining coverage hole without adding production code or gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "kludgy",
+      "title": "The stream listener leaks on early response failures",
+      "locus": "src/lib/fireworks.ts:210-276",
+      "claim": "createChatStream attaches an abort listener to the request signal, but removes it only in the fetch catch and the body-loop finally. A non-ok response or a response with no body throws before the body-loop try, leaving the listener attached. The hand-built controller therefore has cleanup paths that do not cover all exits.",
+      "alternative": "Wrap fetch, response validation, and body iteration in a single try/finally that clears the connect timer and removes the listener, or extract a helper that owns request-signal forwarding and connect-timer cleanup.",
+      "win": "One cleanup path covers every exit and removes the fragile duplicated listener-removal logic."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The all-collaborator guard is not yet a guard over all outbound calls",
+      "locus": "__tests__/chat-route.test.ts:298-375",
+      "claim": "The test enumerates ChatDeps collaborators, which is useful, but the invariant it claims to enforce is broader: every outbound request-path call carries a wall-clock bound. Because retrieve contains two calls and the guard hangs the first one, the database call is never reached. The existing database test proves cancellation from an already-aborted signal, not a self-contained deadline. A future implementation can therefore violate the class rule at the database call while the structural test remains green.",
+      "alternative": "Extend the guard with a retrieve case whose embedding call succeeds and whose database call hangs, invoked with no request signal, and assert it settles within RETRIEVAL_DEADLINE_MS. Run it concurrently with the current four-collaborator case so the gate still waits only once for the longest budget.",
+      "win": "The structural test would cover the actual outbound-call extent of the rule, preserving its value without adding another ten seconds to the gate."
+    },
+    {
+      "severity": "NIT",
+      "reversibility": "two-way",
+      "standing": "kludgy",
+      "title": "Stream budget parameters are growing positionally",
+      "locus": "src/lib/fireworks.ts:197-203",
+      "claim": "createChatStream now takes options, request, signal, idleMs, and connectMs. The last two are positional test knobs, and tests must pass undefined to reach idleMs. The repository already uses options objects for fetch injection and retry policy, so this signature is less idiomatic and will become brittle if another stream budget is added.",
+      "alternative": "Replace the trailing signal, idleMs, and connectMs parameters with one optional stream-options object, or include them in FireworksChatOptions under a stream sub-object. The production caller can then pass budgets explicitly from the chat composition root.",
+      "win": "Call sites become self-describing, future stream controls can be added without breaking callers, and budget injection no longer relies on positional undefined values."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The class-level bound guard misses the database call",
+      "locus": "__tests__/chat-route.test.ts:347-375",
+      "claim": "The every-collaborator test is valuable, but it hangs the embedding request inside retrieve, so the subsequent queryPolicyChunks call is never exercised with no request signal. The separate database test supplies AbortSignal.abort(), proving immediate cancellation but not the ten-second wall-clock bound. Consequently, a future retrieve can bound embedding while passing an unbounded or request-only signal to the database and the guard stays green, contradicting the claim that every outbound call is covered.",
+      "alternative": "Add one retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts, with no request signal supplied. Assert completion within RETRIEVAL_DEADLINE_MS, and launch it concurrently with the existing collaborator cases so the gate pays the longest budget only once.",
+      "win": "The guard would cover both network calls inside retrieve and actually enforce the approved class-level wall-clock invariant without increasing gate duration."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "kludgy",
+      "title": "The answer stream's connect-bound listener is not released on early failures",
+      "locus": "src/lib/fireworks.ts:210-276",
+      "claim": "The manual AbortController must remove its request-signal listener on every exit. It does so in the fetch catch and the body-loop finally, but a non-ok response or missing body throws before the body-loop try, leaving the listener attached. The duplicated cleanup sites show the hand-rolled lifecycle is error-prone even though the controller itself is necessary because AbortSignal.timeout cannot be cleared.",
+      "alternative": "Use one try/finally surrounding fetch, response validation, and body iteration; in the finally, clear the connect timer and remove the listener. A small helper that owns signal forwarding and connect-timer cleanup would also centralize the obligation.",
+      "win": "A single cleanup path covers all exits, removes the duplicated removal logic, and prevents listener retention on provider refusal or malformed responses."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The structural bound test does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The test enumerates collaborators rather than the outbound calls the rule governs. In retrieve, the embedding fetch hangs and is aborted by the retrieval deadline, so queryPolicyChunks is never reached. The existing database-specific test passes an already-aborted request signal, which verifies cancellation but not a wall-clock bound for a connected reader. A future change could bound embedding while leaving the database call request-only or unbounded, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieve case with a successful canned embedding response and a hanging database fetch; assert it completes within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing all-collaborator case so the gate still waits only for the longest budget.",
+      "win": "The guard would exercise both outbound calls inside retrieve and enforce the approved class-level invariant without deleting the structural test or adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The class-level bound test misses the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375",
+      "claim": "The every-collaborator guard hangs the embedding fetch inside retrieve, so the call never reaches queryPolicyChunks. The separate database test supplies an already-aborted request signal, proving immediate cancellation but not that the database call has its own wall-clock bound. A future retrieve could bound only embedding and pass the raw request signal, or no signal, to the database while this structural test stays green, so the guard does not yet enforce the stated class-level rule.",
+      "alternative": "Add a retrieval case with no request signal in which the embedding fetch returns a valid vector and the database fetch hangs until aborted; assert completion within RETRIEVAL_DEADLINE_MS. Launch it concurrently with the existing collaborator cases so the gate still pays the longest budget once.",
+      "win": "The guard would cover both outbound calls in retrieve and actually enforce the approved every-outbound-call invariant without increasing gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The structural test enumerates ChatDeps collaborators, but the approved invariant governs outbound calls. Inside retrieve, the embedding fetch hangs and is aborted by the deadline before queryPolicyChunks runs. The separate database test passes an already-aborted request signal, which proves cancellation but not a wall-clock bound for a connected reader. A future implementation could bound embedding while passing only the raw request signal, or no signal, to the database and the guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing all-collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level rule without deleting the test or adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard misses the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The all-collaborator test hangs retrieve's embedding request, so the call is aborted by the deadline before queryPolicyChunks is reached. The separate database test uses an already-aborted request signal, proving immediate cancellation but not a self-contained wall-clock bound. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still pays the longest budget only once.",
+      "win": "The guard would cover both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The bound guard does not reach the database call",
+      "locus": "__tests__/chat-route.test.ts:298-375; src/lib/chat/deps.ts:134-146",
+      "claim": "The every-collaborator test hangs retrieve's embedding request, so the retrieval deadline aborts it before queryPolicyChunks is reached. The separate database test passes an already-aborted request signal, which proves immediate cancellation but not a wall-clock bound for a connected reader. A future retrieve could bound embedding while passing the raw request signal, or no signal, to the database, and the structural guard would remain green.",
+      "alternative": "Add a no-request-signal retrieval case where the embedding fetch returns a valid vector and the database fetch hangs until its signal aborts; assert completion within RETRIEVAL_DEADLINE_MS. Run it concurrently with the existing collaborator cases so the gate still waits only once for the longest budget.",
+      "win": "The Guard would exercise both outbound calls in retrieve and enforce the approved class-level invariant without adding gate time."
+    }
+  ]
+}

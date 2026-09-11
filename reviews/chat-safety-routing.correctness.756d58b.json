@@ -1,0 +1,21 @@
+{
+  "summary": "The round-3 fixes correctly close the AC6 always-terminates gap. Retrieval now composes a single wall-clock deadline that spans both the embedding request and the database query, and the answer stream gains separate connect and idle bounds with a clearable controller, so a dead connection is abandoned while a healthy long answer is never cut short. The RpcClient/QueryRpcClient split makes cancellation a required part of the request-path contract (via a compile-time check) while leaving the ingestion store, which has no reader to disconnect, on the plain awaitable type. The two remaining issues are minor: an abort listener is left attached on two early-exit paths of createChatStream, and the budget-enumeration comment that anchors the 'every outbound call is bounded' rule omits the connect bound added in this very change.",
+  "findings": [
+    {
+      "severity": "NIT",
+      "title": "Abort listener leaks on HTTP-failure and missing-body exits",
+      "file": "src/lib/fireworks.ts",
+      "line": 234,
+      "claim": "forwardAbort is attached to the request signal at line 213 and removed only in the fetch catch (line 225) and the body-loop finally (line 275). The two throws at line 235 (`!response.ok`) and line 240 (`!response.body`) sit between those sites, so a non-OK response or a response with no body leaves the listener attached to `signal`. This is exactly the cleanup obligation the hand-built AbortController creates, and those two exits skip it. The impact is negligible in practice — the signal dies with the request and the closure is small — but it is a genuine leak on a path the controller was written to clean up.",
+      "suggestion": "Remove the listener before throwing on those two paths, or better, fold response validation and body iteration into one try/finally that idempotently clears the connect timer and removes the listener on every exit."
+    },
+    {
+      "severity": "NIT",
+      "title": "Budget-enumeration comment omits the connect bound",
+      "file": "src/lib/chat/deps.ts",
+      "line": 47,
+      "claim": "The comment added to anchor the 'every outbound call on the request path carries a wall-clock bound' rule claims to name the budgets ('The budgets: ...'), but it lists CLASSIFY_DEADLINE_MS, REWRITE_DEADLINE_MS, retrieval's, and 'the answer's idle bound is ANSWER_IDLE_MS' — omitting ANSWER_CONNECT_MS, which was added to speak to the same rule in this same change. A reader trying to reconstruct the full set of bounds from the one place that purports to enumerate it will miss the connect bound, which is the drift this rules-as-rule comment was written to prevent.",
+      "suggestion": "Add ANSWER_CONNECT_MS to the sentence (e.g. 'the answer's connect and idle bounds are ANSWER_CONNECT_MS and ANSWER_IDLE_MS in ../fireworks'), or stop enumerating and point at the rule with each module owning its own constants."
+    }
+  ]
+}

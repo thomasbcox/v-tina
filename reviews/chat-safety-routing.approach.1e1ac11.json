@@ -1,0 +1,36 @@
+{
+  "verdict": "2026-09-11 05:59:40 PDT — If I built this from the spec, I would keep the redesigned shape: a thin route adapter, an injected orchestrator, a pull-based ReadableStream with a cancel path, a zod discriminated union as the wire authority, and the Node runtime. The stream bridge is the platform-idiomatic construct for event-level SSE framing and backpressure, and it is proportionate; I would not replace it with a framework or SDK. The event-schema ownership is right, with one small vocabulary copy to remove. The redesign's remaining material gap is cancellation scope: request.signal currently protects the answering call, but not the model and database calls needed to reach it.",
+  "regressions": [],
+  "findings": [
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "Disconnect cancellation stops only the answer, not the pipeline that reaches it",
+      "locus": "src/lib/chat/orchestrate.ts:104-120, src/lib/chat/orchestrate.ts:147-150, src/lib/chat/orchestrate.ts:176-183, src/lib/chat/deps.ts:57-106",
+      "claim": "The route threads request.signal into orchestrateChat, but the orchestrator uses it only when calling deps.answer. Classification creates its own deadline-only AbortController; the rewrite call has no signal; and retrieve runs both the embedding request and the Supabase RPC without one. A reader who disconnects after the request is accepted but before generation therefore leaves those upstream calls running until they settle. Classification is bounded by its deadline, but the rewrite, embedding, and retrieval are not. The README's statement that disconnecting stops the work is broader than the implementation.",
+      "alternative": "Make the request signal a property of the whole collaborator pipeline: classify, rewrite, and retrieve would each accept the signal alongside their existing argument. In classify, replace the hand-built controller and timer with AbortSignal.any([requestSignal, AbortSignal.timeout(CLASSIFY_DEADLINE_MS)]); pass the signal through RetryOptions to the rewrite and embedding fetches; and pass it to the Supabase RPC call. Check signal.aborted before beginning each next stage. Keep the existing answer path unchanged.",
+      "win": "Every request-scoped model and database call stops when its reader disconnects, not only the final generation call. This also replaces the bespoke deadline controller with standard signal composition and keeps provider cost and connection lifetime coupled."
+    },
+    {
+      "severity": "NIT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The wire schema copies the document-kind vocabulary instead of using its runtime authority",
+      "locus": "src/lib/chat/events.ts:27-38",
+      "claim": "The ownership direction is correct: chatStreamEventSchema is the runtime authority and ChatStreamEvent is derived from it. But retrievedChunkSchema restates documentKind as the literal enum [\"executive\", \"legislative\"]. The repository already declares DOCUMENT_KINDS as the runtime authority, and src/lib/supabase.ts uses z.enum(DOCUMENT_KINDS); this new boundary is the one place that copies the values. The z.ZodType<RetrievedPolicyChunk> annotation will catch some drift, but the vocabulary still has two living declarations and a less direct contract.",
+      "alternative": "Import DOCUMENT_KINDS from src/lib/ingest/metadata and use z.enum(DOCUMENT_KINDS), exactly as matchRowSchema already does. Keep the z.ZodType<RetrievedPolicyChunk> annotation as the interface-level guard.",
+      "win": "One runtime vocabulary serves ingestion, database-row validation, and the public wire schema; the literal copy and its second maintenance point disappear."
+    },
+    {
+      "severity": "NIT",
+      "reversibility": "two-way",
+      "standing": "dated",
+      "title": "The repository map still calls the chat route an Edge route after the Node move",
+      "locus": "README.md:50",
+      "claim": "The detailed chat-endpoint section correctly records the 2026-09-10 move to the Node runtime, but the living repository map immediately above it still says the public chat endpoint is on the Edge runtime. User Stories 4 and 5 will inherit the runtime decision, and the two README statements point them in opposite directions.",
+      "alternative": "Update the repository-map row to name the Node runtime and the request-path environment contract. Leave edgeEnvSchema and EdgeEnv named as deliberately decided, since renaming that contract reaches outside this story.",
+      "win": "The README has one current statement of the route runtime, so the next workstream cannot accidentally build against the deprecated foundation by reading the map."
+    }
+  ]
+}

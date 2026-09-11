@@ -6,12 +6,43 @@ import {
   createSupabaseClient,
   queryPolicyChunks,
   type MatchRow,
+  type QueryRpcClient,
   type RpcClient,
 } from "../src/lib/supabase";
 
-/** Records every RPC and answers with whatever the test hands it. `pages`, when
- *  given, answers the paginated table read one page per `.range()` call. */
+/**
+ * Records every RPC and answers with whatever the test hands it.
+ *
+ * The builder carries `abortSignal` because the **query** path's client type now
+ * requires it: cancellation on the request path is an invariant, not a
+ * capability a client may quietly lack. The fake records the signal it was given
+ * so a test can assert it was forwarded.
+ */
 function fakeClient(answer: { data: unknown; error: { message: string } | null }) {
+  const calls: {
+    fn: string;
+    args: Record<string, unknown> | undefined;
+    signal?: AbortSignal;
+  }[] = [];
+  const client: QueryRpcClient = {
+    rpc(fn, args) {
+      const call: (typeof calls)[number] = { fn, args };
+      calls.push(call);
+      const result = Promise.resolve(answer);
+      return Object.assign(result, {
+        abortSignal(signal: AbortSignal) {
+          call.signal = signal;
+          return result;
+        },
+      });
+    },
+  };
+  return { client, calls };
+}
+
+/** The ingestion store's client, which needs no cancellation: the operator
+ *  script has no reader who can disconnect. */
+function fakeStoreClient(answer: { data: unknown; error: { message: string } | null }) {
   const calls: { fn: string; args: Record<string, unknown> | undefined }[] = [];
   const client: RpcClient = {
     rpc(fn, args) {
@@ -149,5 +180,26 @@ describe("createSupabaseChunkStore", () => {
     await expect(
       createSupabaseChunkStore(odd.client).replaceDocument("u", rows),
     ).rejects.toThrow(/row count/);
+  });
+});
+
+describe("cancellation is a requirement of the query client, not a capability", () => {
+  it("refuses a query client that cannot be cancelled", () => {
+    // A COMPILE-TIME check, because this invariant cannot fail at runtime: a
+    // fake that happens to provide the method behaves identically whether the
+    // type demands it or not. Making `abortSignal` optional again would make the
+    // assignment below legal, the @ts-expect-error unused, and typecheck fail —
+    // which is the only way this particular weakening gets caught.
+    const noCancellation = {
+      rpc: () => Promise.resolve({ data: [], error: null }),
+    };
+    // @ts-expect-error a client without abortSignal must not satisfy QueryRpcClient
+    const rejected: QueryRpcClient = noCancellation;
+    void rejected;
+
+    // The ingestion store's client legitimately has no cancellation, and must
+    // still be accepted — so this is not simply "everything must have it".
+    const storeOnly: RpcClient = noCancellation;
+    void storeOnly;
   });
 });

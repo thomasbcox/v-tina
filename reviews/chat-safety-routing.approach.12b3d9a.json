@@ -1,0 +1,36 @@
+{
+  "verdict": "2026-09-10 20:43:39 PDT — I would build the overall architecture this way: the thin route adapter, fully injected orchestrator, shared retry policy, zod-validated provider responses, and explicit fail-closed classification are sound and internally consistent. The SSE and OpenAI-SDK decisions are settled and I do not reopen them. The injected-collaborator seam earns its testability, the two-list prompt partition is proportionate, and the import-closure walk is justified by an acceptance criterion that a normal Node test cannot catch. I would not ship the stream bridge as written: it hand-rolls stream lifecycle in a way that defeats backpressure and leaves the public event contract TypeScript-only. I would also remove hard-coded set sizes from living comments and obtain an explicit decision on the deprecated Edge runtime. A smaller cleanup would be using AbortSignal.timeout for the classification deadline, but it is below these three concerns.",
+  "regressions": [],
+  "findings": [
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The SSE bridge drains its source without backpressure and leaves the wire contract hand-validated",
+      "locus": "src/lib/chat/stream.ts:46-73; src/types/index.ts:63-82; src/app/api/chat/route.ts:23-44; __tests__/chat-stream.test.ts:33-58",
+      "claim": "toSseStream does its entire for-await loop inside ReadableStream.start. controller.enqueue does not couple production to consumption, so the answer generator can run to completion and be buffered before the client reads anything; this is not the streaming shape the story exists to provide and can leave an unbounded producer ahead of a slow reader. The stream also has no cancel path, and although createChatStream accepts an AbortSignal, the route never threads request.signal through the Answerer seam, so a disconnected client cannot cancel the upstream model call. Separately, ChatStreamEvent is a TypeScript-only union while the test hand-rolls a switch to validate the public SSE payload; zod is already the repository’s boundary-validation idiom and Story 4 will need a runtime parser.",
+      "alternative": "Use the Web Streams API in its intended shape: a pull-based ReadableStream whose start only acquires the iterator, whose pull awaits the next event and enqueues one encoded record, and whose cancel returns the iterator; thread request.signal from the route through the orchestrator/Answerer into createChatStream. Declare the event union as a zod discriminated union in a runtime module, derive the TypeScript type from it, and use safeParse in the stream tests and the future client.",
+      "win": "The answer actually streams with backpressure, a disconnect stops provider work instead of orphaning it, and one declarative schema replaces the hand-written test switch while giving User Story 4 a parser that cannot drift from the server type."
+    },
+    {
+      "severity": "QUESTION",
+      "reversibility": "one-way",
+      "standing": "dated",
+      "title": "Next.js 16 deprecates the runtime this one-way route choice depends on",
+      "locus": "src/app/api/chat/route.ts:15; reviews/chat-safety-routing.md, “Discovered during implementation”, item 3",
+      "claim": "The implementation satisfies the approved Edge-runtime criterion, but the recorded production build reports that Next.js 16 deprecates the Edge Runtime. This is not a reopening of the original decision: it is an implementation-time platform fact the story itself correctly puts on the review consult menu. User Stories 4 and 5 will code and deploy against this runtime, so carrying it forward silently would turn a deprecated foundation into an accidental cross-cutting commitment.",
+      "alternative": "Thomas should either explicitly ratify Edge for this story and record the dated deprecation risk plus a migration trigger, or amend the route and AC10 to the Node.js runtime while preserving the edgeEnvSchema separation and the no-service-role-secret invariant, then rerun the production build.",
+      "win": "The next stories inherit a deliberately chosen, supported runtime rather than a deprecated one by default, and the deployment decision has a recorded owner and trigger."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "kludgy",
+      "title": "Living comments hard-code sizes of sets the code already defines",
+      "locus": "src/types/index.ts:63-66; src/lib/chat/orchestrate.ts:88-114; src/lib/chat/deps.ts:58-60; src/lib/retry.ts:47-54; src/lib/chat/request.ts:63-66; __tests__/chat-request.test.ts:33-87",
+      "claim": "The builder protocol’s “Counts are copies” rule forbids writing the size of an enumerable set in living text. The new comments say “the four” event kinds, “the three” declared classifications, “three attempts,” “the two lists,” and “all five failure modes.” Those sets are defined by the event union, SAFETY_CLASSIFICATIONS, RETRY_MAX_ATTEMPTS, the prompt lists, and the test cases. The request comment is already stale: the refusal table now contains eight cases. These are second statements with their own decay clocks, exactly the drift the rule exists to prevent.",
+      "alternative": "Name the kind and point at its authority: “the event union,” “SAFETY_CLASSIFICATIONS,” “RETRY_MAX_ATTEMPTS,” “these prompt lists,” and “the refusal cases below.” Keep dated observations such as the number of models tested in the dated story record rather than living code comments.",
+      "win": "Comments cannot lie when a new event, classification, prompt list member, retry budget, or request failure case is added, and the story complies with the single-source rule without changing runtime behavior."
+    }
+  ]
+}
