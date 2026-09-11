@@ -395,7 +395,7 @@ reviewer oracle is the only thing reading *what* changed inside the permitted pa
 - review/6 — ran (codex on glm-latest, 2 findings) -> reviews/chat-safety-routing.approach.560570c.json
 - review/8 — n/a — the approach pass gated it in all THREE rounds: round 1 (two shape-changing fixes), round 2 (interface change), round 3 (a BLOCKER plus an interface change). The correctness and hidden-failure critics have therefore never run on any shape. Round 4 is the round they must.
 - close/3b — no activation. No guard-hook block; no promotion refused (all three reviewer artifacts promoted — the round-3 REACH line is a report, not a refusal); this repo ships no install.sh to drift. The transient catalog-preflight stop is recorded under Post-fix verification as a tooling observation, not proposed as a lesson: a preflight stop is not one of the two defined activation kinds, and it belongs to another repository.
-- close/4 — presented twice. Round 1: re-review only (two shape-changing fixes). Round 2 (`1e1ac11`): re-review only again — approved finding 1 changed collaborator interfaces, so merge was not offered.
+- close/4 — presented three times, re-review only each time. Round 1: two shape-changing fixes. Round 2: an interface change. Round 3 (`560570c`): a BLOCKER fix plus an interface split. Merge was never offered, because the skill's conditional fork gives one route when a redesign was approved.
 
 ## Build note (2026-09-10)
 
