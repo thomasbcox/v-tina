@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   ANSWER_MODEL,
   CLASSIFIER_MODEL,
@@ -334,4 +334,58 @@ describe("a connection that fails to close is reported, not discarded", () => {
     expect(reported, "the cleanup failure must reach the caller").toHaveLength(1);
     expect(String(reported[0])).toMatch(/refused to close/);
   }, 20_000);
+});
+
+describe("no exit path leaves a listener on the reader's signal", () => {
+  /** Counts listeners the stream attaches to the signal and removes again. */
+  function countingSignal() {
+    const controller = new AbortController();
+    const signal = controller.signal;
+    const add = signal.addEventListener.bind(signal);
+    const remove = signal.removeEventListener.bind(signal);
+    const state = { attached: 0 };
+    vi.spyOn(signal, "addEventListener").mockImplementation(((...a: unknown[]) => {
+      state.attached += 1;
+      return (add as (...x: unknown[]) => void)(...a);
+    }) as typeof signal.addEventListener);
+    vi.spyOn(signal, "removeEventListener").mockImplementation(((...a: unknown[]) => {
+      state.attached -= 1;
+      return (remove as (...x: unknown[]) => void)(...a);
+    }) as typeof signal.removeEventListener);
+    return { signal, state };
+  }
+
+  const cases: Array<[string, () => Response]> = [
+    ["a refused response", () => new Response("nope", { status: 401 })],
+    ["a response with no body", () => new Response(null, { status: 200 })],
+    [
+      "a stream that completes normally",
+      () =>
+        new Response(new TextEncoder().encode("data: [DONE]\n\n").buffer as ArrayBuffer, {
+          status: 200,
+        }),
+    ],
+  ];
+
+  for (const [name, makeResponse] of cases) {
+    it(`releases the listener after ${name}`, async () => {
+      // The two failure paths here used to throw BETWEEN the removal sites, so
+      // the listener stayed attached to the reader's signal. One cleanup site now
+      // covers every exit; this counts them rather than trusting the structure.
+      const { signal, state } = countingSignal();
+      const doFetch = (async () => makeResponse()) as unknown as typeof globalThis.fetch;
+      const run = async () => {
+        for await (const _ of createChatStream(
+          { apiKey: "k", fetch: doFetch },
+          { model: ANSWER_MODEL, maxTokens: 50, messages: [] },
+          signal,
+        )) {
+          void _;
+        }
+      };
+      await run().catch(() => {});
+      expect(state.attached, "every attached listener must be released").toBe(0);
+      vi.restoreAllMocks();
+    }, 20_000);
+  }
 });
