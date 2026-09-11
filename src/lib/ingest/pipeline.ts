@@ -30,11 +30,6 @@ export interface NewPolicyChunk extends DocumentChunk {
  *  embedding). The Supabase implementation is in `src/lib/supabase.ts`. */
 export interface ChunkStore {
   replaceDocument(url: string, rows: NewPolicyChunk[]): Promise<number>;
-  /** Every distinct document URL currently stored. Used only by the operator's
-   *  reconciliation step, which needs to know what is stored that the committed
-   *  corpus no longer contains. Must be complete: a short list would make a live
-   *  document look withdrawn. */
-  listDocumentUrls(): Promise<string[]>;
 }
 
 export interface IngestDeps {

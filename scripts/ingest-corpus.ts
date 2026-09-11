@@ -8,7 +8,6 @@
  *   npm run ingest                 # ingest the whole corpus
  *   npm run ingest -- --dry-run    # parse and chunk only; no network, no credentials
  *   npm run ingest -- --file corpus/eo-23-02.md
- *   npm run ingest -- --prune      # ALSO remove stored documents the corpus dropped
  *
  * Deliberately not an HTTP endpoint: writing to the store needs the service-role
  * key, and an endpoint would need an authentication story the specification does
@@ -22,13 +21,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { relative } from "node:path";
 import { createFireworksEmbedder } from "../src/lib/embeddings";
-import {
-  CompleteCorpus,
-  corpusDocumentPaths,
-  loadCompleteCorpus,
-  reconcileCorpus,
-  CORPUS_DIR,
-} from "../src/lib/ingest/corpus";
+import { corpusDocumentPaths, CORPUS_DIR } from "../src/lib/ingest/corpus";
 import { ingestDocument, prepareDocument } from "../src/lib/ingest/pipeline";
 import { getNodeEnv } from "../src/lib/env";
 import {
@@ -52,43 +45,30 @@ function loadLocalEnv(path = ".env.local"): void {
 
 interface Options {
   dryRun: boolean;
-  prune: boolean;
   file?: string;
 }
 
 function parseArgs(argv: string[]): Options {
-  const options: Options = { dryRun: false, prune: false };
+  const options: Options = { dryRun: false };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "--dry-run") {
       options.dryRun = true;
-    } else if (arg === "--prune") {
-      options.prune = true;
     } else if (arg === "--file") {
       const value = argv[++i];
       if (!value) throw new Error("--file needs a path");
       options.file = value;
     } else {
       throw new Error(
-        `unknown argument "${arg}" — expected --dry-run, --prune or --file <path>`,
+        `unknown argument "${arg}" — expected --dry-run or --file <path>`,
       );
     }
-  }
-  if (options.prune && options.dryRun) {
-    throw new Error("--prune needs a real run; it cannot be combined with --dry-run");
-  }
-  if (options.prune && options.file) {
-    throw new Error(
-      "--prune reconciles the WHOLE corpus against the store; it cannot be combined with --file",
-    );
   }
   return options;
 }
 
 interface Outcome {
   file: string;
-  /** The document's own source URL, which is what the store is keyed by. */
-  url?: string;
   chunks?: number;
   error?: unknown;
 }
@@ -133,44 +113,23 @@ async function main(): Promise<number> {
         };
       })();
 
-  // Load the WHOLE corpus before doing any work. The loader is the only way to
-  // obtain the value that may drive a removal, and it reads and parses each
-  // document exactly ONCE — the same bytes this run then ingests, so no file can
-  // change between validation and use. Skipped for --file, which is not a full
-  // run and therefore may not prune (refused in parseArgs).
-  let corpus: CompleteCorpus | undefined;
-  if (!options.file) corpus = loadCompleteCorpus();
-
   process.stdout.write(
     `${options.dryRun ? "Checking" : "Ingesting"} ${paths.length} document(s)\n\n`,
   );
 
-  // One entry per document to process: the corpus loader's own reads when this is
-  // a full run, or the single file named by --file.
-  const work = corpus
-    ? corpus.documents.map((d) => ({ name: d.file, markdown: d.markdown }))
-    : paths.map((path) => ({
-        name: relative(".", path),
-        markdown: readFileSync(path, "utf8"),
-      }));
-
   const outcomes: Outcome[] = [];
-  for (const { name, markdown } of work) {
+  for (const path of paths) {
+    const name = relative(".", path);
     try {
+      const markdown = readFileSync(path, "utf8");
       // In a real run the reported count is the one the STORE confirmed, never
       // the locally chunked length — a short write must not read as success.
-      let chunks: number;
-      let url: string;
-      if (ingestInto) {
-        const result = await ingestDocument(markdown, ingestInto);
-        chunks = result.chunkCount;
-        url = result.url;
-      } else {
-        const prepared = prepareDocument(markdown);
-        chunks = prepared.length;
-        url = prepared[0].source.url;
-      }
-      outcomes.push({ file: name, url, chunks });
+      // In a real run the reported count is the one the STORE confirmed, never
+      // the locally chunked length — a short write must not read as success.
+      const chunks = ingestInto
+        ? (await ingestDocument(markdown, ingestInto)).chunkCount
+        : prepareDocument(markdown).length;
+      outcomes.push({ file: name, chunks });
       process.stdout.write(`  ok    ${name} — ${chunks} chunks\n`);
     } catch (error) {
       outcomes.push({ file: name, error });
@@ -181,37 +140,8 @@ async function main(): Promise<number> {
   const failures = outcomes.filter((o) => o.error !== undefined);
   const total = outcomes.reduce((sum, o) => sum + (o.chunks ?? 0), 0);
 
-  // Reconciliation. The corpus value carries the completeness guarantee, and
-  // reconcileCorpus owns the deletion itself; the checks here are only about
-  // whether THIS RUN is entitled to reconcile — a failed document means the run
-  // did not establish that the store's extra documents are genuinely withdrawn.
-  const removed: string[] = [];
-  if (options.prune && ingestInto && corpus && failures.length === 0) {
-    // Printed as each withdrawal is confirmed, not after the batch: the batch is
-    // not atomic, so a failure part-way must leave the operator knowing exactly
-    // what was already removed.
-    let announced = false;
-    const stale = await reconcileCorpus(corpus, ingestInto.store, (url) => {
-      if (!announced) {
-        process.stdout.write("\npruning withdrawn document(s)\n");
-        announced = true;
-      }
-      process.stdout.write(`  removed  ${url}\n`);
-      removed.push(url);
-    });
-    if (stale.length === 0) {
-      process.stdout.write("\nnothing to prune: the store already matches the corpus\n");
-    }
-  } else if (options.prune && failures.length > 0) {
-    process.stderr.write(
-      "\nNOT pruning: a document failed, so this run did not establish that the " +
-        "store's extra documents are withdrawn rather than merely unprocessed.\n",
-    );
-  }
-
   process.stdout.write(
-    `\n${outcomes.length - failures.length}/${outcomes.length} document(s), ${total} chunks` +
-      `${removed.length > 0 ? `, ${removed.length} removed` : ""}\n`,
+    `\n${outcomes.length - failures.length}/${outcomes.length} document(s), ${total} chunks\n`,
   );
   if (failures.length > 0) {
     process.stdout.write(`\nfailed:\n`);

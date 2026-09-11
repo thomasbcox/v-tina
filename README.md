@@ -59,14 +59,17 @@ One source of truth, read by everything:
 |---|---|
 | Local development | `.nvmrc` — run `nvm use` in the repository root |
 | CI (GitHub Actions) | `.nvmrc`, via `setup-node`'s `node-version-file` |
-| Compatibility floor | `package.json` `engines.node` (`>=20.12.0`) |
+| Compatibility floor | `package.json` `engines.node` (`>=22.0.0`) |
 
 `.nvmrc` pins the **major**, so a patch upgrade does not desynchronise local from CI while a major
 change stays an explicit decision. Change the version in `.nvmrc`; CI follows it automatically.
 
 `engines.node` is a separate, hand-maintained declaration — it is the floor npm warns against, not
-a copy of the pin. It was raised from Next.js's own `>=20.9.0` to `>=20.12.0` when the ingest
-script adopted `process.loadEnvFile`, which is the first version that provides it. **Nothing checks that the two agree**: the test that compared them was removed
+a copy of the pin. It is set by the strictest floor the
+dependencies actually require: `@supabase/supabase-js` and its subpackages declare `>=22.0.0`, so
+anything lower would advertise a compatibility this project cannot honour. Next.js asks only for
+`>=20.9.0`, and `process.loadEnvFile` in the ingest script needs `>=20.12.0`; both are below the
+Supabase floor, so it governs. **Nothing checks that the two agree**: the test that compared them was removed
 along with the version-comparison dependency it needed. If you lower `.nvmrc` below the
 `engines.node` floor, no tooling will object, so keep them consistent by hand.
 
@@ -184,18 +187,6 @@ service-role key. Variables already set in your shell win over the file, so an e
 stays authoritative. Each document replaces its own chunks in one transaction, so re-running is
 safe and leaves no stale text from an earlier version. Add `--file corpus/<name>.md` to ingest one
 document. The command reports every document's outcome and exits non-zero if any failed.
-
-```bash
-npm run ingest -- --prune
-```
-
-Does the same, then **removes stored documents the corpus no longer contains**, so a successful run
-leaves the database equal to the committed corpus. Use this after deleting a document or correcting
-a document's URL, since a corrected URL is a removal of the old one plus an ingest of the new.
-
-Pruning is opt-in because it deletes. It refuses to combine with `--dry-run` or `--file`, and it
-does not run at all if any document failed, because the corpus list would then be incomplete and
-pruning against it could withdraw a document that is still live. Every removal is printed.
 
 ## Database
 

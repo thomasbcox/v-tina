@@ -49,6 +49,22 @@ describe("the seed corpus", () => {
     ).toBeGreaterThanOrEqual(MIN_CHUNKS_PER_DOCUMENT);
   });
 
+  // Found by the round-3 reviewer while reconciliation was still in scope. It is
+  // a corpus defect regardless: the store is keyed by URL, so two files sharing
+  // one would silently overwrite each other at ingest.
+  it("has no two documents claiming the same canonical url", () => {
+    const byUrl = new Map<string, string[]>();
+    for (const path of paths) {
+      const url = parseDocument(readFileSync(path, "utf8")).source.url;
+      byUrl.set(url, [...(byUrl.get(url) ?? []), basename(path)]);
+    }
+    const clashes = [...byUrl.entries()].filter(([, files]) => files.length > 1);
+    expect(
+      clashes.map(([url, files]) => `${url}: ${files.join(", ")}`),
+      "two documents sharing a url would silently overwrite each other",
+    ).toEqual([]);
+  });
+
   it("covers every declared pillar and both document kinds", () => {
     const sources = paths.map((p) => parseDocument(readFileSync(p, "utf8")).source);
     expect([...new Set(sources.map((s) => s.pillar))].sort()).toEqual(

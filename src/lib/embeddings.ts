@@ -25,16 +25,12 @@ export const EMBEDDING_BATCH_SIZE = 64;
 /**
  * Attempts per batch before giving up.
  *
- * Measured against the live service on 2026-09-09: 25 sequential 64-input
- * batches produced 21 successes and 4 failures — a 16% rate — every failure an
- * Envoy `upstream connect error ... reset reason: connection termination` from
- * Fireworks' own load balancer. The failures are fast (100–280ms, before any
- * work), independent, and carry no `Retry-After`, so they are not rate limiting.
- *
- * A full corpus run sends roughly 22 batches, so at 16% the chance of a wholly
- * clean run is about 2% — which is why eleven consecutive attempts produced
- * none. Three attempts take a batch to roughly 0.4% and a full run to about 92%.
- * Batch size is NOT the trigger: 8, 32 and 64 inputs all succeed in isolation.
+ * The service returns fast, independent, transient upstream errors often enough
+ * that a full corpus run rarely completes without one. A small bounded retry
+ * turns that from an obstacle into a non-event. The measurement this was sized
+ * from is dated evidence and lives in `reviews/seed-corpus-ingest.md`; it is
+ * deliberately not restated here, where it would decay into folklore as the
+ * corpus and the service change.
  */
 export const EMBEDDING_MAX_ATTEMPTS = 3;
 
