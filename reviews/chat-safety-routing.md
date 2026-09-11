@@ -394,8 +394,8 @@ reviewer oracle is the only thing reading *what* changed inside the permitted pa
 - frame/9 — demonstrated red for all ten size-bearing criteria (1–6, 9–12) against the ratified regressions; each check failed on the violation and passed again on revert. Criteria 7 and 8 are `manual` (live runs recorded below); 13 is `reviewer`.
 - review/6 — ran (codex on glm-latest, 3 findings) → reviews/chat-safety-routing.approach.1e1ac11.json  *(round 2; round 1 was reviews/chat-safety-routing.approach.12b3d9a.json)*
 - review/8 — n/a — the approach pass gated it in BOTH rounds. Round 1: two shape-changing fixes approved. Round 2 (`1e1ac11`): finding 1 approved, which changes collaborator interfaces. The correctness and hidden-failure critics have therefore not yet run on any shape; they run in round 3, which is the round they should read.
-- close/3b — no activation (no guard-hook block, no promotion refused by the reviewer harness, and this repo ships no install.sh to drift)
-- close/4 — presented: re-review only. Two approved fixes (approach findings 1 and 2) reshaped the code rather than patching lines, so merge was not offered — the skill's conditional fork gives one route when a redesign was approved.
+- close/3b — no activation. No guard-hook block and no promotion refused by the reviewer harness; this repo ships no install.sh to drift. **The destroyed-work incident is recorded under Post-fix verification and is deliberately NOT proposed as a lesson:** it is not an activation of either defined kind, and the candidate lesson would restate a rule that already exists and already covered it (the estate checkpoint discipline names `git checkout -- <path>` explicitly). The skill forbids restating an existing rule.
+- close/4 — presented twice. Round 1: re-review only (two shape-changing fixes). Round 2 (`1e1ac11`): re-review only again — approved finding 1 changed collaborator interfaces, so merge was not offered.
 
 ## Build note (2026-09-10)
 
