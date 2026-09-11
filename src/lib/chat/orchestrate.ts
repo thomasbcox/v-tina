@@ -37,7 +37,9 @@ export interface Classifier {
 }
 
 export interface Answerer {
-  (messages: ChatMessage[]): AsyncIterable<string>;
+  /** `signal` aborts the upstream call when the reader disconnects. Passing it
+   *  is what stops a model generating an answer nobody will read. */
+  (messages: ChatMessage[], signal?: AbortSignal): AsyncIterable<string>;
 }
 
 export interface ChatDeps {
@@ -102,16 +104,17 @@ function* deferral(): Generator<ChatStreamEvent> {
 export async function* orchestrateChat(
   deps: ChatDeps,
   body: ChatRequestBody,
+  signal?: AbortSignal,
 ): AsyncGenerator<ChatStreamEvent> {
   const log = deps.logError ?? ((context, error) => console.error(context, error));
   const asked = currentQuestion(body);
 
   // --- classify -----------------------------------------------------------
-  // Fails CLOSED. A verdict that did not arrive, did not parse, or was not one
-  // of the three declared values is treated exactly as out of bounds: nothing is
-  // embedded, nothing is searched, the answering model is never called. A flaky
-  // classifier makes this service useless rather than wrong, which is the right
-  // way round for an avatar wearing a sitting governor's name.
+  // Fails CLOSED. A verdict that did not arrive, did not parse, or was not a
+  // member of SAFETY_CLASSIFICATIONS is treated exactly as out of bounds:
+  // nothing is embedded, nothing is searched, the answering model is never
+  // called. A flaky classifier makes this service useless rather than wrong,
+  // which is the right way round for an avatar wearing a sitting governor's name.
   let verdict: ClassificationResult;
   try {
     verdict = await deps.classify(asked);
@@ -192,7 +195,10 @@ export async function* orchestrateChat(
 
   // --- answer -------------------------------------------------------------
   try {
-    for await (const text of deps.answer(buildAnswerMessages(body, question, chunks))) {
+    for await (const text of deps.answer(
+      buildAnswerMessages(body, question, chunks),
+      signal,
+    )) {
       if (text) yield { type: "streamed_tokens", text };
     }
   } catch (error) {

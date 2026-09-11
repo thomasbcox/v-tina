@@ -125,8 +125,8 @@ export type ProvisionalPrompt = (typeof PROVISIONAL_PROMPTS)[number];
  * The prompts that carry no voice and which Story 3 does NOT replace: they
  * produce a label and a rephrased question, never prose a reader sees.
  *
- * Declared so the two lists form an exhaustive partition of every prompt this
- * module exports. A test asserts exactly that, which is what stops a new
+ * Declared so this list and PROVISIONAL_PROMPTS form an exhaustive partition of
+ * every prompt this module exports. A test asserts exactly that, which is what stops a new
  * voice-bearing prompt from shipping unlisted — a prompt added to neither list
  * fails, so classifying it is not optional.
  */

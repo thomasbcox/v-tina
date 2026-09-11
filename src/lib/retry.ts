@@ -49,7 +49,8 @@ export interface RetryOptions {
    * sleeps included.
    *
    * This is the one clock. Without it the deadline and the retry loop are two
-   * clocks that disagree: three attempts, each inside its own timeout, can total
+   * clocks that disagree: a full RETRY_MAX_ATTEMPTS run, each attempt inside its
+   * own timeout, can total
    * far more than the budget the caller declared, and a slow first attempt can
    * consume the entire budget before the second begins. Passed to `fetch` as its
    * signal, checked before each retry, and used to cut a backoff sleep short.

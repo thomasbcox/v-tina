@@ -62,8 +62,8 @@ export type ParseResult =
  *
  * Takes the already-read text rather than a `Request` so it is a pure function
  * the unit suite calls directly. Every refusal names the offending field —
- * "invalid request body" for all five failure modes tells an API consumer
- * nothing it can act on.
+ * "invalid request body" for every failure mode tells an API consumer nothing
+ * it can act on.
  */
 export function parseChatRequest(raw: string): ParseResult {
   let json: unknown;

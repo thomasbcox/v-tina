@@ -54,9 +54,11 @@ function runtimeClosure(entry: string): Map<string, string[]> {
   return seen;
 }
 
-describe("AC10 — the chat route runs on the edge, on the edge contract alone", () => {
-  it("declares the edge runtime, which is the export Next.js itself reads", () => {
-    expect(route.runtime).toBe("edge");
+describe("AC10 — the chat route runs on a supported runtime, on the request-path contract alone", () => {
+  it("declares a supported runtime, which is the export Next.js itself reads", () => {
+    // Was "edge" until 2026-09-10; Next.js 16 deprecates that runtime and Thomas
+    // chose at the review consult to move while one route depended on it.
+    expect(route.runtime).toBe("nodejs");
     expect(typeof route.POST).toBe("function");
   });
 
@@ -76,20 +78,22 @@ describe("AC10 — the chat route runs on the edge, on the edge contract alone",
     expect(() => parseEnv(nodeEnvSchema, edgeOnly)).toThrow(EnvValidationError);
   });
 
-  it("reaches no server-only module through its whole runtime import graph", () => {
-    // The two checks above both pass under Vitest, which runs in Node where every
-    // import resolves — so neither can see a server-only module creeping into the
-    // edge bundle. This can. A dynamic import would still slip past a static
-    // walk, which is why the story also records a real production build.
+  it("never reaches the server-only environment contract, anywhere in its import graph", () => {
+    // This is the part the two checks above cannot do. They pass under Vitest,
+    // which runs in Node where every import resolves, so neither can see the
+    // node-only contract creeping in transitively.
+    //
+    // The ban on Node builtins that used to live here was REMOVED with the move
+    // off the Edge runtime: it enforced a platform restriction that no longer
+    // exists, and a check asserting a rule nobody has is worse than no check.
+    // What survives is the invariant the criterion is actually about — this route
+    // must not need the service-role secret — which matters MORE now, because the
+    // platform no longer withholds it and only this holds the line.
     const closure = runtimeClosure(ROUTE_FILE);
     expect(closure.size, "the walk found nothing, so it proves nothing").toBeGreaterThan(5);
 
-    const forbiddenModules = /^(node:|fs$|path$|child_process$|worker_threads$|os$|net$)/;
     const offenders: string[] = [];
-    for (const [file, specifiers] of closure) {
-      for (const spec of specifiers) {
-        if (forbiddenModules.test(spec)) offenders.push(`${file} imports ${spec}`);
-      }
+    for (const [file] of closure) {
       // The node environment accessor demands the service-role secret; CALLING it
       // from here would make the route need a key the edge must not carry.
       //

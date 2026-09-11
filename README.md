@@ -173,9 +173,18 @@ have grounded is a smaller harm than answering one it could not.
 
 ## The chat endpoint
 
-`POST /api/chat` is the only public entry point. It runs on the **Edge runtime** and reads only
-the edge half of the environment contract, so it never needs the service-role secret — retrieval
-goes through the public anon key, which the schema allows to read and not to write.
+`POST /api/chat` is the only public entry point. It reads only the **request-path** half of the
+environment contract, so it never needs the service-role secret — retrieval goes through the public
+anon key, which the schema allows to read and not to write.
+
+It ran on the **Edge runtime** until 2026-09-10. Next.js 16 deprecates that runtime, and rather
+than let the chat screen and the deployment story inherit a deprecated foundation, it moved to the
+**Node runtime** while exactly one route depended on it. One consequence is worth stating plainly:
+under Edge the platform *could not see* server-only variables, so excluding the service-role secret
+was enforced. On Node the secret exists in the process environment and the exclusion is a
+discipline — `getEdgeEnv()` plus the tests that hold the route to it. The contract is unchanged;
+the guarantee behind it is now ours to keep rather than the runtime's to impose. (`edgeEnvSchema`
+keeps its name — it now describes the contract rather than the runtime.)
 
 ### What it accepts
 
@@ -199,7 +208,17 @@ stream reader. SSE was chosen over a bespoke line format because it is the stand
 and the one the mainstream AI client libraries use, so adopting one later changes the payload
 shape rather than the transport.
 
-Five record kinds, declared as `ChatStreamEvent` in `src/types/index.ts`:
+The stream is **pull-based**: one record is produced each time the reader has room, so a fast model
+cannot run ahead of a slow reader. **Disconnecting stops the work** — closing the connection unwinds
+the orchestrator and aborts the answering model, rather than leaving it generating words nobody
+will read.
+
+Validate records with `chatStreamEventSchema` from `src/lib/chat/events.ts` rather than writing a
+parser: it is the same object the server derives its own type from.
+
+The record kinds, declared as a runtime schema in `src/lib/chat/events.ts` with the
+`ChatStreamEvent` type derived from it — one definition, so a client's parser cannot drift from
+what the server emits:
 
 | Kind | What it means |
 |---|---|
@@ -271,8 +290,16 @@ Every model on offer is a **reasoning** model: it thinks in a separate field and
 output in `content`. Two consequences worth knowing before changing these. The token cap budgets
 the reasoning as well as the output — a cap of 12 tokens returned an empty answer from three
 different models, and every question then failed closed. And nothing appears on screen until the
-reasoning finishes: over the same grounded question, the largest candidate took **19.5 seconds** to
-its first word against the chosen model's 1.5.
+reasoning finishes, which makes time-to-first-token the number that matters rather than total
+throughput.
+
+**That number is highly variable and the honest range is wide.** Measured through the running
+endpoint on 2026-09-10, the answering model took **3.6 s, 9.1 s and 11.9 s** of thinking before its
+first word across three grounded questions. An earlier single sample of 1.5 s is not
+representative; it is recorded here as the reason not to trust one measurement. The rejected
+candidate was **19.5 s** on one comparison, which is why it was rejected — but treat that as one
+sample against another, not as a stable ranking. Re-measure before changing models, and take more
+than one reading.
 
 ### Provisional prompts
 

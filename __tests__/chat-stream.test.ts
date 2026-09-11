@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ChatStreamEvent } from "../src/types";
-import { FAILURE_REASONS } from "../src/lib/chat/failure";
+import { chatStreamEventSchema } from "../src/lib/chat/events";
 import { SSE_CONTENT_TYPE, encodeEvent, toSseStream } from "../src/lib/chat/stream";
 
 const TERMINATOR: ChatStreamEvent = {
@@ -30,30 +30,16 @@ async function readRecords(stream: ReadableStream<Uint8Array>): Promise<unknown[
   return out;
 }
 
-/** The declared event union, validated from the outside — an unrecognised kind
- *  or a missing field fails, so a record that merely *looks* like JSON is not
- *  enough. */
+/** Validates a record against the **declared schema**, which is the same object
+ *  the server builds its own type from — so this check cannot drift from what
+ *  the endpoint can emit, and User Story 4 will use this same parser rather than
+ *  writing a second one. Replaces a hand-written switch (approach finding 1). */
 function assertDeclaredEvent(value: unknown): asserts value is ChatStreamEvent {
-  const e = value as Record<string, unknown>;
-  switch (e.type) {
-    case "safety_status":
-      expect(typeof e.classification).toBe("string");
-      return;
-    case "retrieved_chunks":
-      expect(Array.isArray(e.chunks)).toBe(true);
-      return;
-    case "streamed_tokens":
-      expect(typeof e.text).toBe("string");
-      return;
-    case "audit_log_status":
-      expect(typeof e.recorded).toBe("boolean");
-      return;
-    case "error":
-      expect(FAILURE_REASONS).toContain(e.reason);
-      expect(typeof e.notice).toBe("string");
-      return;
-    default:
-      throw new Error(`unrecognised event kind: ${JSON.stringify(e.type)}`);
+  const parsed = chatStreamEventSchema.safeParse(value);
+  if (!parsed.success) {
+    throw new Error(
+      `record is not a declared event: ${JSON.stringify(value)}\n${parsed.error.message}`,
+    );
   }
 }
 
@@ -120,5 +106,56 @@ describe("AC6 — the response is a sequence of self-describing records", () => 
     const encoded = encodeEvent({ type: "streamed_tokens", text: "a\nb" });
     expect(encoded.endsWith("\n\n")).toBe(true);
     expect(encoded.slice(0, -2)).not.toContain("\n");
+  });
+});
+
+describe("the stream is pull-based, and a disconnect stops the work", () => {
+  /** A source that records how far it was driven and whether it was unwound. */
+  function countingSource(total: number) {
+    const state = { produced: 0, unwound: false };
+    async function* gen(): AsyncGenerator<ChatStreamEvent> {
+      try {
+        for (let i = 0; i < total; i += 1) {
+          state.produced += 1;
+          yield { type: "streamed_tokens", text: `chunk ${i}` };
+        }
+      } finally {
+        state.unwound = true;
+      }
+    }
+    return { state, gen: gen() };
+  }
+
+  it("does not run the source to completion ahead of the reader", async () => {
+    // The earlier shape looped inside `start`, so a fast model could finish while
+    // a slow reader was still on the first paragraph, with the rest piling up in
+    // the queue. Reading one record must not drain the whole source.
+    const { state, gen } = countingSource(50);
+    const reader = toSseStream(gen, TERMINATOR).getReader();
+    await reader.read();
+    expect(state.produced).toBeLessThan(50);
+    await reader.cancel();
+  });
+
+  it("unwinds the source when the reader disconnects", async () => {
+    // This is what stops the answering model: cancelling returns the iterator,
+    // which unwinds the orchestrator, which aborts the upstream call. Before
+    // this, a closed tab left generation running and billing.
+    const { state, gen } = countingSource(50);
+    const reader = toSseStream(gen, TERMINATOR).getReader();
+    await reader.read();
+    expect(state.unwound, "not unwound yet — the reader is still connected").toBe(false);
+    await reader.cancel();
+    expect(state.unwound, "a disconnect must unwind the source").toBe(true);
+  });
+
+  it("still delivers every record to a reader that stays", async () => {
+    // Backpressure must not cost completeness: the pull loop has to keep asking
+    // until the source is done.
+    const { state, gen } = countingSource(12);
+    const records = await readRecords(toSseStream(gen, TERMINATOR));
+    expect(records).toHaveLength(12);
+    expect(state.produced).toBe(12);
+    records.forEach(assertDeclaredEvent);
   });
 });

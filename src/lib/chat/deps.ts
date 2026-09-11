@@ -56,8 +56,9 @@ export function createChatDeps(env: EdgeEnv): ChatDeps {
   return {
     async classify(question) {
       // ONE clock for the whole step, retries and backoff included. Without it
-      // the deadline and the retry loop disagree: three attempts, each inside
-      // its own timeout, total far more than the budget declared here.
+      // the deadline and the retry loop disagree: a full RETRY_MAX_ATTEMPTS run,
+      // each attempt inside its own timeout, totals far more than the budget
+      // declared here.
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), CLASSIFY_DEADLINE_MS);
       try {
@@ -104,13 +105,17 @@ export function createChatDeps(env: EdgeEnv): ChatDeps {
       );
     },
 
-    answer(messages) {
-      return createChatStream(chat, {
-        model: ANSWER_MODEL,
-        maxTokens: ANSWER_MAX_TOKENS,
-        temperature: ANSWER_TEMPERATURE,
-        messages,
-      });
+    answer(messages, signal) {
+      return createChatStream(
+        chat,
+        {
+          model: ANSWER_MODEL,
+          maxTokens: ANSWER_MAX_TOKENS,
+          temperature: ANSWER_TEMPERATURE,
+          messages,
+        },
+        signal,
+      );
     },
   };
 }

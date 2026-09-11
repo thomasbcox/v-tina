@@ -36,40 +36,70 @@ export function encodeEvent(event: ChatStreamEvent): string {
 }
 
 /**
- * Drains a sequence of events into an SSE byte stream.
+ * Serves a sequence of events as an SSE byte stream.
  *
- * The terminator is guaranteed: `emit` is wrapped so that a failure anywhere —
- * in the orchestrator, or in the encoder itself — still ends the stream with a
- * failure event before closing. A response that simply stops is indistinguishable
- * from a complete one, which is the whole reason the failure event exists.
+ * **Pull-based on purpose.** The earlier shape ran the whole loop inside
+ * `start`, which meant production was never coupled to consumption: a fast model
+ * could run to completion while a slow reader was still on the first paragraph,
+ * with the remainder piling up in the stream's queue. Here `pull` asks the
+ * orchestrator for exactly one event each time the consumer has room, which is
+ * what the Web Streams API exists to do (approach review finding 1).
+ *
+ * **`cancel` is the half that matters most.** A reader who closes the tab now
+ * returns the iterator, which unwinds the orchestrator and — because the request
+ * signal is threaded through to the answering call — stops the model mid-answer.
+ * Before this, a disconnected reader left generation running and billing.
+ *
+ * The terminator is still guaranteed: a failure anywhere, including in the
+ * encoder itself, ends the stream with a failure record rather than silence. A
+ * response that simply stops is indistinguishable from a complete one, which is
+ * the whole reason the failure event exists.
  */
 export function toSseStream(
   events: AsyncIterable<ChatStreamEvent>,
   onTerminationFailure: ChatStreamEvent,
 ): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
+  const iterator = events[Symbol.asyncIterator]();
+  let finished = false;
+
+  const close = (controller: ReadableStreamDefaultController<Uint8Array>) => {
+    finished = true;
+    try {
+      controller.close();
+    } catch {
+      // Already closed by a disconnect. Closing twice is not an error worth
+      // propagating out of a finished response.
+    }
+  };
+
   return new ReadableStream<Uint8Array>({
-    async start(controller) {
-      const send = (event: ChatStreamEvent) =>
-        controller.enqueue(encoder.encode(encodeEvent(event)));
+    async pull(controller) {
+      if (finished) return;
       try {
-        for await (const event of events) send(event);
+        const next = await iterator.next();
+        if (next.done) {
+          close(controller);
+          return;
+        }
+        controller.enqueue(encoder.encode(encodeEvent(next.value)));
       } catch {
-        // The orchestrator already converts what it can into failure events; this
-        // catches what it could not, including a failure raised by `send` itself.
+        // Covers both a source that died and an event the encoder cannot frame.
         try {
-          send(onTerminationFailure);
+          controller.enqueue(encoder.encode(encodeEvent(onTerminationFailure)));
         } catch {
-          // The client is gone, or the controller is closed. Nothing left to say.
+          // The client is gone, or the terminator itself cannot be framed.
+          // Nothing left to say.
         }
-      } finally {
-        try {
-          controller.close();
-        } catch {
-          // Already closed by a disconnect. Closing twice is not an error worth
-          // propagating out of a finished response.
-        }
+        close(controller);
       }
+    },
+
+    async cancel(reason) {
+      finished = true;
+      // Unwinds the orchestrator's generators, which is what stops the upstream
+      // model call rather than orphaning it.
+      await iterator.return?.(reason);
     },
   });
 }
