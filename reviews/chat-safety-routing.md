@@ -392,7 +392,7 @@ reviewer oracle is the only thing reading *what* changed inside the permitted pa
 
 - frame/6 — ran (codex on kimi-latest, 6 findings, 13 regressions) → reviews/chat-safety-routing.design.4ea399d.json
 - frame/9 — demonstrated red for all ten size-bearing criteria (1–6, 9–12) against the ratified regressions; each check failed on the violation and passed again on revert. Criteria 7 and 8 are `manual` (live runs recorded below); 13 is `reviewer`.
-- review/6 — ran (codex on glm-latest, 2 findings) -> reviews/chat-safety-routing.approach.560570c.json
+- review/6 — ran (codex on glm-latest, 2 attempts; the first refused for emitting two JSON objects, the second promoted but DEGENERATE — 129 entries, 13 distinct, one repeated 117 times — deduplicated to 3 findings + 1 nit, each verified) -> reviews/chat-safety-routing.approach.756d58b.json
 - review/8 — n/a — the approach pass gated it in all THREE rounds: round 1 (two shape-changing fixes), round 2 (interface change), round 3 (a BLOCKER plus an interface change). The correctness and hidden-failure critics have therefore never run on any shape. Round 4 is the round they must.
 - close/3b — no activation. No guard-hook block; no promotion refused (all three reviewer artifacts promoted — the round-3 REACH line is a report, not a refusal); this repo ships no install.sh to drift. The transient catalog-preflight stop is recorded under Post-fix verification as a tooling observation, not proposed as a lesson: a preflight stop is not one of the two defined activation kinds, and it belongs to another repository.
 - close/4 — presented three times, re-review only each time. Round 1: two shape-changing fixes. Round 2: an interface change. Round 3 (`560570c`): a BLOCKER fix plus an interface split. Merge was never offered, because the skill's conditional fork gives one route when a redesign was approved.
@@ -1591,3 +1591,90 @@ check passed minutes later. The catalog file was being regenerated at that momen
 reported a *missing configuration key* for what was really a transient read. A stop whose stated
 cause is wrong sends the operator to the wrong place. This belongs to `claude-light-workflow`, not
 here, so it is recorded and nothing in that repository was touched.
+
+## Codex (glm-latest) approach review - round 4 (2026-09-11, base 560570c, HEAD 756d58b)
+
+**The reply was degenerate, and that is reported before its content.** Two attempts were needed.
+The first was refused by the runner — the model emitted two top-level JSON objects where the reply
+must be exactly one, so nothing was promoted. The second promoted, but its findings array holds
+**129 entries with only 13 distinct titles, one of them repeated 117 times**, against a prompt
+asking for at most three; the verdict itself says "the two findings below". The model did the work
+and then looped while emitting it.
+
+**The runner's gates cannot see this.** They check that commands were executed (19 were), that the
+event stream is readable, and that the reply validates against the schema — and a 129-entry array of
+well-formed findings passes all three. Degeneracy is not fabrication and not a format error, so it
+is neither of the two stops the harness names. The artifact is left **unedited** as promoted; what
+follows is the deduplicated content, and **every claim below was verified against this repository
+before being presented**, which matters more than usual given how the reply arrived.
+
+**Verdict.** 2026-09-11 13:57:21 PDT — I would keep the overall shape. The budget scheme is coherent
+because ownership follows the seam: classification and rewrite deadlines live with safety policy,
+the retrieval deadline lives at the composition point that spans embedding plus the database call,
+and the answer's connect and idle bounds live with the streaming transport. I would not replace
+those five values with a central config object merely for tidiness. The manual AbortController in
+createChatStream is also justified: AbortSignal.timeout cannot be cleared, so using it for the
+connect phase would later abort a healthy long answer; a clearable controller is the right way to
+stop the connect timer when response headers arrive. The per-read withIdleBound and
+connect-versus-idle split are correct. The RpcClient/QueryRpcClient split is the right seam:
+ingestion has no reader to disconnect, while the request path requires a cancellation-capable
+client. The collaborator-bound test is worth its roughly ten-second cost and should not be deleted,
+but it is not yet structural over the actual outbound-call set: it never reaches the database half
+of retrieve. Apart from the findings below, the story is not over-built relative to the ACs.
+
+### IMPORTANT
+
+**The structural guard stops at collaborators, not outbound calls** - reversibility: two-way ·
+standing: nonstandard *(the concern restated in ten of the fifteen distinct entries)*
+
+- **Claim:** The every-collaborator test hangs every fetch, but `retrieve`'s first outbound call is
+  the embedding. When that is aborted by the retrieval deadline, `retrieve` throws and
+  `queryPolicyChunks` is never reached. The separate database test supplies an already-aborted
+  request signal, so it proves request cancellation, not that the database call has its own
+  wall-clock bound. A future `retrieve` could bound embedding while passing the raw request signal —
+  or none — to the database, and both tests would stay green.
+- **Alternative:** Exercise the database call in the guard: let the embedding succeed and hang only
+  the database request, with no request signal supplied, so only a self-contained deadline can end it.
+- **Win:** The guard covers the rule it claims to enforce — every outbound call — rather than every
+  collaborator, which is a smaller set.
+
+**Budget policy is scattered across modules and the composition-root comment is already incomplete**
+- reversibility: two-way · standing: nonstandard
+
+- **Claim:** The five request-path budgets live in three modules, and the comment at the composition
+  root that claims to name them omits `ANSWER_CONNECT_MS`. The per-stage ownership is semantically
+  coherent, but the cross-cutting rule is not represented anywhere a reader can see all of it.
+- **Win:** The rule stays discoverable as a rule instead of as five constants a reader must find.
+
+**The stream's abort listener leaks on early response failures** - reversibility: two-way ·
+standing: kludgy *(restated in three entries)*
+
+- **Claim:** `createChatStream` attaches an abort listener to the request signal and removes it in
+  the fetch `catch` and in the body-loop `finally`. A non-ok response, or a response with no body,
+  throws **between** those two sites and leaves the listener attached. This is exactly the cleanup
+  obligation a hand-built controller creates.
+- **Alternative:** One `finally` covering every exit after the listener is attached.
+- **Win:** No exit path leaves a listener on the request signal.
+
+### NIT
+
+**Stream budget parameters are growing positionally** - reversibility: two-way · standing: kludgy
+
+- **Claim:** `createChatStream` now takes `options, request, signal, idleMs, connectMs`. The last two
+  are positional test knobs and callers must pass `undefined` to reach `idleMs`. The repository
+  already uses options objects for fetch injection and retry policy.
+- **Win:** A signature consistent with the rest of the module, and no `undefined` placeholders.
+
+### Verified against the repository before presenting
+
+- **The guard gap is real, and proven by sabotage rather than by reading.** Changing `retrieve` to
+  pass the raw request signal to `queryPolicyChunks` while leaving embedding bounded left **both**
+  tests green. The structural guard written last round to enforce the class does not cover the one
+  call the class-level fix was about. **Fourth round running in which a check of the builder's own
+  could not fail.**
+- **The listener leak is real.** `!response.ok` and a missing body both throw between the two
+  `removeEventListener` sites.
+- **The incomplete comment is real, and is the builder's.** The connect bound was added *after* that
+  comment was written and the comment was not updated — a comment that claims to enumerate something
+  and then falls behind it, which is the failure mode round 2 already corrected elsewhere in this
+  story.
