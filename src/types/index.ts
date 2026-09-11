@@ -10,11 +10,12 @@
  */
 
 import type { DocumentKind } from "../lib/ingest/metadata";
+import type { FailureReason } from "../lib/chat/failure";
 import type { SafetyClassification } from "../lib/safety";
 
 // Re-exported so consumers get the whole boundary from one place, while the
 // runtime values they derive from stay in their own modules.
-export type { DocumentKind, SafetyClassification };
+export type { DocumentKind, FailureReason, SafetyClassification };
 
 /** Where a policy chunk came from. Every field is required: the verification UI
  *  (User Story 4) must be able to render a citation for any chunk it receives. */
@@ -60,10 +61,22 @@ export interface RetrievedPolicyChunk extends PolicyChunk {
 }
 
 /** Events streamed by `/api/chat`. A discriminated union on `type` — the four
- *  kinds the backend contract names, with no catch-all member, so consumers
- *  narrow exhaustively rather than falling through to an untyped branch. */
+ *  kinds the backend contract names plus a failure member, with no catch-all,
+ *  so consumers narrow exhaustively rather than falling through to an untyped
+ *  branch. */
 export type ChatStreamEvent =
-  | { type: "safety_status"; classification: SafetyClassification }
+  | {
+      type: "safety_status";
+      classification: SafetyClassification;
+      /** The neutralised question this exchange will actually search on, present
+       *  only on the partisan path. Shown to the reader deliberately: silently
+       *  rewording someone's own words is the less honest option for a service
+       *  whose premise is that every claim can be checked. */
+      neutralisedQuestion?: string;
+    }
   | { type: "retrieved_chunks"; chunks: RetrievedPolicyChunk[] }
   | { type: "streamed_tokens"; text: string }
-  | { type: "audit_log_status"; recorded: boolean; auditId?: string };
+  | { type: "audit_log_status"; recorded: boolean; auditId?: string }
+  /** A failure after the response has already begun. Without it a stream that
+   *  simply stopped would be indistinguishable from a complete answer. */
+  | { type: "error"; reason: FailureReason; notice: string };

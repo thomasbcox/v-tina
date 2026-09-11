@@ -1,4 +1,11 @@
 import { z } from "zod";
+import {
+  RETRY_BASE_MS,
+  RETRY_MAX_ATTEMPTS,
+  TransportError,
+  fetchWithRetry,
+  type RetryNotice,
+} from "./retry";
 
 /**
  * Text embeddings via Fireworks' OpenAI-compatible embeddings endpoint.
@@ -32,22 +39,16 @@ export const EMBEDDING_BATCH_SIZE = 64;
  * deliberately not restated here, where it would decay into folklore as the
  * corpus and the service change.
  */
-export const EMBEDDING_MAX_ATTEMPTS = 3;
+export const EMBEDDING_MAX_ATTEMPTS = RETRY_MAX_ATTEMPTS;
 
 /** Base backoff. Deliberately short: these failures return in milliseconds and
  *  are independent, so a long wait buys nothing. Doubles per attempt. */
-export const EMBEDDING_RETRY_BASE_MS = 250;
+export const EMBEDDING_RETRY_BASE_MS = RETRY_BASE_MS;
 
 /** What a retry is told about. Reported rather than silent: a service degrading
  *  under the operator is something they should see, not something the library
  *  smooths over. */
-export interface EmbeddingRetry {
-  readonly attempt: number;
-  readonly of: number;
-  readonly status?: number;
-  readonly reason: string;
-  readonly delayMs: number;
-}
+export type EmbeddingRetry = RetryNotice;
 
 /** nomic-embed-text is trained with task prefixes: documents being indexed and
  *  queries being searched are embedded differently. */
@@ -96,13 +97,6 @@ export interface FireworksEmbedderOptions {
   sleep?: (ms: number) => Promise<void>;
 }
 
-/** Only a transient failure is worth another attempt. A 4xx is deterministic —
- *  a bad key or a malformed request fails identically forever, and retrying it
- *  turns one clear error into three and a longer wait. */
-function isTransient(status: number): boolean {
-  return status >= 500 || status === 408 || status === 429;
-}
-
 export function createFireworksEmbedder(options: FireworksEmbedderOptions): EmbedFn {
   const doFetch = options.fetch ?? globalThis.fetch;
   const prefix = TASK_PREFIX[options.task];
@@ -112,19 +106,20 @@ export function createFireworksEmbedder(options: FireworksEmbedderOptions): Embe
     options.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
 
   /**
-   * One batch, with bounded retries on transient failures only.
+   * One batch, through the shared transient-failure policy.
    *
-   * Nothing is swallowed: a non-transient failure throws immediately, and an
-   * exhausted retry budget throws the last reason with the attempt count in the
-   * message. Every retry is announced through `onRetry` before its wait.
+   * The loop this replaced lived here and was about to be copied verbatim into
+   * the chat client; it now lives in `retry.ts` and both callers share it. The
+   * error type is translated back to `EmbeddingError` so this module's callers
+   * still catch one named thing — the policy is shared, the vocabulary is not.
    */
   async function requestBatch(batch: string[]): Promise<Response> {
-    for (let attempt = 1; ; attempt++) {
-      let response: Response | undefined;
-      let reason: string;
-      let status: number | undefined;
-      try {
-        response = await doFetch(FIREWORKS_EMBEDDINGS_URL, {
+    try {
+      return await fetchWithRetry(
+        "Fireworks embeddings",
+        doFetch,
+        FIREWORKS_EMBEDDINGS_URL,
+        {
           method: "POST",
           headers: {
             authorization: `Bearer ${options.apiKey}`,
@@ -134,32 +129,12 @@ export function createFireworksEmbedder(options: FireworksEmbedderOptions): Embe
             model: EMBEDDING_MODEL,
             input: batch.map((t) => prefix + t),
           }),
-        });
-        if (response.ok) return response;
-        status = response.status;
-        reason = `HTTP ${response.status}`;
-        if (!isTransient(response.status)) {
-          throw new EmbeddingError(
-            `Fireworks embeddings request failed: ${reason}`,
-          );
-        }
-      } catch (error) {
-        if (error instanceof EmbeddingError) throw error;
-        // A transport failure never produced a response; treat it as transient.
-        reason = error instanceof Error ? error.message : String(error);
-      }
-      if (attempt >= maxAttempts) {
-        throw new EmbeddingError(
-          `Fireworks embeddings request failed after ${attempt} attempt(s): ${reason}`,
-        );
-      }
-      const retryAfter = Number(response?.headers.get("retry-after"));
-      const delayMs =
-        Number.isFinite(retryAfter) && retryAfter > 0
-          ? retryAfter * 1000
-          : EMBEDDING_RETRY_BASE_MS * 2 ** (attempt - 1);
-      onRetry({ attempt, of: maxAttempts, status, reason, delayMs });
-      await sleep(delayMs);
+        },
+        { maxAttempts, onRetry, sleep },
+      );
+    } catch (error) {
+      if (error instanceof TransportError) throw new EmbeddingError(error.message);
+      throw error;
     }
   }
 
