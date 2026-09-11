@@ -73,6 +73,15 @@ recorded.
   workstreams, all of which this story unblocks.
 - **Schema changes.** The migration story 1a shipped is not amended.
 - **Ingestion in CI or the gate.** The gate stays network-free.
+- **Corpus reconciliation (the `--prune` path).** *(Cut 2026-09-10, mid-close, at Thomas's
+  instruction — see Decisions, round 4.)* It was never an acceptance criterion here; it entered as
+  round 1's reviewer finding and then consumed four review rounds, ending in a **BLOCKER**: the
+  destructive precondition had never actually held, and the test written to guard it could not
+  fail. The work is real and wanted, but it needs a design pass of its own rather than a fifth
+  patch, so it moves to its own story with that blocker as its starting point. Everything else on
+  this branch has been verified and stable for three rounds. **Until that story lands the store can
+  drift from the corpus**: deleting a document or correcting its URL leaves the old rows
+  retrievable, and nothing in this story removes them.
 
 ## Acceptance criteria
 
@@ -133,7 +142,9 @@ bookkeeping and stay as numbered property assertions, per `AGENTS.md`.
    and verify no files appear beyond `corpus/` (policy documents only), `CORPUS.md`,
    `src/lib/ingest/pillars.ts`, `src/lib/ingest/corpus.ts`, `src/lib/ingest/parse.ts`,
    `src/lib/supabase.ts`, `src/lib/embeddings.ts`, `scripts/ingest-corpus.ts`, `__tests__/`,
-   `package.json`, `package-lock.json`, and `README.md`. *(`src/lib/ingest/corpus.ts` was added during
+   `package.json`, `package-lock.json`, and `README.md`. *(`src/lib/ingest/corpus.ts` is back to
+   the enumeration rule alone after reconciliation was cut; `src/lib/embeddings.ts` is the retry
+   scope addition.)* *(`src/lib/ingest/corpus.ts` was added during
    implementation so the ingest script and the corpus tests share one rule for what counts as a
    document — design finding 1 was about exactly those two extents drifting. `src/lib/supabase.ts`
    was added when Thomas adopted a measured retrieval threshold, which lives beside the result-count
@@ -265,9 +276,9 @@ Re-review after the round-3 redesign plus the approved scope addition. Base `012
 - frame/6 — ran (codex on glm-latest, 3 findings, 9 regressions) → reviews/seed-corpus-ingest.design.c246570.json
 - frame/9 — demonstrated red for every ratified regression on the size-bearing criteria (AC1, AC6, AC7) and for the added AC10; baseline green, each regression red, restored green. AC2 faithfulness verified by hand; AC3, AC4 and AC5 verified live against the hosted project after Thomas supplied a working Fireworks key. AC5 failed first at the specification's 0.7 threshold and passes at the measured 0.73 he adopted. **Scope addition 2026-09-10:** criterion 11 (bounded retry) demonstrated red three ways against author-written regressions; baseline green, each red, restored green.
 - review/6 — round 4: ran (codex on glm-latest, 3 findings) → reviews/seed-corpus-ingest.approach.851aacf.json. First attempt was **refused, not promoted**: the reply carried two top-level JSON objects, which is the format category of stop, not a fabricated review; codex also logged an internal `exec_command` failure. Rerun once with an explicit single-object instruction and it completed with 15 commands executed, 0 REACH-reported.
-- review/8 — not yet reached
-- close/3b — no activation (round 3: no guard-hook block and no `review_runner.py` refusal to promote; the repo has no `install.sh` to drift-check, no `BACKLOG.md` and no `.aar/` register).
-- close/4 — round 3: presented re-review only. Both approved fixes were approach/redesign changes, so merge is not offered. (Rounds 1 and 2: Thomas chose re-review each time.)
+- review/8 — n/a — round 4 did not reach the correctness pass: the approach pass returned a BLOCKER, and Thomas resolved it by cutting the feature rather than by another fix.
+- close/3b — no activation (round 4: no guard-hook block and no `review_runner.py` refusal to promote. The first approach attempt WAS refused for a malformed reply, but that is the runner validating a reply, not refusing to promote a result it judged unsafe; it is recorded under review/6. The repo has no `install.sh`, `BACKLOG.md` or `.aar/` register.)
+- close/4 — round 4: to be presented — the cut removed the feature the findings were about, so no approach/redesign fix remains on the retained work; re-review or merge.
 
 **Earlier rounds of this story** (kept as prose: the record holds one line per step by design):
 
@@ -1047,3 +1058,66 @@ allowed to read as a clean pass.
   bypass, so it could never have failed.
 - The Node floor claim is confirmed: the project declares `>=20.12.0` while
   `@supabase/supabase-js` and all six of its subpackages declare `>=22.0.0`.
+
+## Decisions (2026-09-10, round 4)
+
+Round `851aacf`. Thomas was given the finding menu plus a framing choice, and chose: **"cut
+reconciliation to its own story."**
+
+**Approach (glm-latest)**
+
+- **The destructive precondition still has a public list constructor** (BLOCKER, one-way, kludgy):
+  **RESOLVED BY CUTTING, not patched.** The finding was verified by reproduction before being
+  presented: a four-line script built a "complete" corpus from one caller-supplied entry. The
+  round-3 fix was defeated by the very method added to wire it up, and the guarding test asserted
+  only that a property name existed, so it could never have failed. Rather than a third attempt at
+  the same invariant, the whole `--prune` path leaves this story.
+- **The declared Node floor is below the Supabase client's own floor** (IMPORTANT, two-way,
+  nonstandard): **FIX.** Verified before accepting: the project declared `>=20.12.0` while
+  `@supabase/supabase-js` and all six of its subpackages declare `>=22.0.0`. Independent of
+  reconciliation, so it applies to what remains.
+- **Retry rationale copies dated counts into living code** (IMPORTANT, two-way, nonstandard):
+  **FIX.** Also independent of reconciliation. The measurement stays in this dated record, where it
+  belongs; the comment keeps the durable policy.
+
+Findings 2 and 3 were applied without a separate instruction because Thomas's chosen option was
+framed as shipping the corpus, the ingest command, the threshold and the retry — and both findings
+are defects in exactly those retained parts. Said plainly here so the call is visible and
+reversible.
+
+## Fixes (2026-09-10, round 4)
+
+Gate green at 190 tests; commit `5df350b`.
+
+### Reconciliation removed
+
+Gone: `CompleteCorpus`, `loadCompleteCorpus`, `documentsToRemove`, `reconcileCorpus`,
+`IncompleteCorpusError`, `ChunkStore.listDocumentUrls`, the `TableClient`/`StoreClient` widening,
+`URL_PAGE_SIZE`, the `--prune` flag and its refusals, and `__tests__/corpus-reconcile.test.ts`.
+`src/lib/ingest/corpus.ts` is back to the enumeration rule alone, and the Supabase store is back to
+the narrow RPC client. **No acceptance criterion was removed** — reconciliation never had one.
+
+**One thing was kept**, because it is true with or without pruning: the corpus test now asserts
+that no two documents claim the same canonical URL. The store is keyed by URL, so two such files
+would silently overwrite each other at ingest. The round-3 reviewer found it; the value survives
+the cut.
+
+### Node floor
+
+`package.json`, the regenerated lockfile root and the README now say `>=22.0.0`, the strictest
+floor the dependencies actually require. The README states why it is that number and that the
+Next.js and `process.loadEnvFile` floors are both below it.
+
+### Retry comment
+
+The roughly ten copied measurements are gone. The comment keeps the policy — bounded attempts,
+short backoff, transient-only, reported — and points at this record for the evidence.
+
+### Verification after the cut
+
+| Check | Result |
+|---|---|
+| Offline dry run | 11/11 documents, 1375 chunks |
+| Unknown argument | refused, naming the two flags that remain |
+| Live full run, retry retained | absorbed two transient failures, each printed; 11/11, 1375 chunks |
+| Store | 1375 chunks, 11 documents |
