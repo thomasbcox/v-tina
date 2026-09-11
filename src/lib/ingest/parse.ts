@@ -6,6 +6,7 @@ import {
   DOCUMENT_KINDS,
   isAllowedSourceHost,
 } from "./metadata";
+import { POLICY_PILLARS } from "./pillars";
 
 /**
  * Frontmatter parsing: a markdown source document → its validated metadata and
@@ -46,7 +47,12 @@ const frontmatterSchema = z.object({
       (v) => isAllowedSourceHost(hostOf(v)),
       `url host must be one of ${ALLOWED_SOURCE_HOSTS.join(", ")} or a subdomain of one`,
     ),
-  pillar: nonEmpty("pillar"),
+  // A closed list at ingest: a mistyped pillar is refused by name alongside
+  // every other faulty field, rather than silently creating a category that
+  // nothing will ever retrieve. The read path stays permissive — see pillars.ts.
+  pillar: z.enum(POLICY_PILLARS, {
+    error: `pillar must be one of ${POLICY_PILLARS.join(", ")}`,
+  }),
   kind: z.enum(DOCUMENT_KINDS, {
     error: `kind must be one of ${DOCUMENT_KINDS.join(", ")}`,
   }),

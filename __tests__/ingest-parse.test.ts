@@ -22,7 +22,7 @@ function doc(
     title: "Fixture order",
     date: "2024-01-15",
     url: "https://www.oregon.gov/gov/fixture",
-    pillar: "housing",
+    pillar: "housing-and-homelessness",
     kind: "executive",
     ...overrides,
   };
@@ -48,7 +48,7 @@ describe("parseDocument — a well-formed document (AC1)", () => {
       documentTitle: "Fixture EO 00-01 (synthetic)",
       date: "2023-01-10",
       url: "https://www.oregon.gov/gov/eo/fixture-eo-00-01.pdf",
-      pillar: "housing",
+      pillar: "housing-and-homelessness",
       documentKind: "executive",
     });
     expect(body.startsWith("# Synthetic fixture")).toBe(true);
@@ -106,6 +106,7 @@ describe("parseDocument — refusals name exactly the fields at fault (AC2)", ()
     ["a lookalike host that merely contains an allowed domain", { url: "https://oregon.gov.example.com/x" }, ["url"]],
     ["a lookalike host that merely ends with an allowed name", { url: "https://notoregon.gov/x" }, ["url"]],
     ["a document kind outside the declared set", { kind: "memo" }, ["kind"]],
+    ["a pillar outside the declared list", { pillar: "transportation" }, ["pillar"]],
     ["an empty title", { title: '""' }, ["title"]],
   ] as const)("refuses %s naming only the faulty field", (_label, overrides, expected) => {
     expect(refusedFields(doc(overrides))).toEqual([...expected]);

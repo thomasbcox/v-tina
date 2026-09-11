@@ -9,7 +9,8 @@ import {
   type RpcClient,
 } from "../src/lib/supabase";
 
-/** Records every RPC and answers with whatever the test hands it. */
+/** Records every RPC and answers with whatever the test hands it. `pages`, when
+ *  given, answers the paginated table read one page per `.range()` call. */
 function fakeClient(answer: { data: unknown; error: { message: string } | null }) {
   const calls: { fn: string; args: Record<string, unknown> | undefined }[] = [];
   const client: RpcClient = {

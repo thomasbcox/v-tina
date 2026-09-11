@@ -2,7 +2,7 @@
 title: "Fixture EO 00-01 (synthetic)"
 date: 2023-01-10
 url: https://www.oregon.gov/gov/eo/fixture-eo-00-01.pdf
-pillar: housing
+pillar: housing-and-homelessness
 kind: executive
 ---
 
