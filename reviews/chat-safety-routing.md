@@ -421,6 +421,20 @@ Also: `src/lib/retry.ts` is the transient-failure policy extracted out of
 `src/lib/embeddings.ts` (scope item 3), and `src/lib/chat/failure.ts` holds the failure vocabulary —
 see the note on it under *Step-9 verification*.
 
+## Build note (2026-09-11, round 4)
+
+Re-review after the round-3 fixes. Base `560570c`. Only what the approved fixes moved.
+
+| AC | Where it is satisfied now |
+|---|---|
+| 1, 2, 5 | Unchanged in behaviour. Retrieval is now bounded by `RETRIEVAL_DEADLINE_MS` composed with the reader's signal in `src/lib/chat/deps.ts` |
+| 6 | The always-terminates guarantee is now reachable on every path: no outbound call can hang indefinitely, so a connected reader always gets a terminating record. `ANSWER_IDLE_MS` and `ANSWER_CONNECT_MS` in `src/lib/fireworks.ts` bound the answer's silence and its connection separately |
+
+Also: `src/lib/supabase.ts` splits `QueryRpcClient` (cancellation **required**) from `RpcClient`
+(the ingestion store, which has no reader to disconnect); `__tests__/chat-route.test.ts` enumerates
+the collaborators `createChatDeps` returns and holds each to a bound, which is the structural guard
+for the rule rather than a check per known instance.
+
 ## Build note (2026-09-11, round 3)
 
 Re-review after the round-2 fixes. Base `1e1ac11`. Only the criteria the approved fixes moved are
