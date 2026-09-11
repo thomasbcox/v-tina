@@ -1783,3 +1783,66 @@ made in round 3** — which is the most useful kind a later pass can find. Thoma
 
 **Neither fix reshapes anything.** With round 4's approved set being a test, a comment and three
 small cleanups — no redesign — `/close`'s fork offers **merge** for the first time in this story.
+
+## Fixes (2026-09-11, round 4 — 756d58b)
+
+Gate green at the count above; commits `dbaddef` onward. Production build re-run clean. All five
+approved fixes applied; the deferred nit was not touched.
+
+### Approach finding 1 — the guard now covers outbound calls, not collaborators
+
+`__tests__/chat-route.test.ts` hangs each collaborator's outbound calls **one after another** —
+answering the earlier ones with plausible replies so the next is reached — until the collaborator
+makes no more. The extent comes from the code twice over: the collaborator list is read off the deps
+object, and each one's call count is discovered rather than declared. It additionally asserts
+`retrieve` exercises **at least two** calls, because its database query is the one the old guard
+could never reach.
+
+**Verified against the exact sabotage that defeated the old guard:** passing the raw request signal
+to `queryPolicyChunks` while leaving embedding bounded now fails. It passed before.
+
+*Cost: the guard waits for real budgets serially per collaborator, which is the price of covering
+every call rather than one per collaborator.*
+
+### Approach finding 2 — the budget comment
+
+Now names five, including `ANSWER_CONNECT_MS`, and says plainly that it previously listed four —
+the enumerate-then-drift failure committed by the comment written to prevent it. It also says the
+guard test is what holds the rule and the comment is only a map.
+
+### Approach finding 3 + hidden-failure — the stream
+
+| Change | Where |
+|---|---|
+| One cleanup site covering every exit | `createChatStream` — the `!response.ok` and missing-body throws now sit inside the try whose `finally` removes the listener |
+| The connect timeout says it was the timeout | `connectTimedOut` is captured where it is known; three distinct messages — provider did not respond, reader disconnected, or the underlying transport error |
+| Cleanup failures reported, not discarded | `onCleanupError` on `FireworksChatOptions` (an option, not a sixth positional parameter — the deferred nit was not made worse); `streamLines` reports instead of `catch(() => {})` |
+
+### Demonstrate red
+
+| Sabotage | Result |
+|---|---|
+| Database call gets the raw request signal (the one that defeated the old guard) | **RED** |
+| Connect-timeout cause no longer distinguished | **RED** |
+| Cleanup failure discarded blindly again | **RED** |
+| The two throws moved back outside the cleanup try | **RED** — listener count non-zero after a refused response and after an empty body |
+
+The listener fix initially had **no** behavioural test; rather than report a sabotage result it did
+not have, the run said so and a listener-counting test was added first. All four then went red.
+
+### Live, through the running endpoint
+
+267 records, 264 answer fragments, terminating in `audit_log_status`; out-of-bounds still returns
+the fixed deferral. Exercised over HTTP because the stream's control flow changed again.
+
+### The uncommitted work was destroyed a SECOND time
+
+The same mistake as round 2, in the same session, with the lesson already written into this file:
+the sabotage loop reverted with `git checkout -- .` while the fixes were uncommitted, and took them.
+Redone from this session's record.
+
+**The mechanism changed, not just the intention.** The sabotage helper now **refuses to run at all
+while the working tree is dirty**, so destroying uncommitted work is no longer possible rather than
+merely discouraged. Recording it here because the first occurrence produced a resolution ("commit
+first") that demonstrably did not hold — which is the difference between a rule and a guard, and is
+the same distinction this round's finding 1 was about.
