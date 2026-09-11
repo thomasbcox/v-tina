@@ -1762,15 +1762,24 @@ above: the listener leak (`src/lib/fireworks.ts:234`) and the incomplete budget 
 (`src/lib/chat/deps.ts:47`). Two critics on different model families, asked a shape question and a
 line question, landing on the same two defects — recorded as confirmation rather than re-decided.
 
-**Hidden failure (kimi-latest) — OUTSTANDING**
+**Hidden failure (kimi-latest) — decided**
 
-Both findings are new, both are defects in the fix made in round 3, and **neither is yet
-dispositioned.** They were presented and the session ended before Thomas answered. Recorded here as
-open so the round cannot read as complete:
+Both findings are new, neither duplicates the correctness group, and both are defects **in the fix
+made in round 3** — which is the most useful kind a later pass can find. Thomas: **"fix both."**
 
 - **Connect-timeout abort is indistinguishable from a reader disconnect** (IMPORTANT,
-  `src/lib/fireworks.ts:225`) — *awaiting disposition.*
-- **Blind swallow of `reader.cancel()` failure** (NIT, `src/lib/fireworks.ts:317`) — *awaiting
-  disposition.*
+  `src/lib/fireworks.ts:225`): **FIX.** Verified before presenting: `forwardAbort` and the connect
+  timer call the *same* `controller.abort()`, and one `catch` formats both into
+  `"Fireworks chat stream could not be opened: This operation was aborted"`. So a provider that
+  never answers — precisely what `ANSWER_CONNECT_MS` was added to catch — is logged identically to a
+  reader closing a tab. The bound works and reports nothing about why it fired, which defeats the
+  reason it was added. The idle bound already carries a distinct message; the connect bound gets one.
+- **Blind swallow of `reader.cancel()` failure** (NIT, `src/lib/fireworks.ts:317`): **FIX.**
+  Verified at that line, written by the builder in round 3. The swallow itself is kept — rethrowing
+  from a `finally` would mask the primary stall or abort error — but it stops being *blind*: a
+  connection that genuinely fails to close is reported rather than discarded. Taken rather than
+  deferred because bounding every call for visibility and then silently discarding a cleanup failure
+  is the same invisible-degradation class the round set out to remove.
 
-This section is completed when those two are answered; until then the round is not closed.
+**Neither fix reshapes anything.** With round 4's approved set being a test, a comment and three
+small cleanups — no redesign — `/close`'s fork offers **merge** for the first time in this story.
