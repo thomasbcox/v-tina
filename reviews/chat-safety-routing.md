@@ -421,6 +421,19 @@ Also: `src/lib/retry.ts` is the transient-failure policy extracted out of
 `src/lib/embeddings.ts` (scope item 3), and `src/lib/chat/failure.ts` holds the failure vocabulary —
 see the note on it under *Step-9 verification*.
 
+## Build note (2026-09-11, round 2)
+
+Re-review after the round-1 redesign. Base `12b3d9a`. Only the criteria the approved fixes moved are
+listed; every other AC is satisfied where the round-1 build note already says.
+
+| AC | Where it is satisfied now |
+|---|---|
+| 6 | `src/lib/chat/events.ts` — the wire contract as a runtime schema, `ChatStreamEvent` derived from it; `src/lib/chat/stream.ts` `toSseStream` now pull-based with a `cancel` path; tests `__tests__/chat-stream.test.ts` validate with that schema |
+| 10 | `src/app/api/chat/route.ts` `runtime = "nodejs"`; the import-closure walk in `__tests__/chat-route.test.ts` keeps the node-only-contract check and drops the Node-builtin ban |
+
+Also: the request's cancellation signal is threaded `route.ts` → `orchestrateChat` → `Answerer` →
+`createChatStream`, and `src/lib/chat/failure.ts` was folded into `events.ts` and removed.
+
 ## Step-9 verification (2026-09-10)
 
 ### Demonstrate red — the ratified regressions
