@@ -394,8 +394,8 @@ reviewer oracle is the only thing reading *what* changed inside the permitted pa
 - frame/9 — demonstrated red for all ten size-bearing criteria (1–6, 9–12) against the ratified regressions; each check failed on the violation and passed again on revert. Criteria 7 and 8 are `manual` (live runs recorded below); 13 is `reviewer`.
 - review/6 — ran (codex on glm-latest, 2 attempts; the first refused for emitting two JSON objects, the second promoted but DEGENERATE — 129 entries, 13 distinct, one repeated 117 times — deduplicated to 3 findings + 1 nit, each verified) -> reviews/chat-safety-routing.approach.756d58b.json
 - review/8 — ran (codex: deepseek-pro-latest correctness / kimi-latest hidden-failure, 2 / 2 findings) -> reviews/chat-safety-routing.correctness.756d58b.json, reviews/chat-safety-routing.hidden-failure.756d58b.json. First correctness pass of the story: gated out of rounds 1-3, reached in round 4 because this round's approved fixes are patches rather than a redesign.
-- close/3b — no activation. No guard-hook block; no promotion refused (all three reviewer artifacts promoted — the round-3 REACH line is a report, not a refusal); this repo ships no install.sh to drift. The transient catalog-preflight stop is recorded under Post-fix verification as a tooling observation, not proposed as a lesson: a preflight stop is not one of the two defined activation kinds, and it belongs to another repository.
-- close/4 — presented three times, re-review only each time. Round 1: two shape-changing fixes. Round 2: an interface change. Round 3 (`560570c`): a BLOCKER fix plus an interface split. Merge was never offered, because the skill's conditional fork gives one route when a redesign was approved.
+- close/3b — activation observed (session-observed): `review_runner.py` REFUSED to promote the round-4 approach pass's first attempt — the model emitted two top-level JSON objects. The refusal worked, which is the system working and not a lesson. **It did reveal an adjacent gap**: the retry produced a schema-VALID but degenerate reply (129 entries, 13 distinct, one repeated 117 times) and that was promoted, because the gates check command execution, event-stream readability and schema validity — none of which a looping reply violates. **No proposal filed**, and the reason is cited rather than assumed: the novelty registers this check reads (`BACKLOG.md`, `.aar/rejected-lessons.md`) **do not exist in this repository**, so novelty cannot be established here, and the subject is another repository's tooling. Recorded in the round-4 review section and raised with Thomas directly instead of filed in the wrong place.
+- close/4 — presented four times. Rounds 1-3: re-review only (each approved a shape-changing fix). Round 4 (`756d58b`): **merge offered for the first time** — this round's approved set is a test, a comment, a control-flow cleanup, an abort-cause distinction and a reported swallow, none of which reshapes the design.
 
 ## Build note (2026-09-10)
 
@@ -1786,7 +1786,7 @@ small cleanups — no redesign — `/close`'s fork offers **merge** for the firs
 
 ## Fixes (2026-09-11, round 4 — 756d58b)
 
-Gate green at the count above; commits `dbaddef` onward. Production build re-run clean. All five
+Gate green at **276 tests**; commits `dbaddef` onward. **The gate now takes about 47 s**, up from ~19 s: the guard hangs each outbound call in turn and waits for that stage's real budget, and the collaborators cannot be run concurrently because each installs its own global `fetch` mock. That is the price of covering every call rather than one per collaborator; it is stated so the cost is a decision rather than a surprise. Production build re-run clean. All five
 approved fixes applied; the deferred nit was not touched.
 
 ### Approach finding 1 — the guard now covers outbound calls, not collaborators
