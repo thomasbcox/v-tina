@@ -1729,3 +1729,48 @@ Both are new, and neither duplicates the correctness group.
   error — but as written it is blind: a connection that genuinely fails to close leaves no trace,
   which is the same class of invisible degradation this round set out to remove.
 - **Verified** at that line, written by the builder in this round's fix.
+
+## Decisions (2026-09-11, round 4 — 756d58b)
+
+Round `756d58b`, base `560570c`. **The only round so far in which all three critics ran.**
+
+**Approach (glm-latest) — decided**
+
+- **The structural guard stops at collaborators, not outbound calls** (IMPORTANT, two-way,
+  nonstandard): **FIX.** Confirmed by sabotage before presenting, not by reading: changing
+  `retrieve` to pass the raw request signal to `queryPolicyChunks` while leaving embedding bounded
+  left **both** tests green. The guard written in round 3 to enforce the class does not cover the
+  one call the class-level fix was about. Fourth round running in which a check of the builder's own
+  could not fail. Test-only fix, so it does not reshape anything.
+- **Budget policy scattered; the composition-root comment is already incomplete** (IMPORTANT,
+  two-way, nonstandard): **FIX.** Verified: the comment claiming to name the request-path budgets
+  omits `ANSWER_CONNECT_MS`, which the builder added *after* writing it. The enumerate-then-drift
+  failure this story already corrected once, reintroduced elsewhere.
+- **The stream's abort listener leaks on early response failures** (IMPORTANT, two-way, kludgy):
+  **FIX.** Verified: `!response.ok` and a missing body both throw between the two
+  `removeEventListener` sites.
+- **Stream budget parameters are growing positionally** (NIT, two-way, kludgy): **DEFER.**
+  Thomas's ground, taken at the consult: it is a signature-tidiness nit and the *only* one of the
+  four that would have changed an interface — which would have gated the correctness pass out for a
+  fourth consecutive round. Deferred so the line-level critics could finally run, and recorded here
+  rather than dropped, so it is not silently lost.
+
+**Correctness (deepseek-pro-latest) — no decision required**
+
+Both findings are NITs that independently rediscover approach findings already dispositioned FIX
+above: the listener leak (`src/lib/fireworks.ts:234`) and the incomplete budget comment
+(`src/lib/chat/deps.ts:47`). Two critics on different model families, asked a shape question and a
+line question, landing on the same two defects — recorded as confirmation rather than re-decided.
+
+**Hidden failure (kimi-latest) — OUTSTANDING**
+
+Both findings are new, both are defects in the fix made in round 3, and **neither is yet
+dispositioned.** They were presented and the session ended before Thomas answered. Recorded here as
+open so the round cannot read as complete:
+
+- **Connect-timeout abort is indistinguishable from a reader disconnect** (IMPORTANT,
+  `src/lib/fireworks.ts:225`) — *awaiting disposition.*
+- **Blind swallow of `reader.cancel()` failure** (NIT, `src/lib/fireworks.ts:317`) — *awaiting
+  disposition.*
+
+This section is completed when those two are answered; until then the round is not closed.
