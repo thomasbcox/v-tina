@@ -1,0 +1,21 @@
+{
+  "summary": "The change's stated purpose is to make every outbound call fail loudly on a stall, and most of it does: the idle-stall path raises a distinctly-worded ChatError that propagates to the orchestrator, is logged, and produces an error event, and the supabase.ts rework removes the old withSignal silent-drop path by making abortSignal required on the request-path type. Two weak spots remain, both in the new fireworks.ts code: the connect-timeout fires the same AbortController as a reader disconnect, so the one failure the 10s connect bound exists to surface is reported with a message indistinguishable from a benign reader hang-up, and the reader cleanup swallows cancellation errors blindly with no log.",
+  "findings": [
+    {
+      "severity": "IMPORTANT",
+      "title": "Connect-timeout abort is indistinguishable from a reader disconnect",
+      "file": "src/lib/fireworks.ts",
+      "line": 225,
+      "claim": "The connectTimer and the reader's own signal both fire the same controller.abort(), and the catch wraps whichever AbortError results into `ChatError(\"Fireworks chat stream could not be opened: This operation was aborted\")`. A provider that never responds — the exact failure the ANSWER_CONNECT_MS bound was added this round to catch — surfaces with the same message as a reader who simply hung up. The failure is technically thrown, but its identity is absorbed: anyone reading the 'generation failed' log cannot tell a dead provider connection from benign client churn, so the operational signal the timeout exists to produce is silently degraded. The idle bound gets a distinct message ('stalled: nothing received for Nms'); the connect bound gets none.",
+      "suggestion": "Distinguish the two aborts before wrapping: pass a reason to the timer's abort (controller.abort(new ChatError('Fireworks chat stream connection timed out after Nms'))) or check whether the caller's signal aborted inside the catch, and rethrow that distinct error (or rethrow the reader-abort unwrapped) so a provider connect failure is never logged as a generic abort."
+    },
+    {
+      "severity": "NIT",
+      "title": "Blind swallow of reader.cancel() failure in stream cleanup",
+      "file": "src/lib/fireworks.ts",
+      "line": 317,
+      "claim": "`await reader.cancel().catch(() => {})` discards any rejection from cancel with no logging. Swallowing here is defensible — rethrowing from the finally would mask the primary stall/abort error — but as written it is a blind catch: if the underlying connection genuinely fails to close, that resource-leak signal vanishes entirely, which is the same class of invisible degradation this round set out to eliminate.",
+      "suggestion": "Keep the non-propagation but make it visible: `.catch((e) => console.warn('stream reader cancel failed', e))` or accept a logger, so the cleanup failure is recorded without masking the original error."
+    }
+  ]
+}

@@ -393,7 +393,7 @@ reviewer oracle is the only thing reading *what* changed inside the permitted pa
 - frame/6 — ran (codex on kimi-latest, 6 findings, 13 regressions) → reviews/chat-safety-routing.design.4ea399d.json
 - frame/9 — demonstrated red for all ten size-bearing criteria (1–6, 9–12) against the ratified regressions; each check failed on the violation and passed again on revert. Criteria 7 and 8 are `manual` (live runs recorded below); 13 is `reviewer`.
 - review/6 — ran (codex on glm-latest, 2 attempts; the first refused for emitting two JSON objects, the second promoted but DEGENERATE — 129 entries, 13 distinct, one repeated 117 times — deduplicated to 3 findings + 1 nit, each verified) -> reviews/chat-safety-routing.approach.756d58b.json
-- review/8 — n/a — the approach pass gated it in all THREE rounds: round 1 (two shape-changing fixes), round 2 (interface change), round 3 (a BLOCKER plus an interface change). The correctness and hidden-failure critics have therefore never run on any shape. Round 4 is the round they must.
+- review/8 — ran (codex: deepseek-pro-latest correctness / kimi-latest hidden-failure, 2 / 2 findings) -> reviews/chat-safety-routing.correctness.756d58b.json, reviews/chat-safety-routing.hidden-failure.756d58b.json. First correctness pass of the story: gated out of rounds 1-3, reached in round 4 because this round's approved fixes are patches rather than a redesign.
 - close/3b — no activation. No guard-hook block; no promotion refused (all three reviewer artifacts promoted — the round-3 REACH line is a report, not a refusal); this repo ships no install.sh to drift. The transient catalog-preflight stop is recorded under Post-fix verification as a tooling observation, not proposed as a lesson: a preflight stop is not one of the two defined activation kinds, and it belongs to another repository.
 - close/4 — presented three times, re-review only each time. Round 1: two shape-changing fixes. Round 2: an interface change. Round 3 (`560570c`): a BLOCKER fix plus an interface split. Merge was never offered, because the skill's conditional fork gives one route when a redesign was approved.
 
@@ -1678,3 +1678,54 @@ standing: kludgy *(restated in three entries)*
   comment was written and the comment was not updated — a comment that claims to enumerate something
   and then falls behind it, which is the failure mode round 2 already corrected elsewhere in this
   story.
+
+## Codex correctness + hidden-failure review — round 4 (2026-09-11, base 560570c, HEAD 756d58b)
+
+**The first correctness pass of this story.** It was gated out of rounds 1, 2 and 3 because each of
+those approved a shape-changing fix. Round 4's approved fixes are a test, a comment and a two-line
+cleanup — none reshapes anything — so the shape was blessed and both critics ran in the same round.
+Both replies were well-formed (unlike this round's approach pass): two findings each, no repetition.
+
+### Correctness (codex on deepseek-pro-latest, 2 findings)
+
+Both are **NIT**, and both independently rediscover findings the approach pass raised this same
+round and Thomas has already approved for fix. Recorded as confirmation, not as new decisions.
+
+- **Abort listener leaks on HTTP-failure and missing-body exits** — `src/lib/fireworks.ts:234`.
+  `forwardAbort` is attached at line 213 and removed only in the fetch `catch` (225) and the
+  body-loop `finally` (275); the throws at 235 (`!response.ok`) and 240 (`!response.body`) sit
+  between them. Impact called negligible in practice — the signal dies with the request — but a
+  genuine leak on a path the controller exists to clean up. *(= approach finding 3.)*
+- **Budget-enumeration comment omits the connect bound** — `src/lib/chat/deps.ts:47`. The comment
+  purporting to name the budgets lists four and omits `ANSWER_CONNECT_MS`, which was added in the
+  same change to serve the same rule. *(= approach finding 2.)*
+
+**Two independent critics on different model families reaching the same two defects, from a shape
+question and a line question respectively, is the divided-parallelism design doing what it is for.**
+
+### Hidden failure (codex on kimi-latest, 2 findings)
+
+Both are new, and neither duplicates the correctness group.
+
+**IMPORTANT — Connect-timeout abort is indistinguishable from a reader disconnect**
+(`src/lib/fireworks.ts:225`)
+
+- **Claim:** `connectTimer` and the reader's own signal both fire the *same* `controller.abort()`,
+  and the catch wraps whichever `AbortError` results into
+  `ChatError("Fireworks chat stream could not be opened: This operation was aborted")`. A provider
+  that never responds — the exact failure `ANSWER_CONNECT_MS` was added this round to catch —
+  surfaces with the same message as a reader who simply hung up. The failure is thrown, but its
+  **identity is absorbed**: nobody reading the log can tell a dead provider from benign client
+  churn, so the operational signal the timeout exists to produce is silently degraded. The idle
+  bound gets a distinct message; the connect bound gets none.
+- **Verified.** `forwardAbort` and the connect timer call the same `controller.abort()`, and the
+  single `catch` formats both identically. The finding is exactly right, and it is a defect *in the
+  fix made this round* — the bound works and reports nothing useful about why it fired.
+
+**NIT — Blind swallow of `reader.cancel()` failure in stream cleanup** (`src/lib/fireworks.ts:317`)
+
+- **Claim:** `await reader.cancel().catch(() => {})` discards any rejection with no logging.
+  Swallowing is defensible — rethrowing from the `finally` would mask the primary stall or abort
+  error — but as written it is blind: a connection that genuinely fails to close leaves no trace,
+  which is the same class of invisible degradation this round set out to remove.
+- **Verified** at that line, written by the builder in this round's fix.
