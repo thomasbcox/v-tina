@@ -384,7 +384,7 @@ reviewer oracle is the only thing reading *what* changed inside the permitted pa
 
 - frame/6 — ran (codex on kimi-latest, 6 findings, 13 regressions) → reviews/chat-safety-routing.design.4ea399d.json
 - frame/9 — demonstrated red for all ten size-bearing criteria (1–6, 9–12) against the ratified regressions; each check failed on the violation and passed again on revert. Criteria 7 and 8 are `manual` (live runs recorded below); 13 is `reviewer`.
-- review/6 — not yet reached
+- review/6 — ran (codex on glm-latest, 3 findings) → reviews/chat-safety-routing.approach.12b3d9a.json
 - review/8 — not yet reached
 - close/3b — not yet reached
 - close/4 — not yet reached
@@ -938,3 +938,87 @@ path. The retry policy's sleep is capped by the same signal.
 - **Win:** One shared AbortSignal makes the deadline and the retry loop provably the same clock;
 the row-4 boundary test then covers the retry interaction for free instead of testing two clocks
 that were never reconciled.
+
+## Codex (glm-latest) approach review (2026-09-10, base main, HEAD 12b3d9a)
+
+**Verdict.** 2026-09-10 20:43:39 PDT — I would build the overall architecture this way: the thin route
+adapter, fully injected orchestrator, shared retry policy, zod-validated provider responses, and
+explicit fail-closed classification are sound and internally consistent. The SSE and OpenAI-SDK
+decisions are settled and I do not reopen them. The injected-collaborator seam earns its
+testability, the two-list prompt partition is proportionate, and the import-closure walk is
+justified by an acceptance criterion that a normal Node test cannot catch. I would not ship the
+stream bridge as written: it hand-rolls stream lifecycle in a way that defeats backpressure and
+leaves the public event contract TypeScript-only. I would also remove hard-coded set sizes from
+living comments and obtain an explicit decision on the deprecated Edge runtime. A smaller
+cleanup would be using AbortSignal.timeout for the classification deadline, but it is below
+these three concerns.
+
+### IMPORTANT
+
+**The SSE bridge drains its source without backpressure and leaves the wire contract hand-validated** — reversibility: two-way · standing: nonstandard
+
+- **Claim:** toSseStream does its entire for-await loop inside ReadableStream.start.
+controller.enqueue does not couple production to consumption, so the answer generator can run to
+completion and be buffered before the client reads anything; this is not the streaming shape the
+story exists to provide and can leave an unbounded producer ahead of a slow reader. The stream
+also has no cancel path, and although createChatStream accepts an AbortSignal, the route never
+threads request.signal through the Answerer seam, so a disconnected client cannot cancel the
+upstream model call. Separately, ChatStreamEvent is a TypeScript-only union while the test hand-
+rolls a switch to validate the public SSE payload; zod is already the repository’s boundary-
+validation idiom and Story 4 will need a runtime parser.
+- **Alternative:** Use the Web Streams API in its intended shape: a pull-based ReadableStream
+whose start only acquires the iterator, whose pull awaits the next event and enqueues one
+encoded record, and whose cancel returns the iterator; thread request.signal from the route
+through the orchestrator/Answerer into createChatStream. Declare the event union as a zod
+discriminated union in a runtime module, derive the TypeScript type from it, and use safeParse
+in the stream tests and the future client.
+- **Win:** The answer actually streams with backpressure, a disconnect stops provider work
+instead of orphaning it, and one declarative schema replaces the hand-written test switch while
+giving User Story 4 a parser that cannot drift from the server type.
+
+**Living comments hard-code sizes of sets the code already defines** — reversibility: two-way · standing: kludgy
+
+- **Claim:** The builder protocol’s “Counts are copies” rule forbids writing the size of an
+enumerable set in living text. The new comments say “the four” event kinds, “the three” declared
+classifications, “three attempts,” “the two lists,” and “all five failure modes.” Those sets are
+defined by the event union, SAFETY_CLASSIFICATIONS, RETRY_MAX_ATTEMPTS, the prompt lists, and
+the test cases. The request comment is already stale: the refusal table now contains eight
+cases. These are second statements with their own decay clocks, exactly the drift the rule
+exists to prevent.
+- **Alternative:** Name the kind and point at its authority: “the event union,”
+“SAFETY_CLASSIFICATIONS,” “RETRY_MAX_ATTEMPTS,” “these prompt lists,” and “the refusal cases
+below.” Keep dated observations such as the number of models tested in the dated story record
+rather than living code comments.
+- **Win:** Comments cannot lie when a new event, classification, prompt list member, retry
+budget, or request failure case is added, and the story complies with the single-source rule
+without changing runtime behavior.
+
+### QUESTION
+
+**Next.js 16 deprecates the runtime this one-way route choice depends on** — reversibility: one-way · standing: dated
+
+- **Claim:** The implementation satisfies the approved Edge-runtime criterion, but the recorded
+production build reports that Next.js 16 deprecates the Edge Runtime. This is not a reopening of
+the original decision: it is an implementation-time platform fact the story itself correctly
+puts on the review consult menu. User Stories 4 and 5 will code and deploy against this runtime,
+so carrying it forward silently would turn a deprecated foundation into an accidental cross-
+cutting commitment.
+- **Alternative:** Thomas should either explicitly ratify Edge for this story and record the
+dated deprecation risk plus a migration trigger, or amend the route and AC10 to the Node.js
+runtime while preserving the edgeEnvSchema separation and the no-service-role-secret invariant,
+then rerun the production build.
+- **Win:** The next stories inherit a deliberately chosen, supported runtime rather than a
+deprecated one by default, and the deployment decision has a recorded owner and trigger.
+
+**Verified against the repository before presenting.** Three of the finding's concrete
+claims were checked rather than taken on the reviewer's word:
+
+- `request.signal` is threaded **nowhere** — not into the orchestrator, not into the
+  answering call. A client that disconnects leaves the model call running. Confirmed.
+- `toSseStream` does its whole `for await` loop inside `start()`, so production is not
+  coupled to consumption. Confirmed.
+- The hard-coded counts are real and **one is already false**: `src/lib/chat/request.ts`
+  says "all five failure modes" while the refusal table it refers to holds **eight**.
+  `src/types/index.ts` says "the four kinds" of a union that now has five members, and the
+  README says "Five record kinds". The rule this breaks is the protocol's own *Counts are
+  copies*, and the staleness it predicts had already happened.
