@@ -182,3 +182,73 @@ describe("the stream decoder survives what the service actually sends", () => {
     await expect(run()).rejects.toBeInstanceOf(ChatError);
   });
 });
+
+describe("a stream that goes silent is abandoned, not waited on forever", () => {
+  /** Sends `pieces`, then holds the connection open sending nothing. */
+  function sseThenSilence(pieces: string[]) {
+    return (async () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            const encoder = new TextEncoder();
+            for (const p of pieces) controller.enqueue(encoder.encode(p));
+            // Deliberately never closed and never written to again.
+          },
+        }),
+        { status: 200 },
+      )) as unknown as typeof globalThis.fetch;
+  }
+
+  it("gives up when no data arrives within the idle budget", async () => {
+    // An idle bound, not a total one: the first chunk arrives and is yielded,
+    // and only the SILENCE afterwards ends the stream. A total timeout would cut
+    // off a legitimately long answer instead.
+    const doFetch = sseThenSilence(['data: {"choices":[{"delta":{"content":"first"}}]}\n\n']);
+    const out: string[] = [];
+    const started = Date.now();
+    const run = async () => {
+      for await (const t of createChatStream(
+        { apiKey: "k", fetch: doFetch },
+        { model: ANSWER_MODEL, maxTokens: 50, messages: [] },
+        undefined,
+        150, // idle budget, injected so the suite does not wait 30 seconds
+      )) {
+        out.push(t);
+      }
+    };
+    await expect(run()).rejects.toThrow(/stalled/i);
+    expect(out, "what did arrive before the silence is still delivered").toEqual(["first"]);
+    expect(Date.now() - started).toBeLessThan(5_000);
+  }, 20_000);
+
+  it("does not cut off a long answer that keeps arriving", async () => {
+    // The clock resets on every chunk, so a slow-but-alive provider is fine.
+    const encoder = new TextEncoder();
+    const doFetch = (async () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          async start(controller) {
+            for (let i = 0; i < 6; i += 1) {
+              await new Promise((r) => setTimeout(r, 60));
+              controller.enqueue(
+                encoder.encode(`data: {"choices":[{"delta":{"content":"${i}"}}]}\n\n`),
+              );
+            }
+            controller.close();
+          },
+        }),
+        { status: 200 },
+      )) as unknown as typeof globalThis.fetch;
+
+    const out: string[] = [];
+    for await (const t of createChatStream(
+      { apiKey: "k", fetch: doFetch },
+      { model: ANSWER_MODEL, maxTokens: 50, messages: [] },
+      undefined,
+      150, // each gap is well inside the budget, but the total far exceeds it
+    )) {
+      out.push(t);
+    }
+    expect(out.join("")).toBe("012345");
+  }, 20_000);
+});

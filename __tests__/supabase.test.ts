@@ -182,3 +182,24 @@ describe("createSupabaseChunkStore", () => {
     ).rejects.toThrow(/row count/);
   });
 });
+
+describe("cancellation is a requirement of the query client, not a capability", () => {
+  it("refuses a query client that cannot be cancelled", () => {
+    // A COMPILE-TIME check, because this invariant cannot fail at runtime: a
+    // fake that happens to provide the method behaves identically whether the
+    // type demands it or not. Making `abortSignal` optional again would make the
+    // assignment below legal, the @ts-expect-error unused, and typecheck fail —
+    // which is the only way this particular weakening gets caught.
+    const noCancellation = {
+      rpc: () => Promise.resolve({ data: [], error: null }),
+    };
+    // @ts-expect-error a client without abortSignal must not satisfy QueryRpcClient
+    const rejected: QueryRpcClient = noCancellation;
+    void rejected;
+
+    // The ingestion store's client legitimately has no cancellation, and must
+    // still be accepted — so this is not simply "everything must have it".
+    const storeOnly: RpcClient = noCancellation;
+    void storeOnly;
+  });
+});
