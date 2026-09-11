@@ -1076,3 +1076,87 @@ the shape, which is what stops the correctness pass this round.
 **Correctness and hidden-failure: not run this round.** The approach pass gates them, and a
 redesign was approved. Running two critics over a diff that is about to be rewritten spends two
 reviews on lines that will not survive. They run in the next round, against the new shape.
+
+## Fixes (2026-09-10, approach round 12b3d9a)
+
+Gate green at **254 tests**; commit `859a547`. All three approved findings applied.
+
+### Finding 1 — the stream bridge
+
+| Change | Where |
+|---|---|
+| Pull-based stream: one record produced each time the consumer has room | `src/lib/chat/stream.ts` `toSseStream` — `pull` replaces the loop that ran inside `start` |
+| A cancel path that unwinds the source | `toSseStream`'s `cancel` returns the iterator |
+| The request's cancellation signal threaded to the answering model | `route.ts` → `orchestrateChat(deps, body, signal)` → `Answerer(messages, signal)` → `createChatStream(..., signal)` |
+| The wire contract as a runtime schema, with the type derived from it | new `src/lib/chat/events.ts`; `src/types/index.ts` re-exports the derived type; `src/lib/chat/failure.ts` folded in and removed |
+| The stream test validates with that schema instead of a hand-written switch | `__tests__/chat-stream.test.ts` |
+
+The terminator guarantee is unchanged and still demonstrated red: a failure in the source **or in
+the encoder itself** ends the stream with a failure record.
+
+### Finding 2 — the runtime
+
+`export const runtime = "nodejs"`. AC10 was amended by Thomas at the consult and the amendment
+states what it costs — see the criterion. The import-closure test dropped its ban on Node builtins,
+which enforced a platform restriction that no longer exists; it keeps the check that matters, which
+is that nothing reaches the node-only environment contract. Production build re-run: clean, and the
+deprecation warning is gone.
+
+### Finding 3 — the counted comments
+
+`src/lib/chat/request.ts` ("all five failure modes" → "every failure mode"), `src/lib/retry.ts` and
+`src/lib/chat/deps.ts` ("three attempts" → "a full `RETRY_MAX_ATTEMPTS` run"), `src/lib/prompts.ts`
+("the two lists" → naming both lists), and the README ("Five record kinds" → "The record kinds").
+`src/types/index.ts`'s "the four kinds" comment went with the union it described.
+
+## Post-fix verification (2026-09-10)
+
+### The dead assertion in my own test
+
+The backpressure check I wrote alongside the fix **passed when backpressure was deliberately
+broken**. It asserted the source's progress immediately after one `read()`, and `read()` resolves on
+the first enqueue while a drain-everything implementation is still running — so the assertion won a
+race rather than testing the property. Found by running the sabotage rather than trusting the new
+test. **The test was fixed, not the list**: it now settles the microtask queue before asserting, and
+the same sabotage makes it fail. Recorded because a check that cannot fail is exactly what this
+story's criterion-12 finding was about, and I reproduced the fault one step after fixing it.
+
+### Demonstrate red, re-run for every check that changed
+
+| Sabotage | Result |
+|---|---|
+| Framing by concatenation (ratified AC6) | **RED** — a paragraph break splits the record |
+| Terminator reachable only on success (ratified AC6) | **RED** — a dying stream ends with no terminator |
+| Node-only contract reachable (ratified AC10) | **RED** — the import-closure walk |
+| Pull loop drains the whole source | **RED** *(after the test was fixed; a dead assertion before)* |
+| `cancel` no longer unwinds the source | **RED** — the source is left running |
+| The wire schema stops matching what the server emits | **RED** — records fail validation |
+
+### Live, through the running endpoint
+
+The unit suite drives fakes, and the runtime and the stream shape both changed, so the real endpoint
+was exercised over HTTP rather than the orchestrator in isolation.
+
+- **Malformed body** → `400 {"error":"request body must be JSON"}`, with nothing downstream run.
+- **Out of bounds** → verdict, the fixed deferral, audit status. The deferral's own newlines are
+  escaped inside the payload and do **not** split the record.
+- **In bounds** → **220 records, 217 of them answer fragments**, arriving progressively. The answer
+  genuinely streams; it is not assembled and flushed.
+
+### A correction to a number this story published
+
+The README claimed the answering model reaches its first word in **1.5 s**. Measured through the
+running endpoint over three grounded questions, the model's thinking time before its first word was
+**3.6 s, 9.1 s and 11.9 s**. The original figure was a single warm sample and is not
+representative. The README now gives the observed range, says the earlier figure was unrepresentative
+and why, and says to take more than one reading before changing models. The comparison that drove
+the model choice still points the same way, but it is now recorded as one sample against another
+rather than a stable ranking.
+
+**Observed while measuring, not acted on:** one of the three questions — a genuine behavioral-health
+question — retrieved nothing above the retrieval threshold and took the deferral, as the Measure 110
+rewrite did earlier. That is the grounding fallback behaving correctly, but it is the second
+instance, and it strengthens the open observation already recorded under *Discovered during
+implementation*: with an eleven-document corpus at a 0.73 threshold, a fair number of reasonable
+questions are declined. Corpus size, threshold, or both — a real product question, and not one this
+story should settle.
