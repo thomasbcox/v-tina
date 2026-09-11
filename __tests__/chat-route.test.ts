@@ -4,7 +4,19 @@ import { describe, expect, it, vi } from "vitest";
 import { edgeEnvSchema, nodeEnvSchema, parseEnv, EnvValidationError } from "../src/lib/env";
 import { CLASSIFY_DEADLINE_MS, REWRITE_DEADLINE_MS } from "../src/lib/safety";
 import { EMBEDDING_DIMENSIONS } from "../src/lib/embeddings";
-import { createChatDeps } from "../src/lib/chat/deps";
+import { RETRIEVAL_DEADLINE_MS, createChatDeps } from "../src/lib/chat/deps";
+import { ANSWER_CONNECT_MS, ANSWER_IDLE_MS } from "../src/lib/fireworks";
+import type { ChatDeps } from "../src/lib/chat/orchestrate";
+
+/** The largest declared budget on the request path, derived from the constants
+ *  themselves so a raised budget does not silently make the bound test vacuous. */
+const LONGEST_BUDGET_MS = Math.max(
+  CLASSIFY_DEADLINE_MS,
+  REWRITE_DEADLINE_MS,
+  RETRIEVAL_DEADLINE_MS,
+  ANSWER_CONNECT_MS,
+  ANSWER_IDLE_MS,
+);
 import * as route from "../src/app/api/chat/route";
 
 const ROUTE_FILE = resolve(__dirname, "../src/app/api/chat/route.ts");
@@ -281,4 +293,84 @@ describe("retrieve's own two network calls each carry the signal", () => {
       vi.restoreAllMocks();
     }
   }, 20_000);
+});
+
+describe("EVERY outbound call on the request path is bounded", () => {
+  const edgeOnly = {
+    NEXT_PUBLIC_SUPABASE_URL: "https://project.supabase.co",
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: "anon-key",
+    FIREWORKS_API_KEY: "fireworks-key",
+  };
+
+  /**
+   * Hangs until its signal aborts — a faithful `fetch`.
+   *
+   * A fake that ignores the signal would be testing a scenario a real `fetch`
+   * cannot produce, and every collaborator would "fail" regardless of its
+   * budget. This one fails exactly the collaborators that arm no clock of their
+   * own: with no request signal supplied, only a collaborator's OWN deadline can
+   * end the call.
+   */
+  function fetchHangingUntilAborted() {
+    return vi.spyOn(globalThis, "fetch").mockImplementation(
+      (_input: unknown, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          const abort = () => reject(new DOMException("aborted", "AbortError"));
+          const signal = init?.signal;
+          if (!signal) return; // no clock at all — hang, and fail loudly
+          if (signal.aborted) return abort();
+          signal.addEventListener("abort", abort, { once: true });
+        }) as Promise<Response>,
+    );
+  }
+
+  /** Drives one collaborator to completion, whatever its shape. */
+  async function drive(deps: ChatDeps, name: keyof ChatDeps): Promise<void> {
+    switch (name) {
+      case "classify":
+        await deps.classify("a question");
+        return;
+      case "rewrite":
+        await deps.rewrite("a hostile question");
+        return;
+      case "retrieve":
+        await deps.retrieve("a question");
+        return;
+      case "answer":
+        for await (const _ of deps.answer([{ role: "user", content: "hi" }])) void _;
+        return;
+      default:
+        throw new Error(`no driver for collaborator "${String(name)}" — add one`);
+    }
+  }
+
+  it("holds every collaborator it exposes to a bound of its own", async () => {
+    // **The extent comes from the code under test, not a typed list.** A fifth
+    // collaborator added without a budget reaches `drive`, has no case, and
+    // fails — rather than waiting to be found by a fourth review round, which is
+    // what happened to retrieval and the answer.
+    //
+    // No request signal is passed on purpose: only the collaborator's OWN clock
+    // can end these calls, which is precisely the property under test.
+    //
+    // Driven CONCURRENTLY so the gate waits for the longest budget once rather
+    // than for the sum of all four.
+    fetchHangingUntilAborted();
+    const deps = createChatDeps(parseEnv(edgeEnvSchema, edgeOnly));
+    try {
+      const names = Object.keys(deps).filter((k) => k !== "logError") as Array<keyof ChatDeps>;
+      expect(names.sort()).toEqual(["answer", "classify", "retrieve", "rewrite"]);
+
+      const started = Date.now();
+      // Either outcome is fine — classification fails closed and returns, the
+      // others throw. What is NOT fine is never settling.
+      await Promise.all(names.map((n) => drive(deps, n).catch(() => {})));
+      expect(
+        Date.now() - started,
+        "every collaborator must give up within its own declared budget",
+      ).toBeLessThan(LONGEST_BUDGET_MS + 5_000);
+    } finally {
+      vi.restoreAllMocks();
+    }
+  }, LONGEST_BUDGET_MS + 20_000);
 });

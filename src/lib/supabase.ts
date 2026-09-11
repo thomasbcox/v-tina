@@ -46,28 +46,29 @@ export const DEFAULT_MATCH_THRESHOLD = 0.73;
 
 export type RpcResult = { data: unknown; error: { message: string } | null };
 
+/** What `rpc` hands back on the ingestion path: awaitable, nothing more. The
+ *  operator script has no reader to disconnect. */
+export interface RpcClient {
+  rpc(fn: string, args?: Record<string, unknown>): PromiseLike<RpcResult>;
+}
+
 /**
- * What `rpc` hands back: awaitable, and — on the real client — able to carry a
+ * What `rpc` hands back on the **request** path: awaitable, and able to carry a
  * cancellation signal.
  *
- * `abortSignal` is **optional** so a recording fake can keep returning a plain
- * promise. Where it exists the caller's signal reaches the database, so a query
- * begun for a reader who has since disconnected does not run to completion.
+ * `abortSignal` is **required**, deliberately. It was optional so a recording
+ * fake could stay a plain promise, and that encoded cancellation as best-effort:
+ * a client without the method would silently run queries to completion for a
+ * reader who had gone, with nothing but one route test to notice. Convenience in
+ * a fake is not a reason to weaken a production invariant — so the two paths are
+ * two types, and only the one that needs cancellation demands it.
  */
-export interface RpcBuilder extends PromiseLike<RpcResult> {
-  abortSignal?(signal: AbortSignal): PromiseLike<RpcResult>;
+export interface QueryRpcBuilder extends PromiseLike<RpcResult> {
+  abortSignal(signal: AbortSignal): PromiseLike<RpcResult>;
 }
 
-/** The one method this module needs from a Supabase client, stated narrowly so
- *  a test can hand in a recording fake. A real `SupabaseClient` satisfies it. */
-export interface RpcClient {
-  rpc(fn: string, args?: Record<string, unknown>): RpcBuilder;
-}
-
-/** Attaches the caller's signal when the client supports it, and otherwise
- *  awaits the builder unchanged — which is what every test fake does. */
-function withSignal(builder: RpcBuilder, signal?: AbortSignal): PromiseLike<RpcResult> {
-  return signal && builder.abortSignal ? builder.abortSignal(signal) : builder;
+export interface QueryRpcClient {
+  rpc(fn: string, args?: Record<string, unknown>): QueryRpcBuilder;
 }
 
 export function createSupabaseClient(url: string, key: string): SupabaseClient {
@@ -111,7 +112,7 @@ export function toRetrievedPolicyChunk(row: MatchRow): RetrievedPolicyChunk {
  * `pillar` when one is given. Those guarantees are the SQL function's.
  */
 export async function queryPolicyChunks(
-  client: RpcClient,
+  client: QueryRpcClient,
   embedding: number[],
   matchThreshold: number,
   matchCount: number,
@@ -131,10 +132,10 @@ export async function queryPolicyChunks(
   // Omitted, not sent empty: the SQL default (null) means "no filter".
   if (pillar !== undefined) args.filter_pillar = pillar;
 
-  const { data, error } = await withSignal(
-    client.rpc("match_policy_chunks", args),
-    signal,
-  );
+  const builder = client.rpc("match_policy_chunks", args);
+  // The signal always reaches the database when there is one; there is no path
+  // where it is silently dropped.
+  const { data, error } = await (signal ? builder.abortSignal(signal) : builder);
   if (error) throw new Error(`match_policy_chunks failed: ${error.message}`);
 
   const rows = z.array(matchRowSchema).safeParse(data);

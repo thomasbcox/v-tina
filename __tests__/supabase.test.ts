@@ -6,12 +6,43 @@ import {
   createSupabaseClient,
   queryPolicyChunks,
   type MatchRow,
+  type QueryRpcClient,
   type RpcClient,
 } from "../src/lib/supabase";
 
-/** Records every RPC and answers with whatever the test hands it. `pages`, when
- *  given, answers the paginated table read one page per `.range()` call. */
+/**
+ * Records every RPC and answers with whatever the test hands it.
+ *
+ * The builder carries `abortSignal` because the **query** path's client type now
+ * requires it: cancellation on the request path is an invariant, not a
+ * capability a client may quietly lack. The fake records the signal it was given
+ * so a test can assert it was forwarded.
+ */
 function fakeClient(answer: { data: unknown; error: { message: string } | null }) {
+  const calls: {
+    fn: string;
+    args: Record<string, unknown> | undefined;
+    signal?: AbortSignal;
+  }[] = [];
+  const client: QueryRpcClient = {
+    rpc(fn, args) {
+      const call: (typeof calls)[number] = { fn, args };
+      calls.push(call);
+      const result = Promise.resolve(answer);
+      return Object.assign(result, {
+        abortSignal(signal: AbortSignal) {
+          call.signal = signal;
+          return result;
+        },
+      });
+    },
+  };
+  return { client, calls };
+}
+
+/** The ingestion store's client, which needs no cancellation: the operator
+ *  script has no reader who can disconnect. */
+function fakeStoreClient(answer: { data: unknown; error: { message: string } | null }) {
   const calls: { fn: string; args: Record<string, unknown> | undefined }[] = [];
   const client: RpcClient = {
     rpc(fn, args) {

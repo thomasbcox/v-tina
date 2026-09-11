@@ -32,6 +32,27 @@ import type { ChatDeps } from "./orchestrate";
 export const ANSWER_CHUNK_COUNT = 6;
 
 /**
+ * **Every outbound call on the request path carries a wall-clock bound.** That
+ * is the rule, not a list of the calls that happen to have one today.
+ *
+ * It is written as a rule because three rounds of review found it one instance
+ * at a time: classification was bounded, then the rewrite, and retrieval and the
+ * answer were still unbounded — so a reader who stayed connected through a stall
+ * got the safety verdict and then a stream that never terminated, which is AC6's
+ * own guarantee broken. `fetchWithRetry` bounds *attempts*, never elapsed time,
+ * and Node's `fetch` has no default timeout, so nothing supplies this by accident.
+ *
+ * The budgets: `CLASSIFY_DEADLINE_MS` and `REWRITE_DEADLINE_MS` live in
+ * `../safety` with the steps they belong to; retrieval's is below, and the
+ * answer's idle bound is `ANSWER_IDLE_MS` in `../fireworks`.
+ *
+ * A test enumerates the collaborators this module returns and holds **each** of
+ * them to a bound, so a fifth collaborator added without one fails rather than
+ * waiting to be found by a fourth review round.
+ */
+export const RETRIEVAL_DEADLINE_MS = 10_000;
+
+/**
  * The token budget for one answer.
  *
  * Budgets the model's REASONING as well as its prose, for the same reason the
@@ -111,16 +132,17 @@ export function createChatDeps(env: EdgeEnv): ChatDeps {
     },
 
     async retrieve(question, signal) {
-      // Both halves take the signal: the embedding request and the database
-      // query are each a call made on behalf of one reader.
-      const [vector] = await embed([question], signal);
+      // One budget covering both halves — the embedding request and the database
+      // query — composed with the reader's signal exactly as the other stages do.
+      const bounded = deadline(RETRIEVAL_DEADLINE_MS, signal);
+      const [vector] = await embed([question], bounded);
       return queryPolicyChunks(
         supabase,
         vector,
         DEFAULT_MATCH_THRESHOLD,
         ANSWER_CHUNK_COUNT,
         undefined,
-        signal,
+        bounded,
       );
     },
 

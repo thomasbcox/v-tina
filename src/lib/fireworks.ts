@@ -47,6 +47,28 @@ export const CLASSIFIER_MODEL = "accounts/fireworks/models/gpt-oss-120b";
  */
 export const ANSWER_MODEL = "accounts/fireworks/models/deepseek-v4p1-flash";
 
+/**
+ * How long the answer stream may go silent before it is abandoned.
+ *
+ * An **idle** bound, not a total one, and the distinction is the point: a
+ * legitimately long answer must not be truncated mid-sentence, but a provider
+ * that stops sending must not hold a public connection open forever. The clock
+ * resets on every chunk received.
+ */
+export const ANSWER_IDLE_MS = 30_000;
+
+/**
+ * How long the answer call may take to produce a *response* before it is
+ * abandoned.
+ *
+ * Separate from the idle bound because they guard different stalls, and one
+ * budget cannot do both: a total timeout long enough for a real answer is far
+ * too long to wait for a connection, and one short enough to catch a dead
+ * connection would truncate a legitimate answer mid-sentence. This one stops
+ * applying the moment the response arrives.
+ */
+export const ANSWER_CONNECT_MS = 10_000;
+
 export class ChatError extends Error {
   /** Present when the failure came back as an HTTP status rather than a
    *  transport fault — a refused key reads differently from an unreachable
@@ -176,14 +198,39 @@ export async function* createChatStream(
   options: FireworksChatOptions,
   request: ChatRequest,
   signal?: AbortSignal,
+  idleMs: number = ANSWER_IDLE_MS,
+  connectMs: number = ANSWER_CONNECT_MS,
 ): AsyncGenerator<string> {
   const doFetch = options.fetch ?? globalThis.fetch;
-  const response = await doFetch(FIREWORKS_CHAT_URL, {
-    method: "POST",
-    headers: headers(options.apiKey),
-    body: body(request, true),
-    signal,
-  });
+
+  // One controller for the whole call. The connect timer arms it until the
+  // response arrives and is then cleared, so a dead connection is abandoned
+  // while a long, healthy answer is never cut short for being long. The reader's
+  // own signal forwards into it for as long as the call lives.
+  const controller = new AbortController();
+  const forwardAbort = () => controller.abort();
+  if (signal?.aborted) controller.abort();
+  signal?.addEventListener("abort", forwardAbort, { once: true });
+  const connectTimer = setTimeout(() => controller.abort(), connectMs);
+
+  let response: Response;
+  try {
+    response = await doFetch(FIREWORKS_CHAT_URL, {
+      method: "POST",
+      headers: headers(options.apiKey),
+      body: body(request, true),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    signal?.removeEventListener("abort", forwardAbort);
+    throw new ChatError(
+      `Fireworks chat stream could not be opened: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  } finally {
+    clearTimeout(connectTimer);
+  }
   if (!response.ok) {
     throw new ChatError(
       `Fireworks chat stream failed: HTTP ${response.status}`,
@@ -194,7 +241,8 @@ export async function* createChatStream(
 
   const decoder = new TextDecoder();
   let buffer = "";
-  for await (const chunk of streamLines(response.body, decoder)) {
+  try {
+  for await (const chunk of streamLines(response.body, decoder, idleMs)) {
     buffer += chunk;
     // Records are separated by a blank line; anything after the last separator
     // is a partial record and stays in the buffer until the rest arrives.
@@ -223,22 +271,50 @@ export async function* createChatStream(
       }
     }
   }
+  } finally {
+    signal?.removeEventListener("abort", forwardAbort);
+  }
 }
 
-/** Reads a byte stream as decoded text. Split out so the loop above reads as
- *  record framing rather than as byte plumbing. */
+/**
+ * Rejects if `work` has not settled within `idleMs`.
+ *
+ * Used per read rather than per stream, so the budget is "time since the last
+ * byte" and a long answer is never cut short for being long.
+ */
+async function withIdleBound<T>(work: Promise<T>, idleMs: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const stalled = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(
+      () => reject(new ChatError(`Fireworks chat stream stalled: nothing received for ${idleMs}ms`)),
+      idleMs,
+    );
+  });
+  try {
+    return await Promise.race([work, stalled]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Reads a byte stream as decoded text, abandoning it if it goes silent. Split
+ *  out so the loop above reads as record framing rather than as byte plumbing. */
 async function* streamLines(
   body: ReadableStream<Uint8Array>,
   decoder: TextDecoder,
+  idleMs: number,
 ): AsyncGenerator<string> {
   const reader = body.getReader();
   try {
     for (;;) {
-      const { done, value } = await reader.read();
+      const { done, value } = await withIdleBound(reader.read(), idleMs);
       if (done) return;
       yield decoder.decode(value, { stream: true });
     }
   } finally {
+    // Cancel before releasing: on a stall or an abort the connection is still
+    // open, and releasing the lock alone would leak it.
+    await reader.cancel().catch(() => {});
     reader.releaseLock();
   }
 }
