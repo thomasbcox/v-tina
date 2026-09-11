@@ -393,7 +393,7 @@ reviewer oracle is the only thing reading *what* changed inside the permitted pa
 - frame/6 — ran (codex on kimi-latest, 6 findings, 13 regressions) → reviews/chat-safety-routing.design.4ea399d.json
 - frame/9 — demonstrated red for all ten size-bearing criteria (1–6, 9–12) against the ratified regressions; each check failed on the violation and passed again on revert. Criteria 7 and 8 are `manual` (live runs recorded below); 13 is `reviewer`.
 - review/6 — ran (codex on glm-latest, 2 findings) -> reviews/chat-safety-routing.approach.560570c.json
-- review/8 — n/a — the approach pass gated it in BOTH rounds. Round 1: two shape-changing fixes approved. Round 2 (`1e1ac11`): finding 1 approved, which changes collaborator interfaces. The correctness and hidden-failure critics have therefore not yet run on any shape; they run in round 3, which is the round they should read.
+- review/8 — n/a — the approach pass gated it in all THREE rounds: round 1 (two shape-changing fixes), round 2 (interface change), round 3 (a BLOCKER plus an interface change). The correctness and hidden-failure critics have therefore never run on any shape. Round 4 is the round they must.
 - close/3b — no activation. No guard-hook block and no promotion refused by the reviewer harness; this repo ships no install.sh to drift. **The destroyed-work incident is recorded under Post-fix verification and is deliberately NOT proposed as a lesson:** it is not an activation of either defined kind, and the candidate lesson would restate a rule that already exists and already covered it (the estate checkpoint discipline names `git checkout -- <path>` explicitly). The skill forbids restating an existing rule.
 - close/4 — presented twice. Round 1: re-review only (two shape-changing fixes). Round 2 (`1e1ac11`): re-review only again — approved finding 1 changed collaborator interfaces, so merge was not offered.
 
@@ -1457,3 +1457,38 @@ on a route-level test to catch a future client that quietly drops it.
 **One REACH line was reported** (never fatal): the reviewer probed the global npm root and npm cache
 outside the review worktree — read-only reconnaissance of dependency versions, with unresolvable
 `$(...)` and `~/` constructs the checker reports rather than clears. Read and judged harmless.
+
+## Decisions (2026-09-11, approach round 3 — 560570c)
+
+Round `560570c`, base `1e1ac11`. Two findings, **both dispositioned FIX**. Both change code the
+line-level critics would read, so the correctness pass is gated out for a third consecutive round.
+
+**Approach (glm-latest)**
+
+- **A connected request can still hang forever in retrieval** (BLOCKER, two-way, nonstandard):
+  **FIX — the class, not the instance.** Verified before presenting: `deadline()` is applied at
+  exactly two seams, while `embed()`, `queryPolicyChunks()` and `createChatStream()` each get the
+  raw request signal and no wall-clock bound; `fetchWithRetry` bounds attempts, never elapsed time.
+  A reader who stays connected through a stall receives the safety verdict and then a stream that
+  never terminates — **AC6's own guarantee, broken.**
+
+  **This is the builder's error, and a specific kind of it.** Round 2's review named the rewrite as
+  unbounded; the fix bounded the rewrite and looked no further, though the same sentence was true of
+  three other calls. Thomas's chosen option is explicitly the class — *every* outbound call in the
+  request path gets a bound — rather than the three instances now known, because patching named
+  instances is what produced this round. The answer stream takes an **idle** bound rather than a
+  total one, so a legitimately long reply is not truncated mid-sentence.
+
+- **Optional `RpcBuilder.abortSignal` creates a silent no-cancellation fallback** (IMPORTANT,
+  two-way, kludgy): **FIX.** Verified, and the verification changes its weight: the pinned Supabase
+  client *does* honour cancellation — removing the signal from `queryPolicyChunks` makes the round-3
+  database test go red — so this is **latent, not live**. On its own, a two-way kludge of that kind
+  would have been advisory and a reasonable defer. It was recommended and taken because finding 1
+  already costs the round, making its marginal cost near zero; deferring would have saved nothing
+  and left the hole.
+
+**Correctness and hidden-failure: not run, for the third round running.** Named again rather than
+absorbed. The gate is doing its job — each round has found a real defect and this one a blocker —
+but the correctness altitude remains entirely uncovered, and every round adds code no line-level
+critic has read. The reason to fix the whole class now is precisely to make round 4 the round where
+they run, instead of the round that finds the fourth unbounded call.
