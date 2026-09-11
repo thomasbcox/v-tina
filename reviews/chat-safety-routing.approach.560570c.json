@@ -1,0 +1,26 @@
+{
+  "verdict": "2026-09-11 08:27:52 PDT — I would keep the redesigned shape: the thin route adapter, injected orchestrator, pull-based Web Streams bridge, zod-owned wire contract, Node runtime, and the new AbortSignal composition. `deadline()` is the right platform-idiomatic way to combine a stage deadline with request cancellation, and it is applied at the correct classification and rewrite seams. The `gone()` stage gate is proportionate; returning without a terminating record after an actual request abort is defensible because AC6 describes a client reading the response to the end, and an aborted request leaves no such client. `EmbedFn` taking a per-call signal is also correct: request scope belongs to the call, while the embedder and its construction options can be shared. The `chat-route` tests are not over-built: mocking `globalThis.fetch` before dependency construction is the only way to prove that the real embedder and real Supabase RPC path forward the signal, and the previous real-network failure is now guarded by a mock that hangs without a signal. The remaining shape gaps are the absence of a wall-clock bound on the retrieval stage and the optional, silently degrading RpcBuilder cancellation contract.",
+  "regressions": [],
+  "findings": [
+    {
+      "severity": "BLOCKER",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "Cancellation was fixed, but a connected request can still hang forever in retrieval",
+      "locus": "src/lib/chat/deps.ts:113-124",
+      "claim": "The approved fix gives the embedding request and Supabase RPC the reader's cancellation signal, but gives neither a deadline. `deadline()` is used only for classification and rewrite. A client who stays connected while Fireworks embeddings or the database stalls therefore receives the safety verdict and then an open stream with no `error` or `audit_log_status` terminator. That violates AC6's always-terminates contract for a connected reader and can pin public-endpoint connections and upstream resources indefinitely. The existing retry budget bounds attempts, not wall-clock time, and Node fetch has no default timeout.",
+      "alternative": "Add one declared `RETRIEVAL_DEADLINE_MS`, compose it with the request signal using the existing `deadline()` helper once at the start of `createChatDeps.retrieve`, and pass that same signal to both `embed()` and `queryPolicyChunks()`. The existing retrieval catch branch can then emit the declared failure and audit terminator. If the answering stream must satisfy the same guarantee under a stalled provider, use an idle-read deadline rather than a total-answer timeout so legitimate long answers are not truncated.",
+      "win": "Every accepted request reaches either an answer or a terminating failure record; provider or database stalls can no longer hold a public connection open indefinitely. This reuses the same platform composition, adds no dependency, and closes the remaining AC6 failure path."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "kludgy",
+      "title": "Optional RpcBuilder.abortSignal creates a silent no-cancellation fallback",
+      "locus": "src/lib/supabase.ts:42-68",
+      "claim": "`RpcBuilder.abortSignal?` plus `withSignal()` encodes cancellation as best-effort: when a client lacks the method, the function silently awaits the original builder and the query runs to completion despite the reader having disconnected. The pinned Supabase client currently supports the method and the route test exercises it, but the module's own contract permits a signal-ignoring client. Keeping a test fake as a plain promise is not a sufficient reason to weaken the production invariant.",
+      "alternative": "Make `abortSignal(signal): PromiseLike<RpcResult>` required on `RpcBuilder`, or split a cancellation-capable `QueryRpcClient` from the minimal ingestion-store client. Call the method whenever a signal is supplied, and update recording fakes to return an object whose `abortSignal()` yields the same promise. The fake change is one small method; no new dependency is needed.",
+      "win": "The type system enforces that a query client can honour request cancellation, and the silent fallback path disappears. This centralizes the cancellation invariant instead of relying on a route-level test to catch a future client that quietly drops it."
+    }
+  ]
+}

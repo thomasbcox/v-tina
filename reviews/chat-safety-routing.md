@@ -392,7 +392,7 @@ reviewer oracle is the only thing reading *what* changed inside the permitted pa
 
 - frame/6 — ran (codex on kimi-latest, 6 findings, 13 regressions) → reviews/chat-safety-routing.design.4ea399d.json
 - frame/9 — demonstrated red for all ten size-bearing criteria (1–6, 9–12) against the ratified regressions; each check failed on the violation and passed again on revert. Criteria 7 and 8 are `manual` (live runs recorded below); 13 is `reviewer`.
-- review/6 — ran (codex on glm-latest, 3 findings) → reviews/chat-safety-routing.approach.1e1ac11.json
+- review/6 — ran (codex on glm-latest, 2 findings) -> reviews/chat-safety-routing.approach.560570c.json
 - review/8 — n/a — the approach pass gated it in BOTH rounds. Round 1: two shape-changing fixes approved. Round 2 (`1e1ac11`): finding 1 approved, which changes collaborator interfaces. The correctness and hidden-failure critics have therefore not yet run on any shape; they run in round 3, which is the round they should read.
 - close/3b — no activation. No guard-hook block and no promotion refused by the reviewer harness; this repo ships no install.sh to drift. **The destroyed-work incident is recorded under Post-fix verification and is deliberately NOT proposed as a lesson:** it is not an activation of either defined kind, and the candidate lesson would restate a rule that already exists and already covered it (the estate checkpoint discipline names `git checkout -- <path>` explicitly). The skill forbids restating an existing rule.
 - close/4 — presented twice. Round 1: re-review only (two shape-changing fixes). Round 2 (`1e1ac11`): re-review only again — approved finding 1 changed collaborator interfaces, so merge was not offered.
@@ -1379,3 +1379,81 @@ their passing. The mock is now installed first, and both go red on the sabotage.
 | `DOCUMENT_KINDS` widened by one member | **RED** — corpus and migration suites, so the authority is genuinely shared |
 
 **No sabotage was believed without first asserting that it applied.**
+
+## Codex (glm-latest) approach review - round 3 (2026-09-11, base 1e1ac11, HEAD 560570c)
+
+**Verdict.** 2026-09-11 08:27:52 PDT — I would keep the redesigned shape: the thin route adapter, injected
+orchestrator, pull-based Web Streams bridge, zod-owned wire contract, Node runtime, and the new
+AbortSignal composition. `deadline()` is the right platform-idiomatic way to combine a stage
+deadline with request cancellation, and it is applied at the correct classification and rewrite
+seams. The `gone()` stage gate is proportionate; returning without a terminating record after an
+actual request abort is defensible because AC6 describes a client reading the response to the
+end, and an aborted request leaves no such client. `EmbedFn` taking a per-call signal is also
+correct: request scope belongs to the call, while the embedder and its construction options can
+be shared. The `chat-route` tests are not over-built: mocking `globalThis.fetch` before
+dependency construction is the only way to prove that the real embedder and real Supabase RPC
+path forward the signal, and the previous real-network failure is now guarded by a mock that
+hangs without a signal. The remaining shape gaps are the absence of a wall-clock bound on the
+retrieval stage and the optional, silently degrading RpcBuilder cancellation contract.
+
+### BLOCKER
+
+**Cancellation was fixed, but a connected request can still hang forever in retrieval** - reversibility: two-way . standing: nonstandard
+
+- **Claim:** The approved fix gives the embedding request and Supabase RPC the reader's
+cancellation signal, but gives neither a deadline. `deadline()` is used only for classification
+and rewrite. A client who stays connected while Fireworks embeddings or the database stalls
+therefore receives the safety verdict and then an open stream with no `error` or
+`audit_log_status` terminator. That violates AC6's always-terminates contract for a connected
+reader and can pin public-endpoint connections and upstream resources indefinitely. The existing
+retry budget bounds attempts, not wall-clock time, and Node fetch has no default timeout.
+- **Alternative:** Add one declared `RETRIEVAL_DEADLINE_MS`, compose it with the request signal
+using the existing `deadline()` helper once at the start of `createChatDeps.retrieve`, and pass
+that same signal to both `embed()` and `queryPolicyChunks()`. The existing retrieval catch
+branch can then emit the declared failure and audit terminator. If the answering stream must
+satisfy the same guarantee under a stalled provider, use an idle-read deadline rather than a
+total-answer timeout so legitimate long answers are not truncated.
+- **Win:** Every accepted request reaches either an answer or a terminating failure record;
+provider or database stalls can no longer hold a public connection open indefinitely. This
+reuses the same platform composition, adds no dependency, and closes the remaining AC6 failure
+path.
+
+### IMPORTANT
+
+**Optional RpcBuilder.abortSignal creates a silent no-cancellation fallback** - reversibility: two-way . standing: kludgy
+
+- **Claim:** `RpcBuilder.abortSignal?` plus `withSignal()` encodes cancellation as best-effort:
+when a client lacks the method, the function silently awaits the original builder and the query
+runs to completion despite the reader having disconnected. The pinned Supabase client currently
+supports the method and the route test exercises it, but the module's own contract permits a
+signal-ignoring client. Keeping a test fake as a plain promise is not a sufficient reason to
+weaken the production invariant.
+- **Alternative:** Make `abortSignal(signal): PromiseLike<RpcResult>` required on `RpcBuilder`,
+or split a cancellation-capable `QueryRpcClient` from the minimal ingestion-store client. Call
+the method whenever a signal is supplied, and update recording fakes to return an object whose
+`abortSignal()` yields the same promise. The fake change is one small method; no new dependency
+is needed.
+- **Win:** The type system enforces that a query client can honour request cancellation, and the
+silent fallback path disappears. This centralizes the cancellation invariant instead of relying
+on a route-level test to catch a future client that quietly drops it.
+
+**Verified against the repository before presenting.**
+
+- **Finding 1 holds, and it is the same class of defect as round 2's.** `deadline()` is applied at
+  exactly two seams — classification and the rewrite. `embed()`, `queryPolicyChunks()` and
+  `createChatStream()` each receive the raw request signal and **no wall-clock bound**.
+  `fetchWithRetry` bounds *attempts*, never time. So a reader who stays connected while embeddings,
+  the database, or generation stalls gets the safety verdict and then an open stream that never
+  terminates — which is AC6's own guarantee, broken. **The builder fixed the instance the round-2
+  review named (the rewrite) rather than the class it belonged to.** Round 2's own record says the
+  rewrite had no bound at all; the identical sentence was true of three other calls and was not
+  acted on.
+- **Finding 2 is latent rather than live.** The pinned Supabase client *does* honour `abortSignal` —
+  demonstrated empirically, not assumed: removing the signal from `queryPolicyChunks` made the
+  round-3 database test go red. What the optional method permits is a **future** client that
+  silently ignores cancellation, with nothing but a route-level test to notice. Real, but not a
+  defect in today's behaviour.
+
+**One REACH line was reported** (never fatal): the reviewer probed the global npm root and npm cache
+outside the review worktree — read-only reconnaissance of dependency versions, with unresolvable
+`$(...)` and `~/` constructs the checker reports rather than clears. Read and judged harmless.
