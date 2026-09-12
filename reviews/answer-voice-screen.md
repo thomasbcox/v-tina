@@ -173,12 +173,127 @@ numbered property assertions, per `AGENTS.md`.
 
 ### Regressions (ratified list — sourced from the step-6 design review)
 
-*(Round 2 pending. The round-1 list below was written against the superseded design and is kept only
-as a record.)*
+Round 2, against the binding design. **Every risk R1–R6 and every sized criterion
+(1, 3, 5, 6, 7, 8, 10) received at least one; there is no coverage gap.** Criteria 2, 4 and 9
+are person-judged and owe none.
+
+**R1**
+
+- An answer opens with the required avatar frame — the screen passes it — and the body then
+  characterises the Governor's motives and record in confident unattributed prose ('She has
+  always put housing first', 'her commitment to accountability'), so every mechanical check is
+  green while a reader still meets prose that reads as her voice and her stances. Letter (frame
+  carried, no listed impersonation form) met; intent (nothing a reader would take for her own
+  words) violated.
+
+**R2**
+
+- A quotation is verbatim in a retrieved passage but from a different document than the one
+  cited — shared bill boilerplate or an order quoting a statute — so substring verification
+  passes it, the answer carries a confident document name, and a reader who follows the citation
+  finds the words are not there. The fidelity letter is met while the citation makes an error
+  MORE credible, which is the exact harm R2 names.
+
+**R3**
+
+- A correct answer opens by quoting the record's own first person — 'The order states: "I, Tina
+  Kotek… hereby direct…"' — and the screen's quotation-blind form matching reads the opening as
+  impersonation, stripping or failing a faithful answer. The form-catcher's letter (a listed
+  form appeared in the held prefix) is met; the intent (the avatar must not pose as her) was
+  never engaged, because the words are the record's, attributed — and the reader loses a good
+  answer.
+
+**R4**
+
+- An opening carries the avatar frame AND impersonates later in the same held prefix — 'As a
+  virtual avatar of the Governor, I can tell you I am proud of what I have done' — so the frame
+  check passes, the mid-opening first person matches no listed opening form, and an
+  impersonation reaches the reader while both of the screen's checks pass their letter.
+
+**R5**
+
+- The rewritten prompt retains the source-only rule word-for-word (its pin passes), but the new
+  provenance machinery creates an 'avatar's own words' category the model uses for unsupported
+  factual assertions — every such sentence correctly FRAMED as the avatar's own, so framing and
+  screen checks pass while the answer asserts numbers and programme details no passage contains.
+  The letter (grounding rule present, framing rule satisfied) holds; the intent (factual claims
+  come from the passages or nowhere) is gone.
+
+**R6**
+
+- FAILURE_NOTICE keeps the exact incompleteness disclosure, so the containment pin passes, but
+  wraps it in in-character apology — 'As the Governor's avatar, I'm so sorry — something went
+  wrong…' — performing a someone who erred during what may be a database outage, and diluting
+  the one load-bearing fact the notice exists to deliver. Letter (the disclosure string is
+  present) met; intent (no persona during infrastructure failure, disclosure undiluted)
+  violated.
+
+**AC1** *(sized criterion)*
+
+- The test's openings are generated from AVATAR_FRAME itself, so if the constant is later
+  weakened to something vacuous — 'As a virtual avatar', naming no Governor — every derived case
+  still passes: a test whose extent comes from the constant under test can never catch a bad
+  constant. The letter (the screen judges by the declared frame, driven from the constant) is
+  met; the intent (a reader can tell a virtual avatar of the Governor is speaking) is guarded
+  only by the live read.
+
+**AC3** *(sized criterion)*
+
+- A faithful quotation that elides a clause with '…', or one whose sentence spans a chunk
+  boundary so no single passage contains it, fails verbatim-substring verification although
+  every word is the record's — the check reports a fabrication that did not happen. The letter
+  (the span is not a substring of any passage) is met; the intent (flag words NOT in the record)
+  is inverted, and the diagnostic's signal degrades exactly as R2's guard becomes necessary.
+
+**AC5** *(sized criterion)*
+
+- Every listed form and its declared variants (leading whitespace, emphasis, case, past the
+  first clause) are correctly caught, but a form with interposed punctuation or markdown INSIDE
+  it — 'As your Governor — and I say this plainly — I…' — normalises away from every listed
+  entry and passes the screen to the reader. The variant list's letter is met; the intent (no
+  first-person-as-Governor opening reaches the reader) is defeated by a shape no variant
+  enumerated.
+
+**AC6** *(sized criterion)*
+
+- The screen returns clean text byte-identical and the fake-generator path emits progressively,
+  but an answer whose opening needed stripping sits outside AC6's guarantee entirely: the strip
+  path can alter the retained remainder (trimmed lead-in, rejoined whitespace, a sentence
+  fragment) and no criterion asserts what then reaches the reader is well-formed. Both pinned
+  properties' letters are met while the criterion's 'complete and unaltered' intent is scoped so
+  the one path that alters is the one path unexamined.
+
+**AC7** *(sized criterion)*
+
+- GROUNDED_DEFERRAL contains OREGON_PORTAL_URL and FAILURE_NOTICE contains its incompleteness
+  clause — both pins pass — while the sentences around them stop performing: the deferral
+  mentions the portal without directing the reader to it ('the portal exists, though you may
+  find your answer here another time'), and the notice buries the disclosure mid-paragraph.
+  Containment's letter met; 'names the portal' as a direction and 'discloses' as an act are both
+  intent the pin cannot see.
+
+**AC8** *(sized criterion)*
+
+- Prompt and screen share both constants and the README matches in both directions, but the two
+  consumers apply the same list with different semantics — the prompt's forbidding scaffold
+  presents the forms as exact openings to never write, while the screen applies them as
+  normalised patterns over a held prefix — so a mid-prefix occurrence is 'forbidden' in a sense
+  the prompt never states and caught in a sense the scaffold assertion never checks. Single-
+  source letter met; the no-drift intent quietly covers wording while semantics drift underneath
+  it.
+
+**AC10** *(sized criterion)*
+
+- PROVISIONAL_PROMPTS is empty and the partition provably still covers every prompt exported
+  from prompts.ts, vacuity case included — but the partition's universe is that one module, so a
+  future voice-bearing prompt exported from a new module (a prompts/voice.ts, a route-local
+  constant) escapes both lists while the test stays green. The letter (no unclassified prompt IN
+  THIS MODULE) is met; the intent (no voice-bearing prompt ships unclassified) is bounded in a
+  way the criterion does not state and no check names.
 
 ## Loop record
 
-- frame/6 — not yet reached
+- frame/6 — ran twice. Round 1 (superseded design) -> reviews/answer-voice-screen.design.fdc04f4.json. Round 2, the binding pass, after Thomas inverted the design at the consult: codex on kimi-latest, 6 findings, 13 regressions -> reviews/answer-voice-screen.design.896817f.json
 - frame/9 — not yet reached
 - review/6 — not yet reached
 - review/8 — not yet reached
@@ -367,3 +482,145 @@ written against risks the story no longer runs. The round-2 pass below is the bi
   as a dependency, say so and why) or drop deps.ts from the enumerated set.
 - **Win:** The scope check Thomas runs at merge judges only real, described changes — no pre-
   authorised slack.
+
+## Codex (kimi-latest) design review — round 2, BINDING (2026-09-11)
+
+**Verdict.** Round-2's shape is fundamentally sound and right-sized: one pure module (`voice.ts`), one
+  prompt-file rewrite, one bounded buffering seam in the orchestrator, no new dependency, and
+  the single-source constants pattern follows the repo's own SAFETY_CLASSIFICATIONS precedent.
+  On the questions posed: (a) `verifyQuotations` as sketched — extract spans, whitespace-
+  normalise, substring-per-passage — is sound as a core but has BOTH a false-positive shape
+  (ellipsis elision, quotes crossing chunk boundaries, nested quotation inside EO passages) and
+  a missing half (AC3's attribution clause has no mechanism: substring-over-any-passage cannot
+  detect a span cited to the wrong document, and the AC3 oracle explicitly claims that case
+  fails). (b) The orchestrator is the right seam for holding the opening — stream.ts is pure
+  framing, the generator composes with pull-based backpressure, and a mid-hold abort unwinds
+  cleanly through the existing cancel path. (c) Diagnostic-only quote verification is defensible
+  given R2 ONLY because gating's cost is real — but Open question 3 frames a false dichotomy
+  (gate = hold the whole answer); a quotation is unverifiable only between its marks, so hold-
+  each-quote is a third option the consult should see, and the diagnostic currently has no named
+  consumer before Story 5. (d) The oracle split is honest: AC2 must stay manual because
+  executive orders legitimately contain the Governor's own first person inside quotations,
+  making any offline pronoun check false-positive; AC4 and AC9 carry correct arguments for their
+  person-judged oracles. The risk list is genuine — R1–R6 are all states a reader can meet, none
+  is a scope statement — but one wrong state is missing: a screen veto surfaces through the
+  infrastructure FAILURE_NOTICE, telling the reader a false cause. Ship-shaped subject to the
+  findings.
+
+### IMPORTANT
+
+**AC3's attribution clause has no mechanism — the sketched function cannot detect a span cited to the wrong document** — reversibility: two-way · standing: standard
+
+- **Claim:** The sketch's verifyQuotations reports spans 'not verbatim in ANY passage' — a set-
+  membership check. But AC3's Then requires each quotation 'attributed to the document it came
+  from', and the AC3 oracle explicitly claims 'a span attributed to a document it is not in'
+  fails. Nothing in the sketched function reads the answer's citations or maps spans to
+  documents, so that red cannot fire. The corpus makes this concrete rather than paranoid:
+  executive orders quote statutes, and bills share boilerplate, so a span can be verbatim in a
+  passage of a DIFFERENT document than the one cited — verification passes, the reader is sent
+  to a document that does not contain the words, and R2's harm (a citation making an error more
+  credible) lands in its exact form. The suite would go green claiming a guarantee the code does
+  not provide.
+- **Alternative:** Either extend the sketched function so it also extracts each span's attached
+  citation and checks membership in THAT document's passages (defining how shared boilerplate
+  resolves), or narrow AC3's Then and its oracle to verbatim-fidelity only and move attribution
+  to the manual AC4 read. Say which in the sketch, because the test author will otherwise write
+  the attribution red against an implementation shape nobody designed.
+- **Win:** Criterion, oracle and function agree; eliminates a claimed check that cannot fail,
+  and forces the shared-boilerplate ambiguity to be decided rather than discovered.
+
+**Whitespace-only verbatim matching false-fails faithful quotations, which poisons the diagnostic it exists to provide** — reversibility: two-way · standing: standard
+
+- **Claim:** Real model quotations routinely elide with '…', and chunking splits sentences mid-
+  quote, so a span assembled across two adjacent passages is not a substring of either. Nested
+  quotation compounds it: an EO passage can itself contain quoted statute text, so span
+  extraction pairs the wrong marks. The sketch acknowledges only 'normalise whitespace, nothing
+  else'. Every one of these cases reports a faithful quotation as a fabrication. For a
+  diagnostic whose entire value is that a finding means something, a known false-positive class
+  trains whoever reads the server-side findings to discount them — and if the check is ever
+  promoted to a gate (Open question 3), the same class eats good answers.
+- **Alternative:** Define the quoting contract the check verifies, in the prompt and in the
+  sketch: either the prompt forbids elision and cross-passage quotation outright (making
+  'verbatim contiguous span from one passage' a property the model is TOLD to satisfy, so a
+  violation is a real finding), or the verifier splits spans on ellipsis and requires each
+  segment verbatim in one passage. Either is cheap; shipping neither leaves the check's
+  semantics to whoever writes the test.
+- **Win:** The diagnostic's findings stay meaningful (no wolf-crying class), AC3's Small test
+  asserts behaviour that matches real model output, and the prompt gains a concretely statable
+  rule instead of an implicit one.
+
+**The screen is quotation-blind, so it can veto the design's own preferred answer shape** — reversibility: two-way · standing: standard
+
+- **Claim:** The settled direction says most answers 'can be, or can include, quotes with
+  citations' — and executive orders open in the Governor's own first person ('I, Tina Kotek…
+  hereby order'). A well-formed answer that OPENS with an attributed quotation of the record
+  therefore contains exactly the first-person-as-Governor strings IMPERSONATION_FORMS will list,
+  inside quotation marks, in the held prefix. 'Normalised comparison against declared lists,
+  anchored to the opening' contains no notion of quotation, so the screen's impersonation half
+  can fire on the answer shape the prompt is written to encourage — converting R3 from a tail
+  risk into a routine collision between the story's two mechanisms.
+- **Alternative:** Sketch the screen as quotation-aware: strip (or skip) quoted spans before
+  matching the impersonation forms, so the forms match only the avatar's own prose. This is a
+  few lines in a pure function and belongs in the design, because it determines what
+  IMPERSONATION_FORMS may safely contain.
+- **Win:** Removes a structural false-positive class that pits the screen against the prompt;
+  AC5's 'real-shaped variants' gain the variant that matters most; R3's false-positive leg stops
+  being a routine event.
+
+**Open question 3 presents a false dichotomy, and the diagnostic half has no consumer** — reversibility: two-way · standing: standard
+
+- **Claim:** The question frames the trade as 'gate the stream (hold the whole answer) vs report
+  only', but that overstates gating's cost: a quotation is unverifiable only between its opening
+  and closing marks, so a gate can hold EACH QUOTATION rather than the answer — everything
+  outside quotation marks streams unimpeded. Under this design's intended style (most of the
+  answer quoted) the practical delay may approach full buffering, which is exactly why the
+  honest comparison belongs in the consult rather than being pre-empted by the framing.
+  Separately, the proposed diagnostic records findings server-side with no named reader until
+  User Story 5 — a check whose output nothing consumes is a check that cannot fail in the way
+  that matters, whatever the suite proves about the function.
+- **Alternative:** Present three options at the consult — report-only / hold-each-quotation /
+  hold-the-answer — with the delay for a quote-heavy answer honestly estimated rather than
+  assumed maximal. For the report-only option, name the consumer of server-side findings (even
+  if it is Story 5's suite reading a recorded log), so 'recorded' means 'read'.
+- **Win:** Thomas decides R2's disposition among the real options instead of two; the diagnostic
+  either gains a consumer or the story stops claiming it as mitigation.
+
+### NIT
+
+**The screen's third state — a clean opening that merely lacks the frame — has no specified behaviour** — reversibility: two-way · standing: standard
+
+- **Claim:** screenOpening answers two questions (carries the frame? impersonates?) which yields
+  three outcomes, but Open question 4 defines behaviour only for impersonation (strip / pass /
+  regenerate). A non-impersonating opening that simply omits the avatar frame — the most likely
+  prompt-slip — has nothing to strip, and 'fail the answer' would spend R3 on a benign miss
+  while emitting FAILURE_NOTICE's 'something went wrong', a false statement about cause (a wrong
+  state the risk list does not name — R3 covers suppression and R6 covers persona performance,
+  neither covers the reader being told infrastructure failed when a style gate vetoed).
+- **Alternative:** Name the behaviour for all three screen outcomes in the sketch — including
+  whether missing-frame fails, passes-with-record, or triggers a prefixed correction — and add
+  the veto-presented-as-infrastructure-failure state to the risk list (or state why
+  FAILURE_NOTICE's wording is honest for it).
+- **Win:** The orchestrator wiring, AC1's oracle and AC5's oracle partition the same state
+  space, and the reader-facing failure vocabulary stays truthful about what happened.
+
+**AC2's Then, read by its letter, fails legitimate quotations of the record** — reversibility: two-way · standing: standard
+
+- **Claim:** 'Nothing in it is written in the Governor's first person' is true of well-formed
+  answers only because quoted material is the record's words, not the avatar's — but the
+  corpus's executive orders contain 'I, Tina Kotek' as operative text, and this design WANTS
+  those quoted. The qualifying clause ('the avatar never says I as her') carries the
+  distinction, but the criterion's main clause states the absolute form, so the manual reader it
+  assigns owes a judgement the text half-contradicts.
+- **Alternative:** One clause in AC2 making the exemption explicit — first person as the
+  Governor outside attributed quotation — so the letter and the intent are the same sentence.
+- **Win:** The manual oracle stops depending on the reader silently repairing the criterion; AC2
+  and AC3 stop being in tension over the same quoted sentence.
+
+### Verified against the corpus before presenting
+
+- **The screen/quotation collision is real and routine, not hypothetical.** Two corpus
+  documents carry `I, TINA KOTEK, Governor of the State of Oregon` as operative text, plus
+  "the power and authority vested in me". An answer that correctly quotes an order's operative
+  clause therefore contains the exact string `IMPERSONATION_FORMS` would list.
+- **Nested quotation is present too**: EO passages contain their own quoted terms (for example
+  `"unsheltered homelessness"`), so naive mark-pairing will mis-extract spans.
