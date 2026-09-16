@@ -1,4 +1,4 @@
-Date: 2026-09-11 · Branch: claude/answer-voice-screen · Status: proposed · Class: deployed
+Date: 2026-09-11 · Branch: claude/answer-voice-screen · Status: approved · Class: deployed
 
 # answer-voice-screen — the answering register, and the preamble screen (story 3)
 
@@ -48,40 +48,53 @@ buffering a whole answer and destroying the streaming story 2 spent a round gett
 ## In scope
 
 1. **`ANSWER_SYSTEM_PROMPT` rewritten around provenance** — quote the record wherever it answers the
-   question, naming the document; use the avatar frame for everything that is not a quote; never
-   write first person as the Governor. The source-only rule story 2 verified is carried through
-   unweakened.
-2. **`AVATAR_FRAME`** — the declared self-identification the answer must carry, and
-   **`IMPERSONATION_FORMS`** — the declared set of first-person-as-Governor openings that must not.
-   Both read by the prompt and by the screen, so the two cannot name different sets.
+   question, naming the document; frame everything that is not a quote as the avatar's own; never
+   write first person as the Governor outside an attributed quotation. **The quoting contract is
+   stated in the prompt**: quote contiguously from one passage, no elision, no quoting across
+   passages — so a verification failure means something. The source-only rule story 2 verified is
+   carried through unweakened.
+2. **`AVATAR_FRAME`** (the declared self-identification) and **`IMPERSONATION_FORMS`** (the declared
+   first-person-as-Governor forms). Both read by the prompt and by the screen, so the two cannot name
+   different sets, and the list reaches the prompt **under an explicit forbidding instruction**
+   rather than as a bare vocabulary.
 3. **The opening screen** — a pure function deciding whether an opening carries the avatar frame and
-   whether it impersonates. No I/O, no model call.
+   whether it impersonates, **ignoring text inside quotation marks**, because the corpus's executive
+   orders carry `I, TINA KOTEK, Governor of the State of Oregon` as operative text and quoting them
+   is the shape this story asks for.
 4. **Quote verification** — a pure function over an answer and the passages retrieved for it,
-   reporting every quoted span that is **not** verbatim in any passage. This is the story's strongest
-   check and the reason the direction above is worth building to.
-5. **Wiring the opening screen into the answer path** — the opening is held only until the screen can
-   judge it, then released; the rest streams as today.
-6. **`GROUNDED_DEFERRAL` and `FAILURE_NOTICE` rewritten in the avatar's voice**, both currently
-   `PROVISIONAL`, and both read by the public.
-7. **`PROVISIONAL_PROMPTS` emptied**, with the partition check and the README pairing still holding.
-8. **A live verification run**, recorded: openings read for the frame and for impersonation, one
-   complex answer read with its passages for quote fidelity and citation, and the grounded question
-   story 2 verified re-read under the new prompt.
-9. **README** — the provenance rule, the declared vocabularies, and what the screen does.
+   reporting every quoted span that is not verbatim in a passage **of the document it is cited to**.
+   Set membership alone is not enough: orders quote statutes and bills share boilerplate, so a span
+   can be genuine and still be attributed to a document that does not contain it.
+5. **Frame cadence** — a pure function reporting any run of non-quoted prose longer than the declared
+   bound that carries no re-identification.
+6. **Runtime wiring, two holds.** The **opening** is held until the screen can judge it. Each
+   **quotation** is held from its opening mark to its closing mark, verified, and then released;
+   prose outside quotations streams unimpeded.
+7. **The three screen outcomes and the two failure vocabularies.** An opening that impersonates, an
+   opening merely missing the frame, and an unverifiable quotation each have named behaviour — and a
+   refusal caused by any of them is **never** reported to the reader as an infrastructure failure.
+8. **`GROUNDED_DEFERRAL` and `FAILURE_NOTICE` rewritten in the avatar's voice**, plus a distinct
+   notice for a provenance refusal.
+9. **`PROVISIONAL_PROMPTS` emptied**, with the partition check and the README pairing still holding.
+10. **A live verification run**, recorded: openings read for frame and impersonation, one complex
+    answer read with its passages for quote fidelity, citation and cadence, and the grounded question
+    story 2 verified re-read under the new prompt.
+11. **README** — the provenance rule, the declared vocabularies, the cadence bound, and what the
+    screen does.
 
 ## Non-goals
 
 - **Her idiom, and the spec's "at least two lexical anchors" criterion.** Not met, and not quietly
   reworded — it asks for phrases nothing here can source. See Open question 1.
 - **A style corpus.** Sourcing her real speech is a later story with its own corpus work.
-- **Gating the stream on quote verification.** See Open question 2.
-- **A new stream event for screen findings.** The wire contract is unchanged. See Open question 3.
+- **A new stream event for screen findings.** The wire contract is unchanged; a refusal reaches the
+  reader as text, not as a new event kind.
 - **The chat screen (User Story 4) and the diagnostic suite (User Story 5).**
 - **The classifier and rewrite prompts** — they produce a label and a question, carry no voice.
 
 ## Acceptance criteria
 
-Criteria 1–7 are observable by a person using the product; 8–11 are workflow bookkeeping and stay as
+Criteria 1–8 are observable by a person using the product; 9–13 are workflow bookkeeping and stay as
 numbered property assertions, per `AGENTS.md`.
 
 1. **Given** an in-bounds question the corpus can ground,
@@ -91,46 +104,56 @@ numbered property assertions, per `AGENTS.md`.
 
 2. **Given** any answer V-Tina generates,
    **When** a reader reads it,
-   **Then** nothing in it is written in the Governor's first person — the avatar never says "I" as her.
+   **Then** nothing **outside an attributed quotation** is written in the Governor's first person —
+   the avatar never says "I" as her, while the record's own operative language ("I, Tina Kotek …")
+   may be quoted as the record.
 
 3. **Given** an answer containing quoted material,
    **When** each quotation is compared against the passages retrieved for that answer,
-   **Then** every quoted span appears verbatim in one of them,
-   **And** each is attributed to the document it came from.
+   **Then** every quoted span appears verbatim in a passage **of the document it is attributed to**.
 
-4. **Given** an in-bounds question whose passages contain language that answers it,
+4. **Given** a quotation that cannot be verified against the passages,
+   **When** V-Tina is answering,
+   **Then** that quotation never reaches the reader.
+
+5. **Given** an in-bounds question whose passages contain language that answers it,
    **When** V-Tina answers,
    **Then** the answer quotes the record rather than only paraphrasing it,
    **And** any statement that is not a quotation is framed as the avatar's own.
 
-5. **Given** generated text whose opening impersonates the Governor,
+6. **Given** an answer with a long stretch of the avatar's own prose,
+   **When** a reader reads it,
+   **Then** the avatar re-identifies itself before that stretch exceeds the declared bound of
+   non-quoted words, so a reader arriving mid-answer is never told at length who is speaking only far
+   above.
+
+7. **Given** generated text whose opening impersonates the Governor outside a quotation,
    **When** it passes through the screen,
    **Then** that opening never reaches the reader.
 
-6. **Given** an ordinary well-formed answer,
+8. **Given** an ordinary well-formed answer,
    **When** it passes through the screen,
    **Then** the reader receives it complete and unaltered,
-   **And** it still arrives progressively rather than as one block at the end.
+   **And** it still arrives progressively, with prose outside quotations flowing as it is generated,
+   **And** when V-Tina refuses for a provenance reason the reader is told that, not that something
+   went wrong.
 
-7. **Given** a question V-Tina declines, or an answer that fails part-way,
-   **When** the reader sees the deferral or the failure notice,
-   **Then** it speaks as the avatar, not as the Governor,
-   **And** the deferral still names Oregon's official state portal while the failure notice still
-   discloses that the answer is incomplete.
+9. A question V-Tina declines still names Oregon's official state portal, the infrastructure failure
+   notice still discloses that the answer is incomplete, and neither speaks as the Governor.
 
-8. The avatar-frame vocabulary and the impersonation-form vocabulary are single declared constants
-   that **both** the answering prompt and the screen read, and the README documents the same lists,
-   equal in both directions.
+10. The avatar-frame vocabulary, the impersonation-form vocabulary and the cadence bound are single
+    declared constants that **both** the answering prompt and the screen read, and the README
+    documents them, equal in both directions.
 
-9. No prompt this story ships attributes a phrase, slogan or stance to the Governor that no corpus
-   document supports.
+11. No prompt this story ships attributes a phrase, slogan or stance to the Governor that no corpus
+    document supports.
 
-10. `PROVISIONAL_PROMPTS` is empty, and the checks riding on it — the exhaustive partition over every
+12. `PROVISIONAL_PROMPTS` is empty, and the checks riding on it — the exhaustive partition over every
     exported prompt, and the README pairing — still hold over an empty list rather than passing
     vacuously.
 
-11. Scope containment: run
-    `git diff --name-only main...HEAD -- . \':(exclude)reviews/\''
+13. Scope containment: run
+    `git diff --name-only main...HEAD -- . ':(exclude)reviews/'`
     and verify no files appear beyond `src/lib/prompts.ts`, `src/lib/voice.ts`,
     `src/lib/chat/orchestrate.ts`, `__tests__/`, and `README.md`.
 
@@ -139,37 +162,42 @@ numbered property assertions, per `AGENTS.md`.
 ### Risks — the wrong states a person could meet
 
 - **R1 — A reader takes generated prose for the Governor's own words.** The avatar writes a
-  characterisation, a stance, or a turn of phrase that reads as hers. This is the risk the whole
-  direction exists to remove, and the one that does not announce itself.
+  characterisation, stance or turn of phrase that reads as hers. The risk the whole direction exists
+  to remove, and the one that does not announce itself.
 - **R2 — A quotation is presented as the record and is not.** Quotation marks and a document name
-  make a span look verifiable; if the words are not actually in the passage, the citation makes a
-  fabrication *more* credible rather than less.
-- **R3 — A legitimate answer is suppressed, truncated or delayed.** The screen holds the opening; a
-  false positive eats a good answer, or the buffering turns a streaming reply into a long silence.
+  make a span look verifiable; if the words are not in that document, the citation makes a
+  fabrication *more* credible, not less.
+- **R3 — A legitimate answer is suppressed, truncated or delayed.** A false positive eats a good
+  answer, or the holds turn a streaming reply into a long silence.
 - **R4 — An impersonation reaches the reader.** The prompt forbids a form the screen does not catch,
-  or a path skips the screen entirely.
-- **R5 — Grounding quietly loosens.** The new prompt is longer and about provenance; the source-only
-  rule story 2 verified gets diluted and answers drift from their passages.
-- **R6 — The failure notice performs the persona during an infrastructure failure.** An avatar
-  apologising in character for a server error asserts something false about what happened, or dilutes
-  its one load-bearing disclosure — that the answer is incomplete — in favour of sounding right.
-  *(Added from the round-1 design review, which argued R1 and R5 leave it uncovered.)*
+  or a path skips the screen.
+- **R5 — Grounding quietly loosens.** The prompt grows longer and is about provenance; the
+  source-only rule story 2 verified gets diluted and answers drift from their passages.
+- **R6 — The failure notice performs the persona during an infrastructure failure**, asserting
+  something false about what happened, or diluting its one load-bearing disclosure — that the answer
+  is incomplete. *(From the round-1 review.)*
+- **R7 — A refusal is reported to the reader as the wrong kind of failure.** A provenance veto — an
+  unverified quotation, a missing frame — surfaces as "something went wrong", telling the reader
+  infrastructure failed when nothing did. *(From the round-2 review, which showed R3 and R6 leave it
+  uncovered.)*
 
 ### Oracles
 
 | AC | Oracle | Mechanism |
 |---|---|---|
-| 1 | `Small` | **R1.** The screen over an answer opening, driven from `AVATAR_FRAME` itself so the extent comes from the constant. Red when an opening carrying no avatar identification is judged acceptable. The live half is AC4's read; this pins the mechanical half the repo's convention already pins. |
-| 2 | `manual` | **R1.** A live run across the three pillars, every answer read for first-person-as-Governor. No offline oracle exists: the suite drives a fake model returning whatever the test wrote, so it can prove the screen catches a listed form and never that the model avoided an unlisted one. Red when a recorded answer says "I" as her. |
-| 3 | `Small` | **R2.** The quote-verification function over an answer and its passages: quoted spans present verbatim pass; a span altered by a word, a span attributed to a document it is not in, and a span in no passage at all each fail. Whitespace is normalised; nothing else is. Red when a quotation absent from every passage is reported as verified. |
-| 4 | `manual` | **R2.** One complex question, live, with its retrieved passages captured beside the answer. Read for whether the record is quoted rather than only paraphrased, and whether every non-quoted statement is framed as the avatar's. Red when the answer paraphrases throughout while passages offered quotable language, or when a characterisation appears unframed. |
-| 5 | `Small` | **R4.** The screen over openings built from `IMPERSONATION_FORMS` itself, plus real-shaped variants (leading whitespace, markdown emphasis, differing case, the form past the first clause). Red when an impersonating opening passes unflagged. |
-| 6 | `Small` | **R3.** Two halves. The screen returns a clean answer byte-identical, including one that merely *mentions* an impersonation form later in the body. And the answer path, driven with a fake generator, emits the first token record before the last arrives and emits more than two records for a multi-part answer — so a held opening followed by one block fails. Red when a clean answer is altered, or when delivery collapses to a pause and a wall of text. |
-| 7 | `Small` | **R6.** Assert `GROUNDED_DEFERRAL` contains `OREGON_PORTAL_URL`, and that `FAILURE_NOTICE` still discloses the answer is incomplete — both pinned against constants that already exist rather than left to a live read. *(From the round-1 review, which showed this half was mechanically pinnable and had been assigned to a human.)* The register half of the criterion is read live and recorded. Red when a rewrite drops the portal or the incompleteness disclosure. |
-| 8 | `Small` | **R4.** Assert the prompt forbids each member of `IMPERSONATION_FORMS` — the assertion is over the forbidding scaffold, not bare containment, so a list under a neutral heading fails — and compare the README's documented lists against the constants in both directions, each extent parsed from its own source. Red when a form is added to the screen and not the prompt, or to either and not the README. |
-| 9 | `reviewer` | **R1.** The reviewer reads every prompt this story ships, looks for any phrase, slogan or stance attributed to the Governor, and checks each against the corpus. **No mechanical oracle exists** — a grep for the five phrases the specification names passes the moment a sixth is invented, which is the failure. Red when the reviewer finds an attributed phrase the corpus does not support. |
-| 10 | `Small` | **R1.** Assert `PROVISIONAL_PROMPTS` is empty **and** that the partition still covers every exported prompt, so emptiness cannot be reached by deleting the list or the check. Includes the vacuity case: the partition must still fail when an unclassified prompt is added. Red when a voice-bearing prompt ships unclassified, or when the guard was removed. |
-| 11 | `reviewer` | Loop check, run once: the enumerated diff command compared against the AC's paths, plus a read of what landed in each. Catches no product risk — it is a workflow property, which is why it is not a suite test. |
+| 1 | `Small` | **R1.** The screen over openings, driven from `AVATAR_FRAME` itself so the extent comes from the constant. Red when an opening carrying no avatar identification is judged acceptable. |
+| 2 | `manual` | **R1.** A live run across the three pillars, every answer read for first-person-as-Governor outside quotation. No offline oracle exists — the suite drives a fake model returning whatever the test wrote, and the corpus legitimately contains her first person inside quotable text, so a pronoun check would false-positive on correct answers. Red when a recorded answer says "I" as her in the avatar's own prose. |
+| 3 | `Small` | **R2.** The verifier over an answer plus its passages. Verbatim span in the cited document passes. Each of these fails: a span altered by one word; a span verbatim in **some** passage but not in the document it is cited to; a span in no passage at all; a span assembled across two passages; a span elided with an ellipsis. Whitespace is normalised; nothing else is. Red when any of those is reported verified. |
+| 4 | `Small` | **R2.** The answer path driven with a fake generator emitting an unverifiable quotation: assert the quotation's text never appears in any emitted record, and that the exchange ends in a provenance refusal. Red when the bad quotation reaches the output, or when the hold silently drops the whole answer instead. |
+| 5 | `manual` | **R2.** One complex question, live, with its retrieved passages captured beside the answer. Read for whether the record is quoted rather than only paraphrased, and whether every non-quoted statement is framed as the avatar's. Red when the answer paraphrases throughout while passages offered quotable language. |
+| 6 | `Small` | **R1.** The cadence function over answers built around the declared bound: prose exceeding it with no re-identification fails; prose under it passes; a long **quoted** stretch does not count toward the bound, because the reader is being shown the record, not the avatar's assertions. Red when an over-long unframed stretch is reported compliant. |
+| 7 | `Small` | **R4.** The screen over openings built from `IMPERSONATION_FORMS` itself, plus real-shaped variants: leading whitespace, markdown emphasis, differing case, the form past the first clause — **and the form inside an attributed quotation, which must pass**, since two corpus documents open exactly that way. Red when an impersonating opening passes, or when a quoted one is flagged. |
+| 8 | `Small` | **R3, R7.** Three halves. A clean answer returns byte-identical, including one merely *mentioning* an impersonation form in its body. The answer path emits its first record before its last and emits more than two records for a multi-part answer, so a held opening followed by one block fails. And a provenance refusal emits the provenance notice, never `FAILURE_NOTICE`. Red when a clean answer is altered, when delivery collapses to a pause and a wall of text, or when a veto is dressed as an infrastructure failure. |
+| 9 | `Small` | **R6.** Assert `GROUNDED_DEFERRAL` contains `OREGON_PORTAL_URL`; that `FAILURE_NOTICE` still discloses the answer is incomplete; and that neither contains an `IMPERSONATION_FORMS` member. Pinned against constants that already exist rather than left to a live read. The register half is read live and recorded. |
+| 10 | `Small` | **R4.** Assert the prompt forbids each member of `IMPERSONATION_FORMS` — the assertion is over the forbidding scaffold, not bare containment, so a list under a neutral heading fails — requires the frame and states the cadence bound, and compare the README's documented lists against the constants in both directions, each extent parsed from its own source. Red when a form is added to the screen and not the prompt, or to either and not the README. |
+| 11 | `reviewer` | **R1.** The reviewer reads every prompt this story ships, looks for any phrase, slogan or stance attributed to the Governor, and checks each against the corpus. **No mechanical oracle exists** — a grep for the five phrases the specification names passes the moment a sixth is invented, which is the failure. |
+| 12 | `Small` | **R1.** Assert `PROVISIONAL_PROMPTS` is empty **and** that the partition still covers every exported prompt, so emptiness cannot be reached by deleting the list or the check. Includes the vacuity case: the partition must still fail when an unclassified prompt is added. |
+| 13 | `reviewer` | Loop check, run once: the enumerated diff command compared against the AC's paths, plus a read of what landed in each. Catches no product risk — a workflow property, which is why it is not a suite test. |
 
 ### Regressions (ratified list — sourced from the step-6 design review)
 
@@ -302,89 +330,146 @@ are person-judged and owe none.
 
 ## Open questions
 
-1. **The specification's "at least two lexical anchors" criterion is not met.** Three of the five
-   have no corpus evidence and one means something else entirely. Proposed: record it unmet, with the
-   evidence in Problem, and let a later sourcing story meet it properly. Flagged because it leaves a
-   written criterion of the product specification unsatisfied, and that should be a decision rather
-   than a silence.
+**All six resolved at the step-7 consult (2026-09-11).** Q1 = **recorded unmet**; Q2 = **once at the
+top, then every 100–200 non-quoted words**; Q3 = **hold each quotation**; Q4 = **strip to a clean
+boundary, refuse rather than mangle**; Q5 = **no new event kind**; Q6 = **sentence boundary or small
+cap**.
 
-2. **How often must the avatar frame appear?** Thomas's direction — "use that sort of language
-   whenever saying something that is not a quote" — reads two ways, and they produce very different
-   prose. **(a) Proposed: once at the top, plus attributed language throughout** — the answer opens
-   as the avatar, and every non-quoted statement uses attributing constructions ("the order states",
-   "under EO 23-04") rather than bare assertion. Readable, and it never speaks as her. **(b) The
-   frame repeated at each non-quoted assertion** — maximally explicit about provenance, and
-   repetitive enough that readers may stop reading it. Named because it shapes the texture of every
-   answer and only Thomas can say which he meant.
+1. **The specification's "at least two lexical anchors" criterion is not met.** Three of the five have
+   no corpus evidence and one means something else entirely. **RESOLVED: recorded unmet**, with the
+   evidence in Problem, for a later sourcing story to meet properly. Raised rather than left silent
+   because it leaves a written criterion of the product specification unsatisfied.
 
-3. **Does quote verification gate the stream, or only report?** A quotation is only complete when its
-   closing mark arrives, so gating means holding the answer. **Proposed: not a runtime gate** — it is
-   a pure function exercised by the suite and run over the live verification answers, with findings
-   recorded server-side. **The cost is stated rather than hidden:** an unverifiable quotation can
-   reach a reader at runtime, and only the prompt stands between. The alternative is to buffer the
-   whole answer, which is the thing story 2 spent a round making unnecessary.
+2. **How often must the avatar frame appear?** **RESOLVED — and more precisely than either option
+   offered.** Thomas: *"once at the top then repeated every few paragraphs or every roughly 100–200
+   non-quoted words."* That is better than both options put to him: a frame at every assertion is
+   noise readers stop seeing, and a frame only at the top leaves a reader arriving mid-answer with no
+   idea who is speaking. **It is also mechanically checkable**, which neither option was — a declared
+   bound over non-quoted words is a pure function, so criterion 6 is `Small` rather than a hoped-for
+   read. Quoted stretches do not count toward it: the reader is being shown the record, not the
+   avatar's assertions.
 
-4. **What happens to an opening that impersonates?** **(a) Proposed: strip to a clean sentence
-   boundary, and if what remains does not start cleanly, fail the answer rather than emit wreckage.**
-   **(b) Pass it through and record** — never mangles, and lets an impersonation reach a reader, which
-   for this product is the worse failure. **(c) Regenerate once** — 3–12 s before the first word,
-   doubled, with no guarantee the retry differs.
+3. **Does quote verification gate the stream, or only report?** **RESOLVED: hold each quotation.** The
+   round-2 review was right that the original framing was a false dichotomy — a quotation is
+   unverifiable only between its marks, so prose streams and only quotations pause. The cost is
+   stated: under this design most answers are quote-heavy, so delivery is choppier than story 2's.
+   The ground for paying it: a citation makes a claim *more* credible, so an unverifiable quotation
+   attributed to a governor is the failure this whole direction was chosen to prevent, and a
+   report-only check had no consumer before Story 5.
 
-5. **Should a screen finding reach the client?** Proposed: **no** — report server-side, leave the wire
-   contract alone. Adding an event member changes a contract User Story 4 is about to build against,
-   for information a reader cannot act on. Two-way; recorded so the reviewer can challenge it.
+4. **What happens to an opening that impersonates?** **RESOLVED: strip to a clean sentence boundary;
+   if what remains does not start cleanly, refuse rather than emit wreckage.** The alternative — pass
+   it through and record — lets an impersonation claim reach the public, which for this product is
+   the worse failure.
 
-6. **How much of the opening is held?** Proposed: until the first sentence boundary or a small
-   character cap, whichever comes first. Named because it is the knob trading R3 (delay) against R4
-   (an impersonation slipping past the cap), and it should be stated rather than buried.
+5. **Should a screen finding reach the client?** **RESOLVED: no new event kind.** A refusal reaches
+   the reader as text, in the provenance notice; the wire contract User Story 4 is about to build
+   against is unchanged.
+
+6. **How much of the opening is held?** **RESOLVED: until the first sentence boundary or a small
+   character cap, whichever comes first** — the knob trading R3 (delay) against R4 (an impersonation
+   past the cap), stated rather than buried.
 
 ## Design sketch — HOW
 
-**Three pieces; one of them is new code.**
+**Three pieces; one is new code, and all of its logic is pure.**
 
 ```
-src/lib/prompts.ts           ANSWER_SYSTEM_PROMPT rewritten around provenance. AVATAR_FRAME (the
-                             required self-identification) and IMPERSONATION_FORMS (the forbidden
-                             first-person-as-Governor openings) declared here, beside the prompt
-                             that uses them. GROUNDED_DEFERRAL and FAILURE_NOTICE rewritten in the
-                             avatar's voice. PROVISIONAL_PROMPTS empties.
-src/lib/voice.ts             NEW, and entirely pure. `screenOpening(text)` — does this opening carry
-                             the avatar frame, and does it impersonate? `verifyQuotations(answer,
-                             chunks)` — which quoted spans are NOT verbatim in any passage?
-src/lib/chat/orchestrate.ts  Holds the opening until `screenOpening` can judge it, then releases;
-                             everything after streams unchanged.
+src/lib/prompts.ts           ANSWER_SYSTEM_PROMPT rewritten around provenance, carrying the quoting
+                             contract (quote contiguously from one passage; no elision; no quoting
+                             across passages) so a verification failure means something rather than
+                             reporting a faithful quotation as a fabrication. AVATAR_FRAME,
+                             IMPERSONATION_FORMS and the cadence bound declared here, interpolated
+                             into the prompt UNDER AN EXPLICIT FORBIDDING INSTRUCTION. Deferral,
+                             infrastructure notice and a distinct provenance notice.
+                             PROVISIONAL_PROMPTS empties.
+src/lib/voice.ts             NEW, entirely pure, three functions:
+                               screenOpening(text)              — frame present? impersonation?
+                                                                  QUOTATION-AWARE: quoted spans are
+                                                                  skipped before matching.
+                               verifyQuotations(answer, chunks) — every quoted span verbatim in a
+                                                                  passage OF THE DOCUMENT IT CITES.
+                               checkCadence(answer)             — any run of non-quoted prose past
+                                                                  the bound with no re-identification.
+src/lib/chat/orchestrate.ts  Two holds. The opening, until screenOpening can judge. Each quotation,
+                             from its opening mark to its closing mark, verified before release.
+                             Everything else streams as today.
 ```
 
-**Quote verification is the reason this design is worth building.** It takes the answer text and the
-chunks already retrieved for it, extracts quoted spans (straight and typographic marks), normalises
-whitespace only, and reports every span that is not a substring of some passage. No model, no
-network, no judgement — the strongest guarantee in the story, and the one the previous sketch could
-not offer at all, because when the avatar characterises rather than quotes there is nothing to
-compare against.
+**Why the screen must ignore quotations, verified rather than assumed.** Two corpus documents carry
+`I, TINA KOTEK, Governor of the State of Oregon` as operative text, and quoting an order's operative
+clause is exactly the shape this story asks for. A quotation-blind screen would fire on the answer
+the prompt is written to produce — the two mechanisms fighting each other as a routine event, not a
+tail case.
 
-**The screen is deliberately dumb.** Normalised comparison against declared lists, anchored to the
-opening. A screen needing judgement would need testing against judgement, and this story already
-carries person-judged surface. What it can decide, it decides completely and offline.
+**Why membership is not enough.** Executive orders quote statutes and bills share boilerplate, so a
+span can be verbatim in *some* passage and absent from the document it is cited to. Set membership
+would pass it, the reader would follow a citation to a document that does not contain the words, and
+the citation would have made the error more credible. The verifier resolves the span against the
+cited document's passages; where shared boilerplate appears in several, containing the cited one is
+enough.
 
-**One vocabulary, two consumers.** The prompt must require exactly the frame the screen looks for and
-forbid exactly the forms it catches. Two lists drift the moment someone edits one — silently, because
-the prompt still reads as though it forbids the phrase while nothing enforces it. The constants are
-interpolated into the prompt the way `SAFETY_CLASSIFICATIONS` already is into the classifier's.
-**Under an explicit forbidding instruction, not a bare list** — the round-1 review showed that
-containment alone proves the phrases are present, not that they are prohibited, and that handing a
-generative model a neutral list of phrases primes it with them.
+**Three screen outcomes, two refusal vocabularies, and one thing never said.** An opening that
+impersonates is stripped, or refused if stripping would mangle it. An opening merely missing the
+frame is prefixed with it rather than refused — the likeliest slip should not cost the answer. An
+unverifiable quotation refuses. **A refusal for any of these reasons is reported as a provenance
+refusal, never as the infrastructure notice** — telling a reader something went wrong when a style
+gate fired is a false statement about what happened (R7).
 
-**Holding the opening without breaking the stream.** The answer path already pulls one record at a
-time. The change is to accumulate the first tokens rather than emitting them, stop as soon as the
-screen can decide, then emit — after which every token passes straight through. The delay is a
-sentence, not an answer.
+**Holding without breaking the stream.** The answer path already pulls one record at a time. Prose
+passes straight through; a quotation accumulates from its opening mark and releases at its closing
+one. The delay is a quotation, not an answer — but under this design answers are quote-heavy, so
+delivery is visibly choppier than today, and that is the accepted cost of the guarantee.
 
-**What this story still cannot prove.** Whether the model actually quotes rather than paraphrases,
-and whether it ever slips into her first person, are read by a person: the suite drives a fake model
-that returns whatever the test wrote. But the direction Thomas set moved the biggest risk — words put
-in a real person's mouth — from "read it and hope" to a function that either finds the span in a
-passage or does not.
+**What this story still cannot prove.** Whether the model quotes rather than paraphrases, and whether
+it slips into her first person in its own prose, are read by a person: the suite drives a fake model
+returning whatever the test wrote, and the corpus legitimately contains her first person inside
+quotable text, so a pronoun check would flag correct answers. Everything else — the frame, the
+cadence, the verbatim-and-cited-correctly guarantee, the impersonation screen, the refusal
+vocabularies — is decided offline and completely.
 
+
+## Design decisions (2026-09-11)
+
+**Scope approved at the step-7 consult.** Thomas: **"decision 1 A; decision 2 yes fix all six;
+decision 3 once at the top then repeated every few paragraphs or every roughly 100-200 non-quoted
+words."**
+
+The story's direction was set earlier the same day, mid-consult, and it is the reason this file has
+two design reviews:
+
+> "have virtual tina say 'As a virtual avatar of the Governor, I…' and use that sort of language
+> whenever saying something that is not a quote. Most answers can be, or can include, quotes with
+> citations."
+
+That inverted the first sketch, in which V-Tina spoke in the Governor's register and the screen
+*banned* self-introduction. The round-1 design review had already run against that sketch; it is kept
+above, marked superseded, and round 2 is the binding pass. **The inversion is what made the story's
+central risk mechanically checkable** — whether a quoted span is verbatim in the document it cites is
+a function, where "does this prose sound like something she would say" never was.
+
+**Disposition per round-2 finding.** The approved shape below is binding on step 9 and is not
+re-litigated while building.
+
+| # | Finding | Disposition |
+|---|---|---|
+| 1 | AC3's attribution clause has no mechanism (IMPORTANT, two-way, standard) | **FIX.** The verifier resolves each span against **the document it is cited to**, not set membership over all passages. The finding's concrete ground holds in this corpus: orders quote statutes and bills share boilerplate, so a span can be genuine and still cited to a document that does not contain it — the citation then makes the error more credible, which is R2 in its exact form. The oracle claimed that case failed while nothing could have made it fail. |
+| 2 | Whitespace-only matching false-fails faithful quotations (IMPORTANT, two-way, standard) | **FIX, both halves.** The prompt states the quoting contract — contiguous from one passage, no elision, no quoting across passages — so a violation is a real finding rather than a known false positive; and the verifier splits on ellipsis anyway, so a slip is diagnosed rather than mis-reported. Taken because a diagnostic with a known false-positive class trains its reader to discount it. |
+| 3 | The screen is quotation-blind and vetoes the design's own preferred answer shape (IMPORTANT, two-way, standard) | **FIX.** Verified against the corpus before presenting, not taken on the reviewer's word: two documents carry `I, TINA KOTEK, Governor of the State of Oregon` as operative text. A quotation-blind screen fires on the answer the prompt is written to produce. Quoted spans are skipped before impersonation matching. |
+| 4 | Open question 3 was a false dichotomy, and the diagnostic had no consumer (IMPORTANT, two-way, standard) | **FIX — and the third option is the one chosen.** The reviewer was right that "gate" did not have to mean holding the whole answer: a quotation is unverifiable only between its marks. Thomas chose **hold each quotation**. The cost is stated rather than assumed away: answers here are quote-heavy, so delivery is choppier than story 2's. The ground is that report-only had no reader before Story 5, and a check nothing consumes cannot fail in the way that matters. |
+| 5 | The screen's third outcome has no specified behaviour (NIT, two-way, standard) | **FIX, and the risk list grows.** All three outcomes are named — impersonation strips or refuses, a missing frame is prefixed rather than refused, an unverifiable quotation refuses — and **R7 is added**: a provenance veto reported to the reader as an infrastructure failure tells them something false about what happened. A distinct provenance notice exists so the two are never confused. |
+| 6 | AC2's letter fails legitimate quotations of the record (NIT, two-way, standard) | **FIX.** The criterion now carries the exemption in its own sentence — first person as the Governor is forbidden *outside attributed quotation* — so the manual reader is not asked to silently repair the text. |
+
+**Regressions: all thirteen accepted, none amended or rejected.** Coverage was complete — every risk
+R1–R6 and every sized criterion received at least one, and criteria 2, 5 and 11 are person-judged and
+owe none. R7 arrives with finding 5 and is covered by criterion 8's oracle, which asserts a provenance
+refusal never emits the infrastructure notice.
+
+**One decision was better than anything put to Thomas.** Both options offered for the frame's cadence
+were weak: at every assertion it becomes noise a reader stops seeing, and once at the top leaves
+anyone arriving mid-answer with no idea who is speaking. His answer — a bound in non-quoted words —
+is the only one of the three that is **mechanically checkable**, so criterion 6 became a `Small` test
+rather than another thing someone has to read for.
 
 ## Codex (kimi-latest) design review — round 1, SUPERSEDED DESIGN (2026-09-11)
 
