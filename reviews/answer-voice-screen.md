@@ -324,7 +324,7 @@ are person-judged and owe none.
 - frame/6 — ran twice. Round 1 (superseded design) -> reviews/answer-voice-screen.design.fdc04f4.json. Round 2, the binding pass, after Thomas inverted the design at the consult: codex on kimi-latest, 6 findings, 13 regressions -> reviews/answer-voice-screen.design.896817f.json
 - frame/9 — demonstrated red for all nine sized criteria against the ratified regressions (two sabotages were incomplete on the first attempt, reported as such and redone). Plus four defects the live runs found that the suite could not, each now covered by a red-able test.
 - review/6 — ran (codex on glm-latest, 3 findings) -> reviews/answer-voice-screen.approach.f8eda18.json
-- review/8 — not yet reached
+- review/8 — n/a — the approach pass gated it: finding 1 (a BLOCKER) reshapes the quote layer both critics would read, so they run next round against the new grammar.
 - close/3b — not yet reached
 - close/4 — not yet reached
 
@@ -890,3 +890,37 @@ A throwaway probe drove the real `screenedAnswer` and `verifyQuotations` (remove
 | An elided span can stitch passages | **PARTLY.** Across two *documents* it is caught — the cited-document check rejects the half from the other document. Within one document's several passages it would pass, because each segment is checked against the whole pool independently. |
 | Bare numeric citation keys misattribute | **CONFIRMED in the corpus.** `EO 24-02` contains `Springfield/Lane County (110%)`; the key for Ballot Measure 110 is `110`. |
 | `checkCadence` has no production caller | **CONFIRMED.** Zero callers under `src/`. AC6 describes reader-observable behaviour, and the README says the rule is enforced; only the prompt enforces it. |
+
+## Decisions (2026-09-16, approach round f8eda18)
+
+Round `f8eda18`, base `main`. Three findings, **all three dispositioned FIX**. Finding 1 changes the
+shape of the quote layer, so the correctness and hidden-failure passes do not run this round.
+
+**Approach (glm-latest)**
+
+- **The quote contract has three parsers and no single grammar** (BLOCKER, one-way, kludgy):
+  **FIX.** Verified by running the claims against the real code, not by reading them. **A fabricated
+  quotation in single quotes reaches the reader** — the specification's own invented statistic,
+  `'a 13% rise in unsheltered homelessness'`, streamed through unheld and unverified, because no mark
+  is recognised. And a faithful elision is accepted, contradicting AC3's approved oracle, with the
+  story's own test asserting the wrong behaviour. The fix is one small lexer that both the streaming
+  path and the offline checker call; the prompt requires curly quotes and any other outer delimiter is
+  a provenance refusal; elision is rejected as the criterion says. It **deletes** the duplicate
+  verifier and the merged-span fallback. Tagged one-way because every future quote rule is written
+  against whichever grammar exists, and there were three.
+
+- **Bare numeric citation matching can attribute a quote to the wrong document** (IMPORTANT, two-way,
+  kludgy): **FIX.** Verified in the corpus: `EO 24-02` contains `Springfield/Lane County (110%)`, and
+  Ballot Measure 110's key is `110`. Citation aliases are derived from each document's metadata,
+  matched on word boundaries, the nearest citation wins, and both paths share one window.
+
+- **Cadence is test-only while documented as enforced** (IMPORTANT, two-way, nonstandard): **FIX —
+  option A, enforce it in the stream.** Verified: `checkCadence` has zero production callers, and the
+  README claimed enforcement that did not exist. Thomas was told the options were genuinely balanced
+  — narrowing the criterion to "the prompt asks, verified live" versus injecting the frame at the
+  bound — and that injection may read as an awkward mid-paragraph interjection. He chose to make the
+  rule real. The ground: he set a number, and a number nothing enforces is exactly the kind of claim
+  this story exists to stop making.
+
+**Correctness and hidden-failure: not run this round.** Finding 1 reshapes the code both critics
+would read.
