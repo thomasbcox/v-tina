@@ -1234,8 +1234,8 @@ Thomas decided; both were then fixed — see *Fixes (defects A and B)* below.
   model quoted EO 24-02 — a passage that itself mentions "EO 23-02" — then wrote "The same document
   states:" and quoted EO 24-02 again, verbatim. `citedDocument` took the "EO 23-02" inside the previous
   *quotation* as the nearest citation, judged the verbatim quotation "not in the cited document", and
-  **refused a legitimate answer**. Reading citations from the avatar's own prose only would have cited
-  EO 24-02. A related, harmless but noisy symptom: across the three live answers below, 13 quotations
+  **refused a legitimate answer**. Reading citations from the avatar's own prose only would not have
+  misattributed it. A related, harmless but noisy symptom: across the three live answers below, 13 quotations
   were released under "no detected citation" — all verbatim, but cited with phrases such as "the same
   order" that the citation rule does not follow.
 
