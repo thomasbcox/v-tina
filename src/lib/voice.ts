@@ -71,22 +71,15 @@ const FIRST_PERSON = /\b(i|i'm|i've|my|me|mine)\b/;
  *
  * Thomas: "once at the top then repeated every few paragraphs or every roughly
  * 100-200 non-quoted words." This is the middle of that range.
+ *
+ * **A target, not a ceiling.** The frame is only ever placed at the start of a
+ * sentence, never splitting one, so the sentence in progress when the count passes
+ * this finishes first — and a single long sentence can carry a stretch well past it.
+ * A second, "guaranteed" ceiling of 200 once stood beside this number; nothing
+ * enforced it, and a 220-word sentence walked straight through it (approach review
+ * round b6039ac). Thomas withdrew the guarantee rather than interrupt sentences.
  */
 export const CADENCE_TARGET_WORDS = 150;
-
-/**
- * The ceiling a reader is guaranteed: no run of the avatar's own words longer than
- * this without a re-identification. The top of Thomas's range.
- *
- * **Why two numbers, not one.** The frame is only ever placed at the start of a
- * sentence — never splitting one in half — so enforcement triggers at the target
- * and lands at the next sentence boundary. A single bound made that impossible to
- * satisfy: the first streaming test showed stretches of 151 and 157 words against a
- * bound of 150, because the sentence in progress when the count crossed had to
- * finish first. The gap between target and ceiling is the allowance for that
- * sentence. **Stated limit:** one sentence longer than that gap can still overshoot.
- */
-export const CADENCE_MAX_UNQUOTED_WORDS = 200;
 
 /** How far before a quotation to look for its citation. One constant, shared by
  *  the streaming path and every offline check; they previously used 180 and 240. */
@@ -119,26 +112,51 @@ export type GrammarViolation =
   /** A quotation that opened and never closed. */
   | "unterminated";
 
+/** A token exactly as it appeared in the text, marks included. */
+export function rawOf(token: Token): string {
+  return token.kind === "prose" ? token.text : token.raw;
+}
+
 export interface LexResult {
   readonly tokens: readonly Token[];
   /** Length of the prefix whose tokenization cannot change with more input. The
    *  streaming path releases exactly this much and holds the rest. */
   readonly stable: number;
+  /** How far the scan of the construct left undecided at `stable` had got, when one
+   *  was — for the next call on the same text with more appended. */
+  readonly resume?: LexResume;
+}
+
+/**
+ * A scan to pick up where it stopped. A quotation stays undecided until nesting closes
+ * and a straight single mark until its sentence ends, so either can be long; without
+ * this the stream rescanned it from its opening character for every token, and a
+ * 4,000-word quotation still open cost 444 ms.
+ */
+export interface LexResume {
+  /** The undecided construct's opening character. */
+  readonly at: number;
+  /** The first character its scan has not settled. */
+  readonly scanned: number;
+  /** Curly nesting depth before `scanned`; zero for a straight single mark. */
+  readonly depth: number;
 }
 
 /** A straight apostrophe that could be opening a single-quoted span: at a word
- *  start, followed by a letter. Mid-word (`Oregon's`) it is never a delimiter. */
-function singleOpensAt(text: string, i: number): boolean {
+ *  start, followed by a letter. Mid-word (`Oregon's`) it is never a delimiter —
+ *  which is why lexing a continuation needs the character before it. */
+function singleOpensAt(text: string, i: number, lookBehind: string): boolean {
   if (text[i] !== "'") return false;
-  const before = i === 0 ? " " : text[i - 1];
+  const before = i === 0 ? lookBehind : text[i - 1];
   const after = text[i + 1];
   return /[\s(\[:—-]/.test(before) && after !== undefined && /\p{L}/u.test(after);
 }
 
 /** Does a straight single mark close a span that `open` began, before the sentence
- *  ends? `undefined` means the text ran out before either happened. */
-function singleClosesAfter(text: string, open: number): number | null | undefined {
-  for (let j = open + 1; j < text.length; j += 1) {
+ *  ends? `undefined` means the text ran out before either happened. Scanning starts at
+ *  `from`, where an earlier call on a shorter text stopped. */
+function singleClosesAfter(text: string, open: number, from: number): number | null | undefined {
+  for (let j = Math.max(open + 1, from); j < text.length; j += 1) {
     if (text[j] === "'" && /\p{L}|[.,;:!?]/u.test(text[j - 1] ?? "") && !/\p{L}/u.test(text[j + 1] ?? " ")) {
       return j;
     }
@@ -162,12 +180,21 @@ function singleClosesAfter(text: string, open: number): number | null | undefine
  *   apostrophe: the corpus has 286 of them and no opening `‘` at all.
  *
  * `final` says no more text is coming, which resolves anything still open.
+ *
+ * `lookBehind` is the character before `text` when `text` continues earlier input.
+ * The streaming path lexes only what it has not yet released, and this is the one
+ * piece of earlier input the grammar reads: without it, the `'s` of a word split
+ * across two model tokens would look like a quotation opening.
+ *
+ * `resume` is the previous result's, when `text` is that call's text with more
+ * appended. It changes how much is scanned, never what is decided.
  */
-export function lex(text: string, final: boolean): LexResult {
+export function lex(text: string, final: boolean, lookBehind = " ", resume?: LexResume): LexResult {
   const tokens: Token[] = [];
   let prose = "";
   let i = 0;
   let stable = 0;
+  let pending: LexResume | undefined;
 
   const flushProse = () => {
     if (prose !== "") tokens.push({ kind: "prose", text: prose });
@@ -178,15 +205,19 @@ export function lex(text: string, final: boolean): LexResult {
     const ch = text[i];
 
     if (ch === OPEN) {
-      let depth = 0;
-      let j = i;
+      const resumed = resume?.at === i ? resume : undefined;
+      let depth = resumed?.depth ?? 0;
+      let j = resumed?.scanned ?? i;
       for (; j < text.length; j += 1) {
         if (text[j] === OPEN) depth += 1;
         else if (text[j] === CLOSE && --depth === 0) break;
       }
       if (j >= text.length) {
         // Still open.
-        if (!final) break;
+        if (!final) {
+          pending = { at: i, scanned: text.length, depth };
+          break;
+        }
         flushProse();
         tokens.push({ kind: "violation", raw: text.slice(i), reason: "unterminated" });
         i = text.length;
@@ -212,10 +243,15 @@ export function lex(text: string, final: boolean): LexResult {
       continue;
     }
 
-    if (ch === "'" && (i === text.length - 1 ? !final : singleOpensAt(text, i))) {
+    if (ch === "'" && (i === text.length - 1 ? !final : singleOpensAt(text, i, lookBehind))) {
       if (i === text.length - 1) break; // cannot yet tell what this is
-      const close = singleClosesAfter(text, i);
-      if (close === undefined && !final) break; // sentence not finished yet
+      const close = singleClosesAfter(text, i, resume?.at === i ? resume.scanned : i + 1);
+      if (close === undefined && !final) {
+        // Sentence not finished yet. The last character is judged again with the one
+        // after it, which a sentence end needs.
+        pending = { at: i, scanned: Math.max(i + 1, text.length - 1), depth: 0 };
+        break;
+      }
       if (typeof close === "number") {
         flushProse();
         tokens.push({ kind: "violation", raw: text.slice(i, close + 1), reason: "single-quote-delimiter" });
@@ -232,7 +268,7 @@ export function lex(text: string, final: boolean): LexResult {
   }
 
   flushProse();
-  return { tokens, stable: final ? text.length : stable };
+  return final ? { tokens, stable: text.length } : { tokens, stable, resume: pending };
 }
 
 /** Collapses whitespace so a line-wrapped quotation still matches its passage, and
@@ -311,6 +347,33 @@ export function citationAliases(documentTitle: string): string[] {
 
 const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+/** One way of citing one document, compiled. */
+interface CitationPattern {
+  readonly title: string;
+  readonly pattern: RegExp;
+}
+
+function citationPatterns(documentTitles: readonly string[]): CitationPattern[] {
+  return documentTitles.flatMap((title) =>
+    citationAliases(title).map((alias) => ({
+      title,
+      pattern: new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegex(alias)}(?![\\p{L}\\p{N}-])`, "giu"),
+    })),
+  );
+}
+
+function nearestCitation(context: string, citations: readonly CitationPattern[]): string | undefined {
+  const window = context.slice(-CITATION_WINDOW);
+  let best: { title: string; end: number } | undefined;
+  for (const { title, pattern } of citations) {
+    for (const m of window.matchAll(pattern)) {
+      const end = (m.index ?? 0) + m[0].length;
+      if (!best || end > best.end) best = { title, end };
+    }
+  }
+  return best?.title;
+}
+
 /**
  * The document `context` cites **nearest to its end** — that is, nearest to the
  * quotation that follows it. Word-bounded, so `Measure 110` never matches inside
@@ -321,23 +384,39 @@ export function citedDocument(
   context: string,
   documentTitles: readonly string[],
 ): string | undefined {
-  const window = context.slice(-CITATION_WINDOW);
-  let best: { title: string; end: number } | undefined;
-  for (const title of documentTitles) {
-    for (const alias of citationAliases(title)) {
-      const re = new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegex(alias)}(?![\\p{L}\\p{N}-])`, "giu");
-      for (const m of window.matchAll(re)) {
-        const end = (m.index ?? 0) + m[0].length;
-        if (!best || end > best.end) best = { title, end };
-      }
-    }
-  }
-  return best?.title;
+  return nearestCitation(context, citationPatterns(documentTitles));
 }
 
 // ---------------------------------------------------------------------------
 // Verification
 // ---------------------------------------------------------------------------
+
+/**
+ * One answer's passages, prepared once: each document's record text normalised, and
+ * every way of citing it compiled. The first version rebuilt both for every quotation
+ * (approach review round b6039ac).
+ */
+export interface PassageIndex {
+  /** Each document's record text — its passages and its title — normalised. */
+  readonly byTitle: ReadonlyMap<string, readonly string[]>;
+  readonly citations: readonly CitationPattern[];
+}
+
+export function indexPassages(chunks: readonly RetrievedPolicyChunk[]): PassageIndex {
+  const byTitle = new Map<string, string[]>();
+  for (const chunk of chunks) {
+    const title = chunk.source.documentTitle;
+    let texts = byTitle.get(title);
+    if (!texts) {
+      // A document's title is record text too: the system hands it to the model
+      // alongside the passage (first live run).
+      texts = [normalise(title)];
+      byTitle.set(title, texts);
+    }
+    texts.push(normalise(chunk.content));
+  }
+  return { byTitle, citations: citationPatterns([...byTitle.keys()]) };
+}
 
 export interface UnverifiedQuotation {
   readonly text: string;
@@ -365,31 +444,24 @@ export interface UnverifiedQuotation {
 export function verifyQuotedSpan(
   quoted: string,
   context: string,
-  chunks: readonly RetrievedPolicyChunk[],
+  passages: PassageIndex,
 ): UnverifiedQuotation | null {
   const text = normalise(quoted);
   if (text === "") return null;
   if (/\.\.\.|…/.test(text)) return { text, reason: "elided" };
 
-  const titles = [...new Set(chunks.map((c) => c.source.documentTitle))];
-  // A document's title is record text too: the system hands it to the model
-  // alongside the passage (first live run).
-  const textsOf = (title: string) => [
-    ...chunks.filter((c) => c.source.documentTitle === title).map((c) => normalise(c.content)),
-    normalise(title),
-  ];
-  const everywhere = titles.flatMap(textsOf);
-  const inSome = (pool: string[]) => pool.some((p) => p.includes(text));
+  const inSome = (pool: readonly string[]) => pool.some((p) => p.includes(text));
+  const inAny = () => [...passages.byTitle.values()].some(inSome);
 
-  const cited = citedDocument(context, titles);
+  const cited = nearestCitation(context, passages.citations);
   if (cited === undefined) {
-    return inSome(everywhere) ? { text, reason: "no-citation" } : { text, reason: "not-in-any-passage" };
+    return inAny() ? { text, reason: "no-citation" } : { text, reason: "not-in-any-passage" };
   }
-  if (inSome(textsOf(cited))) return null;
+  if (inSome(passages.byTitle.get(cited) ?? [])) return null;
   return {
     text,
     citedAs: cited,
-    reason: inSome(everywhere) ? "not-in-cited-document" : "not-in-any-passage",
+    reason: inAny() ? "not-in-cited-document" : "not-in-any-passage",
   };
 }
 
@@ -397,21 +469,19 @@ export function verifyQuotedSpan(
  *  quotation verified against the prose that precedes it. */
 export function verifyQuotations(
   answer: string,
-  chunks: readonly RetrievedPolicyChunk[],
+  passages: PassageIndex | readonly RetrievedPolicyChunk[],
 ): UnverifiedQuotation[] {
+  const index = "byTitle" in passages ? passages : indexPassages(passages);
   const bad: UnverifiedQuotation[] = [];
   let before = "";
   for (const token of lex(answer, true).tokens) {
-    if (token.kind === "prose") {
-      before += token.text;
-    } else if (token.kind === "violation") {
+    if (token.kind === "violation") {
       bad.push({ text: token.raw, reason: token.reason });
-      before += token.raw;
-    } else {
-      const problem = verifyQuotedSpan(token.text, before, chunks);
+    } else if (token.kind === "quotation") {
+      const problem = verifyQuotedSpan(token.text, before, index);
       if (problem) bad.push(problem);
-      before += token.raw;
     }
+    before += rawOf(token);
   }
   return bad;
 }
@@ -420,48 +490,168 @@ export function verifyQuotations(
 // Cadence
 // ---------------------------------------------------------------------------
 
-export interface CadenceGap {
-  readonly words: number;
+// **Every judgement here is made on the text, never on how it arrived.** The first
+// streaming version asked whether the text *released so far* ended in whitespace.
+// A tokeniser attaches the space to the following word — ` This`, never `This ` — so
+// released text never did, and the frame was never injected: one frame, then 411
+// unframed words (approach review round b6039ac). Each rule below reads characters
+// by position, so any split of the same text into chunks gets the same answer.
+
+/**
+ * Words that end in a period without ending the sentence when a capitalised word
+ * follows: a title before a name, a place-name prefix. A frame injected after one
+ * would split a sentence — "Gov. As a virtual avatar of the Governor, Kotek signed".
+ * Single letters ("U.S.", an initial) are excluded by rule rather than listed.
+ * Checked against the platform first: `Intl.Segmenter` breaks after all of these.
+ */
+export const NON_TERMINAL_ABBREVIATIONS = [
+  "gov", "sen", "rep", "st", "mt", "dr", "mr", "mrs", "ms", "jr", "sr", "vs",
+] as const;
+
+const ENDS_SENTENCE = /(\p{L}*)([.!?])[)\]”’"']*\s+$/u;
+const ENDS_PARAGRAPH = /\n[^\S\n]*\n\s*$/;
+/** How far back from a capital letter the sentence rule reads. */
+const SENTENCE_LOOKBACK = 40;
+
+/** Whether a sentence starts at `at`: a capital letter after a blank line, or after a
+ *  sentence-ending mark, any closing marks, and whitespace. Precision over recall — a
+ *  start this misses only delays a frame to the next sentence; a false one splits a
+ *  sentence. */
+export function isSentenceStart(text: string, at: number): boolean {
+  if (!/\p{Lu}/u.test(text[at] ?? "")) return false;
+  const before = text.slice(Math.max(0, at - SENTENCE_LOOKBACK), at);
+  if (ENDS_PARAGRAPH.test(before)) return true;
+  const end = ENDS_SENTENCE.exec(before);
+  if (!end) return false;
+  if (end[2] !== ".") return true;
+  const word = end[1].toLowerCase();
+  return word.length !== 1 && !(NON_TERMINAL_ABBREVIATIONS as readonly string[]).includes(word);
 }
 
-/** Word positions, in the avatar's own prose, at which it identifies itself. */
-function framePositions(ownProse: string): number[] {
-  const lower = ownProse.toLowerCase();
-  const marks: number[] = [];
-  for (const frame of AVATAR_FRAME) {
-    let from = 0;
-    for (;;) {
-      const at = lower.indexOf(frame, from);
-      if (at === -1) break;
-      marks.push(lower.slice(0, at).split(/\s+/).filter((w) => w !== "").length);
-      from = at + frame.length;
+/** A word starts where a non-space character follows a space, read from the text,
+ *  so a word split across two tokens is still one word. */
+function isWordStart(text: string, at: number): boolean {
+  return /\S/.test(text[at] ?? " ") && (at === 0 || /\s/.test(text[at - 1]));
+}
+
+const FRAME_SOURCE = AVATAR_FRAME.map((f) => f.split(" ").map(escapeRegex).join("\\s+")).join("|");
+/** A frame beginning exactly where matching starts, as a whole phrase. */
+const FRAME_OPENS = new RegExp(`(?:${FRAME_SOURCE})(?![\\p{L}\\p{N}])`, "iuy");
+/** A frame followed by nothing but punctuation and space to the end of the window. */
+const FRAME_ENDS = new RegExp(`(?:${FRAME_SOURCE})[^\\p{L}\\p{N}]*$`, "iu");
+const LONGEST_FRAME = Math.max(...AVATAR_FRAME.map((f) => f.length));
+/** How far back from a word a just-finished frame can begin, allowing extra space. */
+const FRAME_LOOKBACK = LONGEST_FRAME * 2;
+
+/**
+ * The furthest any rule here reads before the position it judges: the grammar reads
+ * one character, the sentence rule `SENTENCE_LOOKBACK`, the frame check
+ * `FRAME_LOOKBACK`. The stream keeps this much released text in front of what it
+ * holds and discards the rest, so no judgement changes and no token costs more than
+ * the text still held.
+ */
+export const LOOK_BEHIND_CHARS = Math.max(1, SENTENCE_LOOKBACK, FRAME_LOOKBACK);
+
+/** Whether the sentence starting at `at` opens with the avatar's frame, or — when the
+ *  text runs out first and more is coming — whether it still could. */
+function opensWithFrame(text: string, at: number, final: boolean): "yes" | "no" | "undecided" {
+  FRAME_OPENS.lastIndex = at;
+  const found = FRAME_OPENS.exec(text);
+  if (found) return final || at + found[0].length < text.length ? "yes" : "undecided";
+  if (final) return "no";
+  const rest = text.slice(at, at + FRAME_LOOKBACK).replace(/\s+/g, " ").toLowerCase();
+  return AVATAR_FRAME.some((f) => f.startsWith(rest)) ? "undecided" : "no";
+}
+
+/** The avatar's own words since it last identified itself. */
+export interface CadenceState {
+  words: number;
+}
+
+export type CadenceStop =
+  /** The range was walked to its end. */
+  | { readonly kind: "end" }
+  /** A sentence starts at `at` past the target, and it does not open with the frame. */
+  | { readonly kind: "due"; readonly at: number }
+  /** A sentence starts at `at` past the target, and the text runs out before it shows
+   *  whether it opens with the frame. Only when more text is coming. */
+  | { readonly kind: "undecided"; readonly at: number };
+
+/**
+ * Walks the avatar's own words in `text[from, to)`, counting in `state`, and stops at
+ * the first sentence start where the frame is due.
+ *
+ * **The one cadence rule.** The stream injects the frame where this stops and
+ * `checkCadence` reports where it stops, so the enforcement and its check cannot
+ * disagree about where a sentence starts or what a word is. A frame the text carries
+ * itself resets the count at the first word after it.
+ */
+export function scanCadence(
+  text: string,
+  from: number,
+  to: number,
+  state: CadenceState,
+  final: boolean,
+): CadenceStop {
+  for (let k = from; k < to; k += 1) {
+    if (!isWordStart(text, k)) continue;
+    if (FRAME_ENDS.test(text.slice(Math.max(0, k - FRAME_LOOKBACK), k))) state.words = 0;
+    if (state.words > CADENCE_TARGET_WORDS && isSentenceStart(text, k)) {
+      const opens = opensWithFrame(text, k, final);
+      if (opens !== "yes") return { kind: opens === "no" ? "due" : "undecided", at: k };
     }
+    state.words += 1;
   }
-  return marks.sort((a, b) => a - b);
+  return { kind: "end" };
 }
 
-/** Reports runs of the avatar's own prose past the bound with no re-identification.
- *  Used by the suite and the stress story; the answer path enforces the same bound
- *  as it streams. */
-export function checkCadence(answer: string, bound: number = CADENCE_MAX_UNQUOTED_WORDS): CadenceGap[] {
-  const own = normalise(proseOf(answer));
-  const total = own.split(" ").filter((w) => w !== "").length;
-  const gaps: CadenceGap[] = [];
-  let cursor = 0;
-  for (const mark of framePositions(own)) {
-    if (mark - cursor > bound) gaps.push({ words: mark - cursor });
-    cursor = mark;
+/** Walks every prose token of a complete text through `scanCadence`, handing each
+ *  due sentence start to `onDue`, which returns the offset to resume from. */
+function walkCadence(text: string, onDue: (at: number, state: CadenceState) => number): CadenceState {
+  const state: CadenceState = { words: 0 };
+  let at = 0;
+  for (const token of lex(text, true).tokens) {
+    const end = at + rawOf(token).length;
+    if (token.kind === "prose") {
+      for (let from = at; ; ) {
+        const stop = scanCadence(text, from, end, state, true);
+        if (stop.kind === "end") break;
+        from = onDue(stop.at, state);
+      }
+    }
+    at = end;
   }
-  if (total - cursor > bound) gaps.push({ words: total - cursor });
+  return state;
+}
+
+export interface CadenceGap {
+  /** The avatar's own words since its last frame, where the next sentence started. */
+  readonly words: number;
+  /** Where that sentence starts. */
+  readonly at: number;
+}
+
+/**
+ * Every sentence in a complete answer that starts past the target without the frame
+ * having been repeated — the places the answer path would have injected it. A single
+ * sentence that runs long is not reported: that is the stated limit of a frame that
+ * never splits a sentence.
+ */
+export function checkCadence(answer: string): CadenceGap[] {
+  const gaps: CadenceGap[] = [];
+  walkCadence(answer, (at, state) => {
+    gaps.push({ words: state.words, at });
+    state.words = 0; // as if the frame had been injected here
+    return at;
+  });
   return gaps;
 }
 
-/** How many of the avatar's own words `prose` contains after its last frame, or
- *  `undefined` when it contains no frame. The streaming path's cadence counter. */
-export function wordsAfterLastFrame(prose: string): number | undefined {
-  const own = normalise(prose);
-  const marks = framePositions(own);
-  if (marks.length === 0) return undefined;
-  const total = own.split(" ").filter((w) => w !== "").length;
-  return total - marks[marks.length - 1];
+/** The cadence count at the end of `text`, which the answer path releases whole — the
+ *  screened opening. Nothing is injected inside it, so a due start is counted through. */
+export function cadenceAfter(text: string): CadenceState {
+  return walkCadence(text, (at, state) => {
+    state.words += 1;
+    return at + 1;
+  });
 }

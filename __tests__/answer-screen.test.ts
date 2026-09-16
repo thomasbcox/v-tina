@@ -7,7 +7,8 @@ import {
   OREGON_PORTAL_URL,
   PROVENANCE_NOTICE,
 } from "../src/lib/prompts";
-import { AVATAR_FRAME, CADENCE_MAX_UNQUOTED_WORDS, IMPERSONATION_FORMS, checkCadence } from "../src/lib/voice";
+import { AVATAR_FRAME, CADENCE_TARGET_WORDS, IMPERSONATION_FORMS, checkCadence } from "../src/lib/voice";
+import captured from "./fixtures/answer-stream.json";
 
 const O = "“";
 const C = "”";
@@ -117,51 +118,166 @@ describe("AC4 — an unverifiable quotation never reaches the reader", () => {
   });
 });
 
+/**
+ * How a model actually streams, taken from real output: `fixtures/answer-stream.json`
+ * was captured token by token from the live answer model. Whitespace leads the word
+ * it precedes and never trails one (` This`, not `This `), and punctuation — an
+ * opening curly mark included — arrives on its own.
+ *
+ * The first cadence tests fed `"sentence. "` chunks, which no tokeniser produces, and
+ * the enforcement they passed never fired on real output (approach review round
+ * b6039ac). Every cadence test below runs on this shape, and on several others,
+ * because the answer a reader gets must not depend on where the chunks fell.
+ */
+const DELTAS: string[] = captured.deltas;
+const CAPTURED_PASSAGES = captured.passages as unknown as RetrievedPolicyChunk[];
+
+function asModelTokens(text: string): string[] {
+  return text.match(/\s*[\p{L}\p{N}’']+|\s*[^\s\p{L}\p{N}’']+|\s+$/gu) ?? [];
+}
+
+function chunkings(text: string): Record<string, string[]> {
+  return {
+    whole: [text],
+    "model tokens": asModelTokens(text),
+    "trailing space": text.split(/(?<=\s)(?=\S)/),
+    "one character": [...text],
+    "seven characters": text.match(/[\s\S]{1,7}/g) ?? [],
+  };
+}
+
+/** Streams `text` every way `chunkings` cuts it, asserts the reader receives the same
+ *  thing each time, and returns it. */
+async function sameEveryWay(text: string, chunks: RetrievedPolicyChunk[] = PASSAGES): Promise<string> {
+  const results = await Promise.all(
+    Object.entries(chunkings(text)).map(async ([name, pieces]) => {
+      expect(pieces.join(""), `${name} must cut, not change, the text`).toBe(text);
+      return [name, said(await collect(pieces, chunks))] as const;
+    }),
+  );
+  const [, first] = results[0];
+  for (const [name, got] of results) expect(got, `chunked as ${name}`).toBe(first);
+  return first;
+}
+
 describe("AC6 — the cadence is enforced as the answer streams", () => {
-  const sentence = (i: number) => `This is sentence number ${i} of the avatar's own explanation. `;
+  /** `n` sentences of exactly ten words, each starting with a capital. */
+  const sentences = (n: number, from = 0) =>
+    Array.from({ length: n }, (_, i) => ` Record ${from + i} shows the state acted on housing this year.`).join("");
+  /** The frame, then four words of the avatar's own. */
+  const opening = `${frame}, here is the record.`;
+  const frames = (text: string) => text.split(DISPLAY_FRAME).length - 1;
 
-  it("injects the frame when the avatar's own prose passes the bound", async () => {
-    const pieces = [`${frame}, here is the record. `];
-    for (let i = 0; i < 40; i += 1) pieces.push(sentence(i));
-    const text = said(await collect(pieces));
-    // Enforcement, not a test-only function: the STREAMED answer satisfies the bound.
-    expect(checkCadence(text), "the reader received an over-long unframed stretch").toEqual([]);
-    const frames = text.split(DISPLAY_FRAME).length - 1;
-    expect(frames, "the frame must have been injected at least once mid-answer").toBeGreaterThan(1);
+  it("the test shape is the real one: whitespace leads a token and never trails it", () => {
+    const trailing = (tokens: string[]) => tokens.filter((t) => /\S\s+$/.test(t));
+    expect(trailing(DELTAS), "the captured stream").toEqual([]);
+    expect(DELTAS.filter((t) => /^\s+\S/.test(t)).length, "most real tokens lead with a space").toBeGreaterThan(DELTAS.length / 2);
+    expect(trailing(asModelTokens(`${opening}${sentences(3)}\n\nThe order says: ${O}address${C}.`))).toEqual([]);
   });
 
-  it("does not inject when the model repeats the frame itself", async () => {
-    const pieces = [`${frame}, here is the record. `];
-    for (let i = 0; i < 40; i += 1) {
-      pieces.push(i % 10 === 9 ? `${frame}, to continue. ` : sentence(i));
-    }
-    const text = said(await collect(pieces));
+  it("releases the captured real answer unaltered, however it is chunked", async () => {
+    const answer = DELTAS.join("");
+    expect(said(await collect(DELTAS, CAPTURED_PASSAGES)), "as the model sent it").toBe(answer);
+    expect(await sameEveryWay(answer, CAPTURED_PASSAGES)).toBe(answer);
+  });
+
+  it("injects the frame at the first sentence start past the target, on real token shapes", async () => {
+    // 4 + 150 own words: the frame is due where the next sentence starts.
+    const text = await sameEveryWay(`${opening}${sentences(15)} The order followed.${sentences(20, 100)}`);
+    expect(text).toContain(`this year. ${DISPLAY_FRAME}, the order followed.`);
+    expect(checkCadence(text), "no sentence starts past the target unframed").toEqual([]);
+    expect(frames(text), "the opening, then an injection every ~150 words").toBe(3);
+  });
+
+  it("keeps injecting through a long answer", async () => {
+    const text = await sameEveryWay(`${opening}${sentences(80)}`);
     expect(checkCadence(text)).toEqual([]);
-    const injected = text.split(`${DISPLAY_FRAME}, this is`).length - 1;
-    expect(injected, "no injection is needed when the model keeps the cadence").toBe(0);
+    expect(frames(text)).toBeGreaterThanOrEqual(5);
   });
 
-  it("does not count quoted text toward the bound", async () => {
+  it("never splits a sentence at an abbreviation that falls where the frame is due", async () => {
+    // 144 own words at "It"; "Kotek" arrives at 152, past the target, after "Gov. ".
+    const text = await sameEveryWay(
+      `${opening}${sentences(14)} It was completed by the legislature and Gov. Kotek together. The order followed.`,
+    );
+    expect(text).toContain("and Gov. Kotek together.");
+    expect(text).toContain(`${DISPLAY_FRAME}, the order followed.`);
+  });
+
+  it("the stated limit: a long sentence runs past the target whole, and the frame lands after it", async () => {
+    const long = ` It ${Array.from({ length: 220 }, (_, i) => `clause${i}`).join(" ")} ends here.`;
+    const text = await sameEveryWay(`${opening}${sentences(14)}${long} The next sentence starts.`);
+    expect(text, "the long sentence is never interrupted").toContain(long);
+    expect(text).toContain(`ends here. ${DISPLAY_FRAME}, the next sentence starts.`);
+    expect(checkCadence(text)).toEqual([]);
+  });
+
+  it("does not inject when the model repeats the frame itself, even split across tokens", async () => {
+    const answer = `${opening}${sentences(15)} ${frame}, to continue.${sentences(15, 100)} ${frame}, and finally.${sentences(5, 200)}`;
+    const text = await sameEveryWay(answer);
+    expect(text, "nothing to add when the model keeps the cadence").toBe(answer);
+  });
+
+  it("does not count quoted text toward the target", async () => {
     // The quotation must be VERIFIABLE, or the answer is refused and the refusal
-    // notice — which itself speaks as the avatar — is what gets counted. The first
-    // version of this test used made-up words and was measuring a refusal.
-    const long = Array.from({ length: CADENCE_MAX_UNQUOTED_WORDS * 2 }, (_, i) => `clause${i}`).join(" ");
+    // notice — which itself speaks as the avatar — is what gets counted.
+    const long = Array.from({ length: CADENCE_TARGET_WORDS * 2 }, (_, i) => `clause${i}`).join(" ");
     const chunks: RetrievedPolicyChunk[] = [{ ...PASSAGES[0], content: `${EO_TEXT} ${long}` }];
-    const text = said(await collect(
-      [`${frame}, the record says. `, `Under EO 23-02: ${O}${long}${C}. Done.`],
-      chunks,
-    ));
+    const text = await sameEveryWay(`${opening} Under EO 23-02: ${O}${long}${C}. That is the order. It stands.`, chunks);
     expect(text, "the long quotation must be released, not refused").not.toContain(PROVENANCE_NOTICE);
     expect(text).toContain("clause0");
-    expect(text.split(DISPLAY_FRAME).length - 1, "a long quotation needs no re-identification").toBe(1);
+    expect(frames(text), "a long quotation needs no re-identification").toBe(1);
   });
 
   it("keeps a proper noun's capital when injecting before it", async () => {
-    const pieces = [`${frame}, here is the record. `];
-    for (let i = 0; i < 30; i += 1) pieces.push(sentence(i));
-    pieces.push("Oregon adopted the measure. ");
-    const text = said(await collect(pieces));
-    expect(text).not.toMatch(/Governor, oregon/);
+    const text = await sameEveryWay(`${opening}${sentences(15)} Oregon adopted the measure.`);
+    expect(text).toContain(`${DISPLAY_FRAME}, Oregon adopted the measure.`);
+  });
+});
+
+describe("the stream's work grows with the answer, not with its square", () => {
+  /** The quickest of three runs, in milliseconds: a ratio of these, never a clock. */
+  const fastest = async (tokens: string[], chunks: RetrievedPolicyChunk[] = PASSAGES) => {
+    let best = Infinity;
+    for (let run = 0; run < 3; run += 1) {
+      const started = performance.now();
+      await collect(tokens, chunks);
+      best = Math.min(best, performance.now() - started);
+    }
+    return best;
+  };
+
+  it("an answer eight times longer costs far less than sixty-four times as much", async () => {
+    // Re-lexing the whole answer on every token measured 17 ms at 500 tokens and
+    // 465 ms at 4,000 (approach review round b6039ac). Linear work scales about 8x
+    // here and the quadratic version about 64x.
+    const answer = (n: number) =>
+      asModelTokens(`${frame}, here is the record.${Array.from({ length: n }, (_, i) => ` Record ${i} shows the state acted on housing this year.`).join("")}`);
+    await fastest(answer(50));
+    const small = await fastest(answer(100));
+    const large = await fastest(answer(800));
+    expect(large / small, `100 sentences: ${small.toFixed(1)} ms; 800 sentences: ${large.toFixed(1)} ms`).toBeLessThan(24);
+  });
+
+  it("text held undecided costs about what the same text costs flowing", async () => {
+    // A quotation is held until it closes and a straight single mark until its
+    // sentence ends. Rescanning held text for every token measured 108 ms for a
+    // 2,000-word quotation against 3 ms for the same words flowing.
+    const words = Array.from({ length: 2000 }, (_, i) => `clause${i}`).join(" ");
+    const chunks: RetrievedPolicyChunk[] = [{ ...PASSAGES[0], content: `${EO_TEXT} ${words}` }];
+    const opening = `${frame}, here is the record.`;
+    const flowing = asModelTokens(`${opening} It runs ${words}.`);
+    await fastest(flowing, chunks);
+    const base = await fastest(flowing, chunks);
+    for (const [name, text] of [
+      ["an open quotation", `${opening} Under EO 23-02: ${O}${words}${C}.`],
+      ["a single mark awaiting its sentence end", `${opening} It runs 'til ${words}.`],
+    ]) {
+      const tokens = asModelTokens(text);
+      expect(said(await collect(tokens, chunks)), name).not.toContain(PROVENANCE_NOTICE);
+      const cost = await fastest(tokens, chunks);
+      expect(cost / base, `${name}: ${cost.toFixed(1)} ms; flowing: ${base.toFixed(1)} ms`).toBeLessThan(8);
+    }
   });
 });
 

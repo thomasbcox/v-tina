@@ -123,9 +123,13 @@ numbered property assertions, per `AGENTS.md`.
 
 6. **Given** an answer with a long stretch of the avatar's own prose,
    **When** a reader reads it,
-   **Then** the avatar re-identifies itself before that stretch exceeds the declared bound of
-   non-quoted words, so a reader arriving mid-answer is never told at length who is speaking only far
-   above.
+   **Then** the avatar re-identifies itself at the first sentence start after that stretch passes the
+   declared target of non-quoted words, so a reader arriving mid-answer is never told at length who is
+   speaking only far above,
+   **And** the frame never splits a sentence — one long sentence can carry a stretch past the target,
+   and no hard ceiling is promised.
+   *(Amended 2026-09-16 by Thomas's option-A decision on round b6039ac, which withdrew the 200-word
+   ceiling: it previously read "before that stretch exceeds the declared bound".)*
 
 7. **Given** generated text whose opening impersonates the Governor outside a quotation,
    **When** it passes through the screen,
@@ -190,7 +194,7 @@ numbered property assertions, per `AGENTS.md`.
 | 3 | `Small` | **R2.** The verifier over an answer plus its passages. Verbatim span in the cited document passes. Each of these fails: a span altered by one word; a span verbatim in **some** passage but not in the document it is cited to; a span in no passage at all; a span assembled across two passages; a span elided with an ellipsis. Whitespace is normalised; nothing else is. Red when any of those is reported verified. |
 | 4 | `Small` | **R2.** The answer path driven with a fake generator emitting an unverifiable quotation: assert the quotation's text never appears in any emitted record, and that the exchange ends in a provenance refusal. Red when the bad quotation reaches the output, or when the hold silently drops the whole answer instead. |
 | 5 | `manual` | **R2.** One complex question, live, with its retrieved passages captured beside the answer. Read for whether the record is quoted rather than only paraphrased, and whether every non-quoted statement is framed as the avatar's. Red when the answer paraphrases throughout while passages offered quotable language. |
-| 6 | `Small` | **R1.** The cadence function over answers built around the declared bound: prose exceeding it with no re-identification fails; prose under it passes; a long **quoted** stretch does not count toward the bound, because the reader is being shown the record, not the avatar's assertions. Red when an over-long unframed stretch is reported compliant. |
+| 6 | `Small` | **R1.** The cadence rule over answers built around the declared target: a sentence starting past it with no re-identification fails; prose under it passes; the frame repeated at that sentence start passes; a long **quoted** stretch does not count, because the reader is being shown the record, not the avatar's assertions. The streaming answer is driven with tokens **shaped like real model output** and cut several other ways, and must give the reader the same text every way. Red when an unframed sentence start past the target is reported compliant, or when the stream's output depends on where the tokens fell. *(Amended 2026-09-16 with AC6.)* |
 | 7 | `Small` | **R4.** The screen over openings built from `IMPERSONATION_FORMS` itself, plus real-shaped variants: leading whitespace, markdown emphasis, differing case, the form past the first clause — **and the form inside an attributed quotation, which must pass**, since two corpus documents open exactly that way. Red when an impersonating opening passes, or when a quoted one is flagged. |
 | 8 | `Small` | **R3, R7.** Three halves. A clean answer returns byte-identical, including one merely *mentioning* an impersonation form in its body. The answer path emits its first record before its last and emits more than two records for a multi-part answer, so a held opening followed by one block fails. And a provenance refusal emits the provenance notice, never `FAILURE_NOTICE`. Red when a clean answer is altered, when delivery collapses to a pause and a wall of text, or when a veto is dressed as an infrastructure failure. |
 | 9 | `Small` | **R6.** Assert `GROUNDED_DEFERRAL` contains `OREGON_PORTAL_URL`; that `FAILURE_NOTICE` still discloses the answer is incomplete; and that neither contains an `IMPERSONATION_FORMS` member. Pinned against constants that already exist rather than left to a live read. The register half is read live and recorded. |

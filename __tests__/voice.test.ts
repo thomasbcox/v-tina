@@ -1,17 +1,23 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { RetrievedPolicyChunk } from "../src/types";
 import {
   AVATAR_FRAME,
-  CADENCE_MAX_UNQUOTED_WORDS,
+  CADENCE_TARGET_WORDS,
   CITATION_KINDS,
   IMPERSONATION_FORMS,
+  LOOK_BEHIND_CHARS,
   checkCadence,
   citationAliases,
   citedDocument,
+  isSentenceStart,
   lex,
   proseOf,
+  rawOf,
   screenOpening,
   verifyQuotations,
+  type LexResume,
+  type Token,
 } from "../src/lib/voice";
 
 const O = "“"; // “
@@ -104,6 +110,68 @@ describe("the one grammar", () => {
     expect(final.some((t) => t.kind === "violation" && t.reason === "unterminated")).toBe(true);
   });
 
+  it("lexing only the unreleased rest, with one character of look-behind, agrees with lexing the whole", () => {
+    // The stream relies on this: it lexes only what it has not released. Every place
+    // the whole-text lexer could have stopped releasing is tried as a restart point.
+    const text =
+      `The Governor's staff and the agencies' work: ${q(`the ${q("Deflection program")} means it`)}. ` +
+      "Oregon's plan isn't 'new'. Under the order, local teams act.";
+    const merged = (tokens: readonly Token[]) =>
+      tokens.reduce<Array<[string, string]>>((out, t) => {
+        const last = out[out.length - 1];
+        if (t.kind === "prose" && last?.[0] === "prose") last[1] += t.text;
+        else out.push([t.kind, rawOf(t)]);
+        return out;
+      }, []);
+    const whole = lex(text, true).tokens;
+    let at = 0;
+    const restarts: number[] = [];
+    for (const t of whole) {
+      const end = at + rawOf(t).length;
+      if (t.kind === "prose") for (let k = at; k < end; k += 1) restarts.push(k);
+      restarts.push(end);
+      at = end;
+    }
+    for (const k of restarts) {
+      const tail: Token[] = [];
+      let offset = 0;
+      for (const t of whole) {
+        const end = offset + rawOf(t).length;
+        if (end > k) tail.push(t.kind === "prose" ? { kind: "prose", text: t.text.slice(Math.max(0, k - offset)) } : t);
+        offset = end;
+      }
+      expect(merged(lex(text.slice(k), true, text[k - 1] ?? " ").tokens), `restart at ${k}`).toEqual(merged(tail));
+    }
+  });
+
+  it("resuming a scan decides exactly what scanning afresh decides, at every length", () => {
+    // The stream hands each result's `resume` to the next call on the same text plus
+    // more, so a held quotation is not rescanned for every token. Resuming may change
+    // how much is read, never what is decided.
+    const texts = [
+      `Before ${q(`a long ${q("nested")} quotation that runs on`)} after.`,
+      "It runs 'til the plan is done. Then more follows.",
+      "It is 'quoted' here. And 'til the end",
+      `Open ${O}never closed at all`,
+    ];
+    for (const text of texts) {
+      let resume: LexResume | undefined;
+      for (let n = 0; n <= text.length; n += 1) {
+        const resumed = lex(text.slice(0, n), false, " ", resume);
+        expect(resumed, `${JSON.stringify(text)} at length ${n}`).toEqual(lex(text.slice(0, n), false));
+        resume = resumed.resume;
+      }
+    }
+  });
+
+  it("without the look-behind, a word split across tokens would read as a quotation", () => {
+    // The case the look-behind exists for: "Governor" released, "'s staff … agencies' work" held.
+    const rest = "'s staff and the agencies' work.";
+    expect(lex(rest, true, "r").tokens.every((t) => t.kind === "prose")).toBe(true);
+    expect(lex(rest, true).tokens.some((t) => t.kind === "violation"), "the default look-behind is a space").toBe(true);
+    expect(LOOK_BEHIND_CHARS).toBeGreaterThanOrEqual(1);
+  });
+
   it("the avatar's own prose excludes every quotation", () => {
     expect(proseOf(`Frame here ${q("quoted bit")} and more.`).replace(/\s+/g, " ").trim()).toBe(
       "Frame here and more.",
@@ -123,9 +191,19 @@ describe("the declared constants must mean something, not merely exist", () => {
     for (const form of IMPERSONATION_FORMS) expect(form).toMatch(/\b(i|my|me)\b/);
   });
 
-  it("the cadence bound is inside the range Thomas set", () => {
-    expect(CADENCE_MAX_UNQUOTED_WORDS).toBeGreaterThanOrEqual(100);
-    expect(CADENCE_MAX_UNQUOTED_WORDS).toBeLessThanOrEqual(200);
+  it("the cadence target is inside the range Thomas set", () => {
+    expect(CADENCE_TARGET_WORDS).toBeGreaterThanOrEqual(100);
+    expect(CADENCE_TARGET_WORDS).toBeLessThanOrEqual(200);
+  });
+
+  it("the README states the target the code uses, and promises no ceiling", () => {
+    // It once promised "no reader meets more than 200" words unframed, which nothing
+    // enforced; Thomas withdrew that guarantee (approach review round b6039ac).
+    const row = readFileSync("README.md", "utf8").split("\n").find((line) => line.startsWith("| **Say who is speaking**"));
+    expect(row, "the README's cadence rule").toBeDefined();
+    expect(row).toContain(`**${CADENCE_TARGET_WORDS}**`);
+    expect(row).toMatch(/no hard ceiling/);
+    expect(row).not.toMatch(/no reader meets more than/i);
   });
 });
 
@@ -251,19 +329,68 @@ describe("AC3 — a quotation must be verbatim in the document it cites", () => 
   });
 });
 
-describe("AC6 — the cadence check (the runtime enforcement is in answer-screen.test.ts)", () => {
-  const frame = AVATAR_FRAME[0];
-  const words = (n: number) => Array.from({ length: n }, (_, i) => `word${i}`).join(" ");
+describe("AC6 — the cadence rule (the runtime enforcement is in answer-screen.test.ts)", () => {
+  const frame = `${AVATAR_FRAME[0][0].toUpperCase()}${AVATAR_FRAME[0].slice(1)}`;
+  /** `n` sentences of exactly ten words, each starting with a capital. */
+  const sentences = (n: number, from = 0) =>
+    Array.from({ length: n }, (_, i) => `Record ${from + i} shows the state acted on housing this year.`).join(" ");
+  /** The opening: the frame, then four words of the avatar's own. */
+  const opening = `${frame}, here is the record.`;
 
-  it("accepts prose inside the bound", () => {
-    expect(checkCadence(`${frame}, ${words(CADENCE_MAX_UNQUOTED_WORDS - 10)}`)).toEqual([]);
+  it("accepts an answer whose own words stay within the target", () => {
+    expect(checkCadence(`${opening} ${sentences(14)}`)).toEqual([]);
   });
 
-  it("reports own prose that passes the bound", () => {
-    expect(checkCadence(`${frame}, ${words(CADENCE_MAX_UNQUOTED_WORDS + 50)}`)).toHaveLength(1);
+  it("reports a sentence that starts past the target without the frame repeated", () => {
+    // 4 + 150 own words, then a sentence start: the frame was due there.
+    const answer = `${opening} ${sentences(15)} The order followed.`;
+    const gaps = checkCadence(answer);
+    expect(gaps).toHaveLength(1);
+    expect(gaps[0].words).toBe(154);
+    expect(answer.slice(gaps[0].at)).toBe("The order followed.");
   });
 
-  it("does not count quoted text toward the bound", () => {
-    expect(checkCadence(`${frame}, the record: ${q(words(CADENCE_MAX_UNQUOTED_WORDS * 2))} ends.`)).toEqual([]);
+  it("accepts the frame repeated at that sentence start, however it is spaced or cased", () => {
+    for (const again of [`${frame}, the order followed.`, "AS A VIRTUAL\n  avatar of the governor, the order followed."]) {
+      expect(checkCadence(`${opening} ${sentences(15)} ${again} ${sentences(14, 100)}`), again).toEqual([]);
+    }
+  });
+
+  it("does not count quoted text", () => {
+    const quoted = q(Array.from({ length: CADENCE_TARGET_WORDS * 2 }, (_, i) => `clause${i}`).join(" "));
+    expect(checkCadence(`${opening} The order says: ${quoted}. That is the record. It stands.`)).toEqual([]);
+  });
+
+  it("the stated limit: one long sentence runs past the target, and the frame is due at the next", () => {
+    const long = `It ${Array.from({ length: 220 }, (_, i) => `clause${i}`).join(" ")} ends here.`;
+    const gaps = checkCadence(`${opening} ${long} The next sentence starts.`);
+    expect(gaps, "not reported inside the long sentence, only where the next begins").toHaveLength(1);
+    expect(gaps[0].words).toBeGreaterThan(220);
+  });
+
+  it("finds sentence starts after marks, closing quotes and paragraph breaks", () => {
+    for (const [before, after] of [
+      ["It ends. ", "The next"],
+      [`It says ${q("build more.")} `, "Then it"],
+      ["Is it done? ", "Yes"],
+      ["It rose (see HB 2001). ", "The bill"],
+      [`homes;${C}\n\n`, "The same order"],
+    ]) {
+      expect(isSentenceStart(before + after, before.length), JSON.stringify(before)).toBe(true);
+    }
+  });
+
+  it("does not split a sentence at an abbreviation, an initial, a lowercase word or a semicolon", () => {
+    for (const [before, after] of [
+      ["signed by Gov. ", "Kotek"],
+      ["the U.S. ", "Department"],
+      ["near Mt. ", "Hood"],
+      ["e.g. ", "the order"],
+      ["see Sec. ", "3 of it"],
+      ["36,000 homes; ", "The"],
+      ["J. ", "Smith"],
+    ]) {
+      expect(isSentenceStart(before + after, before.length), JSON.stringify(before)).toBe(false);
+    }
   });
 });

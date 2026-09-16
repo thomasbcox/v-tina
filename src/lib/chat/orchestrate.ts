@@ -6,14 +6,19 @@ import {
   PROVENANCE_NOTICE,
 } from "../prompts";
 import {
-  CADENCE_TARGET_WORDS,
   CITATION_WINDOW,
+  LOOK_BEHIND_CHARS,
+  cadenceAfter,
+  indexPassages,
   lex,
-  proseOf,
+  rawOf,
+  scanCadence,
   screenOpening,
   verifyQuotations,
   verifyQuotedSpan,
-  wordsAfterLastFrame,
+  type CadenceState,
+  type LexResult,
+  type LexResume,
 } from "../voice";
 import type { ClassificationResult } from "../safety";
 import type { ChatMessage } from "../fireworks";
@@ -272,15 +277,24 @@ const FUNCTION_WORDS = new Set([
   "a", "an", "and", "but", "also", "however", "their", "they", "there", "we", "what",
 ]);
 
-/** Prefixes `sentence` with the frame, lowercasing its first word only when that
- *  word is a function word, so "The order…" becomes "…Governor, the order…" and
- *  "Oregon's order…" keeps its capital. */
+/** A sentence's first word as it reads after the frame: lowercased only when it is a
+ *  function word, so "The order…" becomes "…Governor, the order…" and "Oregon's
+ *  order…" keeps its capital. */
+function afterFrame(word: string): string {
+  return FUNCTION_WORDS.has(word.toLowerCase()) ? word.toLowerCase() : word;
+}
+
+/** Prefixes `sentence` with the frame. */
 function framed(sentence: string): string {
   const first = /^\s*(\p{L}+)/u.exec(sentence)?.[1] ?? "";
-  const lowered = FUNCTION_WORDS.has(first.toLowerCase())
-    ? sentence.replace(first, first.toLowerCase())
-    : sentence;
-  return `${DISPLAY_FRAME}, ${lowered.trimStart()}`;
+  return `${DISPLAY_FRAME}, ${sentence.trimStart().replace(first, afterFrame(first))}`;
+}
+
+/** The letters of the word starting at `at`. */
+const LETTERS = /\p{L}+/uy;
+function wordAt(text: string, at: number): string {
+  LETTERS.lastIndex = at;
+  return LETTERS.exec(text)?.[0] ?? "";
 }
 
 /**
@@ -298,27 +312,48 @@ function framed(sentence: string): string {
  * - Text is released only as far as the lexer calls it **stable**, so a quotation
  *   is held from its opening mark until nesting closes, then verified against the
  *   document the preceding text cites.
- * - The avatar's own words are counted, and when they pass the cadence bound
- *   without a frame, **the frame is injected** at the next sentence start
- *   (Thomas chose enforcement over documentation, knowing it may read abruptly).
+ * - The avatar's own words are counted by `scanCadence`, and at the first sentence
+ *   start past the target without a frame, **the frame is injected** (Thomas chose
+ *   enforcement over documentation, knowing it may read abruptly). That sentence's
+ *   start is held until its first word is complete and it is clear the model is not
+ *   repeating the frame itself — a few characters, never a sentence.
  * - A refusal emits `PROVENANCE_NOTICE`, never `FAILURE_NOTICE`.
+ *
+ * **Linear in the answer.** Each model token lexes only what has not been released,
+ * a quotation still held resumes its scan instead of starting it again, and the
+ * passages are indexed once. The first version re-lexed the whole answer on every
+ * token: 465 ms of CPU for a maximum-length answer, quadratic (approach review round
+ * b6039ac). **Stated limit:** held text is still copied once per token when the next
+ * token is appended to it — about 10 ms for a single 4,000-word quotation.
  */
 export async function* screenedAnswer(
   tokens: AsyncIterable<string>,
   chunks: readonly RetrievedPolicyChunk[],
   log: (context: string, error: unknown) => void,
 ): AsyncGenerator<ChatStreamEvent> {
-  let full = "";
-  let releasedUpTo = 0;
+  const passages = indexPassages(chunks);
+  /**
+   * The model's text the stream still needs: everything not yet released, behind
+   * `LOOK_BEHIND_CHARS` of what was. A character in it never changes, only how much
+   * of it is decided. Offsets below are into this buffer.
+   */
+  let buf = "";
+  /** How much of `buf` has been released to the reader, or deliberately dropped. */
+  let released = 0;
+  /** How many characters have been discarded from the front of `buf`. */
+  let discarded = 0;
+  /** Where the lexer's scan of a still-undecided construct had got to, as offsets
+   *  into the whole answer so that discarding cannot move them. */
+  let held: LexResume | undefined;
   let openingDone = false;
   let refused = false;
-  let emitted = "";
-  let ownSinceFrame = "";
-  let frameDue = false;
+  /** The end of what the reader has received — where a quotation's citation is read. */
+  let context = "";
+  let cadence: CadenceState = { words: 0 };
 
   function* emit(text: string): Generator<ChatStreamEvent> {
     if (text === "") return;
-    emitted = (emitted + text).slice(-CITATION_WINDOW * 2);
+    context = (context + text).slice(-CITATION_WINDOW * 2);
     yield { type: "streamed_tokens", text };
   }
 
@@ -326,31 +361,6 @@ export async function* screenedAnswer(
     refused = true;
     log("answer refused on provenance", why);
     yield { type: "streamed_tokens", text: PROVENANCE_NOTICE };
-  }
-
-  /** Counts the avatar's own words since it last identified itself. */
-  function* emitOwn(text: string): Generator<ChatStreamEvent> {
-    ownSinceFrame += text;
-    const since = wordsAfterLastFrame(ownSinceFrame);
-    const count = since ?? ownSinceFrame.split(/\s+/).filter((w) => w !== "").length;
-    if (count > CADENCE_TARGET_WORDS) frameDue = true;
-    yield* emit(text);
-  }
-
-  /** The avatar's own prose, sentence by sentence, injecting the frame when due. */
-  function* streamProse(text: string): Generator<ChatStreamEvent> {
-    for (const piece of text.split(/(?<=[.!?]\s+)/)) {
-      if (piece === "") continue;
-      const atSentenceStart = /[.!?][\u201D"']?\s+$/.test(emitted);
-      if (frameDue && atSentenceStart && /^\S/.test(piece)) {
-        frameDue = false;
-        ownSinceFrame = "";
-        log("cadence frame injected", CADENCE_TARGET_WORDS);
-        yield* emitOwn(framed(piece));
-      } else {
-        yield* emitOwn(piece);
-      }
-    }
   }
 
   function* releaseOpening(opening: string, hasMore: boolean): Generator<ChatStreamEvent, boolean> {
@@ -372,12 +382,12 @@ export async function* screenedAnswer(
     } else if (verdict.kind === "missing-frame") {
       text = framed(text);
     }
-    const bad = verifyQuotations(text, chunks).filter((b) => b.reason !== "no-citation");
+    const bad = verifyQuotations(text, passages).filter((b) => b.reason !== "no-citation");
     if (bad.length > 0) {
       yield* refuse(`quotation ${bad[0].reason}: ${bad[0].text.slice(0, 60)}`);
       return false;
     }
-    ownSinceFrame = proseOf(text);
+    cadence = cadenceAfter(text);
     yield* emit(text);
     return true;
   }
@@ -387,7 +397,7 @@ export async function* screenedAnswer(
     const ranges: Array<[number, number]> = [];
     let at = 0;
     for (const t of lex(stableText, true).tokens) {
-      const raw = t.kind === "prose" ? t.text : t.raw;
+      const raw = rawOf(t);
       if (t.kind === "prose") ranges.push([at, at + raw.length]);
       at += raw.length;
     }
@@ -399,55 +409,99 @@ export async function* screenedAnswer(
     return -1;
   }
 
+  /**
+   * Releases the avatar's own words in `buf[from, to)`, injecting the frame where the
+   * cadence is due. Returns how far it released: `to`, or the start of a sentence that
+   * must wait for more text before the frame can be placed in front of it.
+   */
+  function* releaseProse(from: number, to: number, final: boolean): Generator<ChatStreamEvent, number> {
+    let at = from;
+    for (;;) {
+      const stop = scanCadence(buf, at, to, cadence, final);
+      if (stop.kind === "end") {
+        yield* emit(buf.slice(at, to));
+        return to;
+      }
+      yield* emit(buf.slice(at, stop.at));
+      const word = wordAt(buf, stop.at);
+      if (stop.kind === "undecided" || (!final && stop.at + word.length >= buf.length)) {
+        return stop.at;
+      }
+      log("cadence frame injected", cadence.words);
+      yield* emit(`${DISPLAY_FRAME}, ${afterFrame(word)}`);
+      cadence.words = 1;
+      at = stop.at + word.length;
+    }
+  }
+
+  /** Lexes `buf` from `from`, resuming any scan the previous call left open. */
+  function lexFrom(from: number, final: boolean): LexResult {
+    const base = discarded + from;
+    const resume = held && { at: held.at - base, scanned: held.scanned - base, depth: held.depth };
+    const result = lex(buf.slice(from), final, buf[from - 1] ?? " ", resume);
+    const next = result.resume;
+    held = next && { at: next.at + base, scanned: next.scanned + base, depth: next.depth };
+    return result;
+  }
+
   function* advance(final: boolean): Generator<ChatStreamEvent> {
-    const { tokens: toks, stable } = lex(full, final);
     if (!openingDone) {
-      const split = openingSplit(full.slice(0, stable), final);
+      const split = openingSplit(buf.slice(0, lexFrom(0, final).stable), final);
       if (split <= 0) return;
-      const ok = yield* releaseOpening(full.slice(0, split), !final || split < full.length);
+      const ok = yield* releaseOpening(buf.slice(0, split), !final || split < buf.length);
       openingDone = true;
-      releasedUpTo = split;
+      released = split;
       if (!ok) return;
     }
-    let offset = 0;
+    // Only what is unreleased, with the one character of look-behind the grammar reads.
+    const { tokens: toks } = lexFrom(released, final);
+    let start = released;
     for (const t of toks) {
-      const raw = t.kind === "prose" ? t.text : t.raw;
-      const start = offset;
-      offset += raw.length;
-      if (offset <= releasedUpTo) continue;
+      const end = start + rawOf(t).length;
       if (t.kind === "prose") {
-        yield* streamProse(raw.slice(Math.max(0, releasedUpTo - start)));
+        released = yield* releaseProse(start, end, final);
+        if (released < end) return;
       } else if (t.kind === "violation") {
         yield* refuse(`grammar: ${t.reason}`);
         return;
       } else {
-        const problem = verifyQuotedSpan(t.text, emitted, chunks);
+        const problem = verifyQuotedSpan(t.text, context, passages);
         if (problem && problem.reason !== "no-citation") {
           yield* refuse(`quotation ${problem.reason}: ${problem.text.slice(0, 60)}`);
           return;
         }
         if (problem) log("quotation released without a detected citation", problem.text.slice(0, 60));
         yield* emit(t.raw);
+        released = end;
       }
-      releasedUpTo = offset;
-      if (refused) return;
+      start = end;
     }
+  }
+
+  /** Drops released text no rule can read any more. */
+  function forgetReleased(): void {
+    const drop = released - LOOK_BEHIND_CHARS;
+    if (drop <= 0) return;
+    buf = buf.slice(drop);
+    released -= drop;
+    discarded += drop;
   }
 
   try {
     for await (const text of tokens) {
       if (refused) return;
       if (!text) continue;
-      full += text;
+      buf += text;
       yield* advance(false);
+      forgetReleased();
     }
   } catch (error) {
     // Generation died with the opening still held. Release what is stable —
     // SCREENED, never raw — before the failure propagates: `FAILURE_NOTICE`
     // promises nothing above it is affected (found by story 2's own suite).
     if (!openingDone && !refused) {
-      const { stable } = lex(full, false);
-      if (stable > 0) yield* releaseOpening(full.slice(0, stable), false);
+      const { stable } = lex(buf, false);
+      if (stable > 0) yield* releaseOpening(buf.slice(0, stable), false);
     }
     throw error;
   }

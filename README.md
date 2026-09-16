@@ -318,7 +318,7 @@ and every offline check call the same lexer, so they cannot disagree about what 
 
 | Rule | What is enforced |
 |---|---|
-| **Say who is speaking** | The answer opens by identifying the avatar. After about **150** of its own words it identifies itself again — and if the model does not, the answer path **injects** the frame at the next sentence start. No reader meets more than **200** of the avatar's own words without it. Quoted text does not count: while the record is speaking, the frame is not what is at stake. |
+| **Say who is speaking** | The answer opens by identifying the avatar. After about **150** of its own words it identifies itself again — and if the model does not, the answer path **injects** the frame at the start of the next sentence. The frame never splits a sentence, so one long sentence can carry a stretch well past 150 before it lands: **there is no hard ceiling**, by choice, rather than interrupt a sentence mid-thought. Quoted text does not count: while the record is speaking, the frame is not what is at stake. |
 | **Quote faithfully** | A quotation goes in curly marks, `“like this”`, and must be verbatim — contiguous, unelided — in a passage **of the document it is cited to**. Membership over all passages is not enough: orders quote statutes and bills share boilerplate, so a span can be genuine and still cited to a document that does not contain it. |
 | **Never write as her** | First person as the Governor is forbidden in the avatar's own prose, and **allowed inside a quotation**, because two corpus documents open "I, TINA KOTEK, Governor of the State of Oregon" and quoting them is correct. |
 
