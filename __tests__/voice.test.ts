@@ -342,11 +342,33 @@ describe("AC3 — a quotation must be verbatim in the document it cites", () => 
     ];
     const answer =
       `Executive Order 24-02 continues that response. It states: ${q(
-        "At the time of this emergency declaration, EO 24-02 on January 9, 2024, the most recent Point in Time " +
-          "Count data available reflects information about homelessness on a single night in January 2023, " +
-          "before the emergency response by way of EO 23-02 was implemented.",
+        "before the emergency response by way of EO 23-02 was implemented.",
       )} The same document states: ${q("About 62% of those experiencing homelessness were unsheltered;")}`;
     expect(verifyQuotations(answer, passages)).toEqual([]);
+  });
+
+  it("a long quotation still keeps an earlier citation out of reach, as it always did", () => {
+    // Removing quoted text from the context, the first attempt at the fix above, let
+    // "SB 1537 provides:" reach past a 355-character quotation and cite the next one —
+    // which the avatar attributed to "the order", EO 23-04 — and a verbatim answer was
+    // refused live. That quotation is uncited, not misattributed.
+    const sb = "SB 1537 (2024): An Act relating to housing (Oregon Laws 2024, chapter 110)";
+    const eo = "EO 23-04: Establishing a Statewide Housing Production Goal and Housing Production Advisory Council";
+    const passages = [
+      chunk(sb, readFileSync("corpus/sb-1537.md", "utf8")),
+      chunk(eo, readFileSync("corpus/eo-23-04.md", "utf8"), 1),
+    ];
+    const answer =
+      `On the legislative side, SB 1537 provides: ${q(
+        "The Oregon Business Development Department shall provide capacity and support for infrastructure " +
+          "planning to municipalities to enable them to plan and finance infrastructure for water, sewers and " +
+          "sanitation, stormwater and transportation consistent with opportunities to produce housing units at " +
+          "densities defined in section 55 (3)(a)(C) of this 2024 Act.",
+      )} The order also frames the approach, stating that ${q(
+        "expanding housing opportunities and solving the affordable housing crisis will require a new level of " +
+          "innovation and cooperation between the public, private, and non-profit sectors;",
+      )}`;
+    expect(verifyQuotations(answer, passages).map((b) => b.reason)).toEqual(["no-citation"]);
   });
 
   it("treats the document's own title as record text", () => {

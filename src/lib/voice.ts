@@ -387,15 +387,22 @@ function nearestCitation(context: string, citations: readonly CitationPattern[])
 
 /**
  * What a token contributes to the text a later quotation's citation is read from: the
- * avatar's own words, and for anything quoted only a space, so words either side of it
- * never join. **A quotation's text is the record's, and a document the record names is
- * not the avatar's citation.** Found live closing round b6039ac: the model quoted EO
- * 24-02, whose text mentions "EO 23-02", then wrote "The same document states:" and
- * quoted EO 24-02 again, verbatim — and the mention inside the first quotation became the
+ * avatar's own words, and anything quoted **blanked to spaces of the same length**.
+ *
+ * **A quotation's text is the record's, and a document the record names is not the
+ * avatar's citation.** Found live closing round b6039ac: the model quoted EO 24-02,
+ * whose text mentions "EO 23-02", then wrote "The same document states:" and quoted EO
+ * 24-02 again, verbatim — and the mention inside the first quotation became the
  * citation, so a faithful answer was refused.
+ *
+ * **Blanked, not removed.** Removing quoted text was tried first and refused a different
+ * live answer: with a long SB 1537 quotation gone from the context, "SB 1537 provides:"
+ * came within `CITATION_WINDOW` of "The order also frames the approach, stating that" —
+ * which meant EO 23-04 — and became its citation. Keeping quotations' length leaves the
+ * window's reach exactly as it was; only what can match inside it changed.
  */
 export function citationTextOf(token: Token): string {
-  return token.kind === "prose" ? token.text : " ";
+  return token.kind === "prose" ? token.text : " ".repeat(token.raw.length);
 }
 
 /**
