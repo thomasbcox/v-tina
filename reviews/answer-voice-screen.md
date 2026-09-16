@@ -324,7 +324,7 @@ are person-judged and owe none.
 - frame/6 — ran twice. Round 1 (superseded design) -> reviews/answer-voice-screen.design.fdc04f4.json. Round 2, the binding pass, after Thomas inverted the design at the consult: codex on kimi-latest, 6 findings, 13 regressions -> reviews/answer-voice-screen.design.896817f.json
 - frame/9 — demonstrated red for all nine sized criteria against the ratified regressions (two sabotages were incomplete on the first attempt, reported as such and redone). Plus four defects the live runs found that the suite could not, each now covered by a red-able test.
 - review/6 — ran (codex on glm-latest, 2 findings) -> reviews/answer-voice-screen.approach.b6039ac.json
-- review/8 — n/a — the approach pass gated it: finding 1 (a BLOCKER) reshapes the quote layer both critics would read, so they run next round against the new grammar.
+- review/8 — n/a — the approach pass gated it in both rounds: round f8eda18 (a BLOCKER reshaping the quote layer) and round b6039ac (a BLOCKER reshaping the streaming loop). The line-level critics have not yet run on this story.
 - close/3b — no activation. No guard-hook block; the reviewer harness promoted the round's only pass on its first attempt; this repo ships no install.sh to drift.
 - close/4 — presented: re-review only. The approved set includes a BLOCKER that reshapes the quote layer (finding 1), so merge was not offered.
 
@@ -1104,3 +1104,37 @@ the model repeated the frame on its own, so no injection was ever needed. A mech
 when the model misbehaves, tested with input the model never produces, was never exercised. This is
 the same failure as the round-1 cadence function with no caller — a check that looked real and was
 not — reached by a different route.
+
+## Decisions (2026-09-16, approach round 2 — b6039ac)
+
+Round `b6039ac`, base `f8eda18`. Two findings, **both dispositioned FIX**. Finding 1 reshapes the
+streaming loop, so the correctness and hidden-failure passes do not run this round — for the second
+round of this story running.
+
+**Approach (glm-latest)**
+
+- **Cadence enforcement is boundary-fragile and does not enforce its ceiling** (BLOCKER, two-way,
+  kludgy): **FIX — option A, one honest target and no hard ceiling.** Verified by running it, and the
+  verification found it **worse than claimed**: with tokens shaped the way language models emit them —
+  the space attached to the following word — the enforcement **never fired at all**, leaving one frame
+  and a 411-word unframed stretch. Separately confirmed: a 220-word sentence ran to a 231-word stretch
+  past the README's "no reader meets more than 200". The boundary detection is fixed regardless;
+  Thomas chose what the ceiling means. He was told the two options were genuinely balanced — **A**
+  removes a claim nothing enforces, **B** enforces it at the cost of occasional mid-sentence
+  interruptions — and that the builder leaned A on readability. The 200-word guarantee is withdrawn;
+  the README will state the cadence as about every 150 words at a sentence boundary, with the
+  long-sentence limitation named.
+
+- **The stream re-parses the whole answer on every model chunk** (IMPORTANT, two-way, nonstandard):
+  **FIX.** Verified: 17 ms at 500 one-word chunks rising to 465 ms at 4,000, the configured maximum —
+  quadratic. The stream will lex only unreleased text, carrying the one character of look-behind the
+  apostrophe rule needs, and index each answer's passages once rather than per quotation. It touches the
+  same function as finding 1, so it costs no additional round.
+
+**Why the dead enforcement was not caught, recorded because it is the lesson of this round.** The
+streaming tests fed chunks ending in a trailing space, which no tokeniser produces; and the live run
+could not expose it, because the model re-framed itself unprompted and nothing needed injecting. **A
+fallback that only activates when the model slips, tested only with input the model never sends, is
+never exercised.** The fix must be tested with token shapes taken from real model output.
+
+**Correctness and hidden-failure: not run.** Finding 1 reshapes the code both critics would read.
