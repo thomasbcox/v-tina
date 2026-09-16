@@ -323,7 +323,7 @@ are person-judged and owe none.
 
 - frame/6 — ran twice. Round 1 (superseded design) -> reviews/answer-voice-screen.design.fdc04f4.json. Round 2, the binding pass, after Thomas inverted the design at the consult: codex on kimi-latest, 6 findings, 13 regressions -> reviews/answer-voice-screen.design.896817f.json
 - frame/9 — demonstrated red for all nine sized criteria against the ratified regressions (two sabotages were incomplete on the first attempt, reported as such and redone). Plus four defects the live runs found that the suite could not, each now covered by a red-able test.
-- review/6 — ran (codex on glm-latest, 3 findings) -> reviews/answer-voice-screen.approach.f8eda18.json
+- review/6 — ran (codex on glm-latest, 2 findings) -> reviews/answer-voice-screen.approach.b6039ac.json
 - review/8 — n/a — the approach pass gated it: finding 1 (a BLOCKER) reshapes the quote layer both critics would read, so they run next round against the new grammar.
 - close/3b — no activation. No guard-hook block; the reviewer harness promoted the round's only pass on its first attempt; this repo ships no install.sh to drift.
 - close/4 — presented: re-review only. The approved set includes a BLOCKER that reshapes the quote layer (finding 1), so merge was not offered.
@@ -1025,3 +1025,82 @@ the frame mid-answer unprompted by the runtime.
   which the literal `grep` could not match and the verifier's normalisation correctly did. The screen
   was right and the check tool was too strict.
 - Every answer closed by naming what its passages do **not** cover.
+
+## Codex (glm-latest) approach review — round 2 (2026-09-16, base f8eda18, HEAD b6039ac)
+
+**Verdict.** Wed Sep 16 08:16:35 PDT 2026 — The redesigned macro shape is sound and I would keep it: one
+  lexer, one verifier, declared citation kinds, shared constants, and no parser dependency. The
+  `stable` contract is sound for the requested ambiguities: a pending straight apostrophe is
+  held until it resolves as a delimiter or prose, and a curly quotation closed at depth zero
+  cannot be retroactively nested by later text. Folding quotation-mark glyphs is acceptable for
+  word-level fidelity: it does not make an added or removed mark, a changed word, or a cross-
+  class mark change match, though it does erase glyph direction within one mark class. The two
+  things I would not ship as-is are the cadence enforcement mechanism, which can emit output
+  that fails its own declared ceiling, and the full-buffer streaming loop, which is measurably
+  quadratic against the configured 4000-token answer budget.
+
+### BLOCKER
+
+**Cadence enforcement is boundary-fragile and does not enforce its ceiling** — reversibility: two-way · standing: kludgy
+
+- **Claim:** The replacement does enforce cadence at runtime, but the mechanism is not sound. It
+  sets `frameDue` only after the target is crossed and then waits for a sentence start inferred
+  from already-emitted text. A model chunk split between a sentence terminator and its following
+  whitespace makes the next fragment begin with whitespace, so the first sentence start is
+  missed and injection is delayed. More importantly, `CADENCE_MAX_UNQUOTED_WORDS` is not a
+  runtime guard: a sentence longer than the 50-word allowance is emitted entire before the next
+  boundary. I ran the real `screenedAnswer` with a 220-word own-prose sentence; the injected
+  frame appeared only after that sentence, and the emitted answer failed `checkCadence` with a
+  228-word gap. That contradicts AC6 and README’s claim that no reader meets more than 200 of
+  the avatar’s own words without re-identification. The two constants are therefore a symptom of
+  a mechanism that cannot provide the guarantee it documents.
+- **Alternative:** Make sentence-boundary state part of the streaming lexer state before
+  emission: buffer the terminator plus following whitespace, or hold the first non-space
+  character of the next sentence, and inject the frame before releasing that character. Then
+  choose one honest policy: either enforce a hard ceiling with a defined safety action at 200
+  words, such as injection at a clause boundary or a provenance-style stop, or drop the hard-
+  ceiling constant and document the cadence as approximate with a stated sentence-length
+  limitation. Do not derive the decision from the already-emitted string.
+- **Win:** Makes AC6, README, runtime behaviour, and `checkCadence` agree; removes dependence on
+  arbitrary model chunk boundaries; and replaces one enforced number plus one uneffective
+  ceiling with a single policy whose guarantee is real.
+
+### IMPORTANT
+
+**The stream re-parses the whole answer on every model chunk** — reversibility: two-way · standing: nonstandard
+
+- **Claim:** `screenedAnswer` appends every model chunk to `full`, calls `lex(full, final)`, and
+  walks every token from offset zero on each chunk; `verifyQuotedSpan` also rebuilds and
+  normalises the same retrieved passages for every quotation. With the configured
+  `ANSWER_MAX_TOKENS` of 4000 and token-sized deltas, work grows quadratically in answer length.
+  On this worktree I drove the real `screenedAnswer` with one-word chunks: 500 chunks took about
+  22 ms, 1000 about 66 ms, 2000 about 237 ms, and 4000 about 927 ms—nearly a second of server
+  CPU for one maximum-length answer, before SSE framing or concurrent readers. That is
+  disproportionate to R1–R7 and works against the progressive-delivery requirement the design is
+  meant to preserve.
+- **Alternative:** Keep `lex` as the single grammar, but expose one incremental lexer used by
+  both offline and streaming paths, or at minimum after the opening have `advance` lex only the
+  unreleased suffix and add the release offset. Precompute a per-answer passage index once,
+  grouping normalised body text and title by `documentTitle`, and have `verifyQuotedSpan`
+  consult that index. No dependency is needed.
+- **Win:** Turns per-chunk work from O(answer-so-far) to O(new text), removes repeated passage
+  normalisation, and reduces a maximum-length answer from roughly a second of quadratic CPU to
+  linear work that preserves streaming latency under load.
+
+### Verified by running the claims — and one is worse than claimed
+
+A throwaway probe drove the real `screenedAnswer` (removed afterwards):
+
+| Claim | Result |
+|---|---|
+| A sentence longer than the allowance passes the 200-word ceiling | **CONFIRMED.** A 220-word sentence produced a **231-word** unframed stretch. The README states "no reader meets more than 200" as a guarantee; it is not one. The story file recorded the limit — the README did not. |
+| A chunk split at a sentence boundary delays injection | **Not reproduced as first probed** — with the terminator and the whitespace in separate chunks, the whitespace chunk updates the emitted text and injection still lands. |
+| **The shape real models actually send** | **CONFIRMED, and severe.** Tokenisers attach the space to the *following* word (` This`, ` is`). Fed that way, the emitted text never ends in whitespace, so no sentence start is ever detected: **one frame (the opening), then a 411-word unframed stretch — zero injections.** The runtime enforcement approved last round does not work for real model output. |
+| Quadratic re-lexing | **CONFIRMED.** One-word chunks: 500 → 17 ms, 1000 → 38 ms, 2000 → 125 ms, 4000 → 465 ms (the reviewer measured about twice that on its machine). |
+
+**Why nothing caught the dead enforcement.** The streaming tests fed chunks ending in a trailing
+space (`"sentence. "`), which is not how a tokeniser emits text. And the live run could not reveal it:
+the model repeated the frame on its own, so no injection was ever needed. A mechanism that only runs
+when the model misbehaves, tested with input the model never produces, was never exercised. This is
+the same failure as the round-1 cadence function with no caller — a check that looked real and was
+not — reached by a different route.
