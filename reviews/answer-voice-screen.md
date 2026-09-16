@@ -924,3 +924,90 @@ shape of the quote layer, so the correctness and hidden-failure passes do not ru
 
 **Correctness and hidden-failure: not run this round.** Finding 1 reshapes the code both critics
 would read.
+
+## Fixes (2026-09-16, approach round f8eda18)
+
+Gate green at **334 tests**; commit `583ff72`. Production build clean.
+
+### Finding 1 (BLOCKER) — one grammar
+
+`lex(text, final)` in `src/lib/voice.ts` is now the only definition of what a quotation is. The
+streaming answer path, `verifyQuotations`, `screenOpening` and `checkCadence` all derive from it.
+**Deleted**: `quotedSpans`, `unquoted`, `verifyOneQuotation`, the merged-span fallback, and the
+character scanner inside `screenedAnswer`. One verifier remains, `verifyQuotedSpan`, called by both
+paths.
+
+**The approved design needed a refinement that only the corpus could show, checked before a line was
+written.** "Require curly quotes" assumed curly marks would be unambiguous delimiters. The corpus
+contains **710 curly marks** — bills quote their own defined terms, `“Deflection program” means…` — so
+a faithful quotation of that text carries curly marks inside it, and a grammar closing at the first
+inner `”` would refuse it. Curly marks are *directional*, so the grammar **tracks nesting depth**
+instead: 249 of 261 paragraphs containing them are balanced. The corpus also has **286 curly
+apostrophes** (`’`, the same glyph as a closing single mark) and **no opening single mark at all**, so
+a single-quoted span is recognised by its *opener* and `’` alone is always prose.
+
+**One extension to the approved verification rule, stated rather than slipped in.** AC3's oracle said
+"whitespace is normalised; nothing else is." `normalise` now also folds quote-mark *glyphs* (`“”` →
+`"`, `‘’` → `'`), because a model reproducing a passage's `“` as `"` inside a quotation has not changed
+a word. Case, digits and every other character remain the record's — the test that an all-caps copy
+of a lower-case passage is refused still passes.
+
+### Finding 2 — declared citation kinds
+
+`CITATION_KINDS` declares each document kind's spellings once (`EO` → "Executive Order", "Order"; `SB`
+→ "Senate Bill"; `HB` → "House Bill"; `Ballot Measure` → "Measure"). `citationAliases` derives every
+spelling from a document's own title, a number is **never** matched without its kind, matches are
+word-bounded, the citation **nearest** the quotation wins, and both paths share `CITATION_WINDOW`.
+
+### Finding 3 — cadence enforced in the stream
+
+`screenedAnswer` counts the avatar's own words and injects `DISPLAY_FRAME` at the next sentence start
+when the model has not re-identified itself. A test asserts `DISPLAY_FRAME` matches a declared frame —
+otherwise the counter would never see its own injection and would inject again forever.
+
+**The single bound had to become two, and a test is what showed it.** The first streaming run produced
+stretches of **151 and 157 words** against a bound of 150: the frame is only ever placed at a sentence
+start, never splitting a sentence, so the sentence in progress when the count crossed had to finish
+first. Now `CADENCE_TARGET_WORDS = 150` is when injection triggers and `CADENCE_MAX_UNQUOTED_WORDS =
+200` is the ceiling a reader is guaranteed — **both inside Thomas's "roughly 100–200"**. The README
+previously promised 150 as a hard bound; it now describes the target and the ceiling. **Stated
+limit:** a single sentence longer than the gap can still overshoot.
+
+## Post-fix verification (2026-09-16)
+
+### A flawed test of mine
+
+The cadence test "does not count quoted text toward the bound" used made-up words as its long
+quotation. Those are in no passage, so the answer was (correctly) **refused** — and the refusal notice
+itself speaks as the avatar, so the test counted a second frame and failed for a reason unrelated to
+cadence. It was measuring a refusal. It now quotes a passage that actually contains the text, and
+asserts the quotation is released before counting frames.
+
+### Demonstrate red
+
+| Sabotage | Result |
+|---|---|
+| Single-quoted spans no longer recognised — **the confirmed bypass** | **RED** |
+| Elision accepted again | **RED** *(the first attempt did not apply; the helper reported it vacuous rather than counting it, and it was redone)* |
+| Curly nesting not tracked — close at the first inner mark | **RED** — a bill quoting its own defined term is refused |
+| Straight double quotes accepted as a delimiter | **RED** |
+| A bare number cites a document again | **RED** — `110%` cites Ballot Measure 110 |
+| First-retrieved citation wins instead of nearest | **RED** |
+| Cadence no longer enforced at runtime — **the confirmed gap** | **RED** |
+
+### Live, through the running endpoint
+
+Three questions across the three pillars. **No refusals and no cadence injections** — the server log
+is empty of both, because the model complied on its own: it used curly marks throughout and repeated
+the frame mid-answer unprompted by the runtime.
+
+- **The case the grammar was rebuilt for happened in the wild.** The early-literacy answer quoted
+  HB 3198's defined term with its own curly marks inside the avatar's quotation —
+  `““Early elementary grades” means any grade from prekindergarten through grade three.”` — and it was
+  verified and released. Without nesting it would have been refused.
+- **Six precise figures and phrasings checked by hand** — `$567,593`, `more than 8,000 people`,
+  `443,566 homes`, and three quoted sentences — **all verbatim in the documents cited.** One first read
+  `NOT FOUND`, and it was run down rather than assumed: the corpus line-wraps that sentence mid-phrase,
+  which the literal `grep` could not match and the verifier's normalisation correctly did. The screen
+  was right and the check tool was too strict.
+- Every answer closed by naming what its passages do **not** cover.
