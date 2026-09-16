@@ -346,6 +346,20 @@ are person-judged and owe none.
 | 12 | Three lists in `prompts.ts` + `__tests__/readme-prompts.test.ts` |
 | 13 | Scope containment |
 
+## Build note (2026-09-16, round 2)
+
+Re-review after the round-f8eda18 redesign. Base `f8eda18`. Only what the approved fixes moved.
+
+| AC | Where it is satisfied now |
+|---|---|
+| 3, 4, 7 | `lex` in `src/lib/voice.ts` is the one grammar; `verifyQuotedSpan` the one verifier; `screenOpening` reads prose tokens from it |
+| 6 | `CADENCE_TARGET_WORDS` (injection trigger) and `CADENCE_MAX_UNQUOTED_WORDS` (reader ceiling) in `voice.ts`; injection in `screenedAnswer` via `DISPLAY_FRAME` |
+| 8 | `screenedAnswer` in `src/lib/chat/orchestrate.ts`, rebuilt to release only what `lex` calls stable |
+
+Also: `CITATION_KINDS`, `citationAliases` and `citedDocument` in `voice.ts` replace bare-number
+citation matching; `quotedSpans`, `unquoted`, `verifyOneQuotation` and the merged-span fallback are
+deleted.
+
 ## Step-9 verification (2026-09-15)
 
 Gate green at **328 tests**. Production build clean.
