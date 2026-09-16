@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { readFileSync, readdirSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import * as prompts from "../src/lib/prompts";
 import {
@@ -86,5 +86,39 @@ describe("AC12 — every prompt is classified, and the buckets mean what they sa
       expect(listed.length, `the README section ${heading} parsed to nothing`).toBeGreaterThan(0);
       expect([...listed].sort()).toEqual([...declared].sort());
     }
+  });
+});
+
+describe("the partition's universe is every prompt, not one module", () => {
+  it("no other module under src/lib exports a reader-facing prompt", () => {
+    // Ratified regression against AC10/AC12: the partition covers prompts.ts, so
+    // a voice-bearing constant exported from a NEW module escapes both lists
+    // while every check stays green. The extent here comes from the filesystem.
+    const root = resolve(__dirname, "../src/lib");
+    const files: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (entry.name.endsWith(".ts")) files.push(full);
+      }
+    };
+    walk(root);
+    expect(files.length).toBeGreaterThan(5);
+
+    const offenders: string[] = [];
+    for (const file of files) {
+      if (file.endsWith("prompts.ts")) continue;
+      const source = readFileSync(file, "utf8");
+      // A prompt looks like an exported ALL-CAPS constant holding a template
+      // literal that runs to more than one line.
+      for (const m of source.matchAll(/export const ([A-Z][A-Z0-9_]+)\s*=\s*`([^`]*)`/g)) {
+        if (m[2].includes("\n")) offenders.push(`${file}: ${m[1]}`);
+      }
+    }
+    expect(
+      offenders,
+      "a reader-facing prompt outside prompts.ts escapes the partition entirely",
+    ).toEqual([]);
   });
 });

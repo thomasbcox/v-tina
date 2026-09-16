@@ -2,6 +2,7 @@ import { SAFETY_CLASSIFICATIONS } from "./safety";
 import {
   AVATAR_FRAME,
   CADENCE_MAX_UNQUOTED_WORDS,
+  IMPERSONATION_ANCHORS,
   IMPERSONATION_FORMS,
 } from "./voice";
 
@@ -120,6 +121,10 @@ Then use that framing again at least every ${CADENCE_MAX_UNQUOTED_WORDS} words o
 DO NOT use any of the following in your own prose. They are the Governor's first person, and you are not her:
 
 ${IMPERSONATION_FORMS.map((f) => `- "${f}"`).join("\n")}
+
+Nor may you introduce yourself with any of these and then speak in the first person, not even with a clause in between:
+
+${IMPERSONATION_ANCHORS.map((f) => `- "${f}" ... followed by "I", "my" or "me"`).join("\n")}
 
 These phrases DO appear in the record — executive orders are written in her first person — and quoting them inside a citation is correct. The rule is about YOUR sentences, not the record's.
 

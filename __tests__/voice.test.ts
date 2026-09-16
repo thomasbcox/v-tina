@@ -56,7 +56,55 @@ describe("AC1 — the avatar identifies itself", () => {
   });
 });
 
+describe("the declared constants must mean something, not merely exist", () => {
+  it("every avatar frame actually names the Governor", () => {
+    // Ratified regression against AC1: a test whose cases are generated FROM the
+    // constant can never catch a bad constant. Weakening AVATAR_FRAME to "as a
+    // virtual avatar" — naming nobody — would leave every derived case green
+    // while the frame stopped telling a reader who is being represented.
+    for (const frame of AVATAR_FRAME) {
+      expect(frame, `${frame} must identify whose avatar this is`).toMatch(/governor|kotek/);
+      expect(frame).toMatch(/avatar/);
+    }
+  });
+
+  it("every impersonation form is actually first person", () => {
+    for (const form of IMPERSONATION_FORMS) {
+      expect(form, `${form} must be first person to be impersonation`).toMatch(
+        /\b(i|my|me)\b/,
+      );
+    }
+  });
+
+  it("the cadence bound is inside the range Thomas set", () => {
+    // "every roughly 100-200 non-quoted words" — a bound of 100000 would pass
+    // every cadence test while meaning nothing.
+    expect(CADENCE_MAX_UNQUOTED_WORDS).toBeGreaterThanOrEqual(100);
+    expect(CADENCE_MAX_UNQUOTED_WORDS).toBeLessThanOrEqual(200);
+  });
+});
+
 describe("AC7 — impersonation is caught, but quoting the record is not", () => {
+  it("catches an anchor with a clause interposed before the first person", () => {
+    // Ratified regression against AC5/AC7: `As your Governor — and I say this
+    // plainly — I…` contains no listed form verbatim and normalises away from
+    // every one of them, so exact matching let it reach the reader.
+    for (const shape of [
+      "As your Governor — and I say this plainly — I want to be clear.",
+      "As Governor of Oregon, having considered the record, my view is this.",
+      "As your Governor (speaking plainly), I think so.",
+    ]) {
+      expect(screenOpening(shape).kind, `must catch: ${shape}`).toBe("impersonates");
+    }
+  });
+
+  it("does NOT flag the avatar describing her in the third person", () => {
+    // The pronoun is what separates impersonation from description; matching the
+    // anchor alone would flag correct prose.
+    const ok = `${AVATAR_FRAME[0]}, as Governor of Oregon, Tina Kotek signed the order.`;
+    expect(screenOpening(ok)).toEqual({ kind: "ok" });
+  });
+
   it("catches every declared form, in real shapes", () => {
     for (const form of IMPERSONATION_FORMS) {
       for (const shape of [

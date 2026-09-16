@@ -23,7 +23,7 @@ import type { RetrievedPolicyChunk } from "../types";
 export const AVATAR_FRAME = [
   "as a virtual avatar of the governor",
   "as a virtual avatar of governor kotek",
-  "speaking as a virtual avatar",
+  "speaking as a virtual avatar of the governor",
 ] as const;
 
 /**
@@ -37,13 +37,33 @@ export const AVATAR_FRAME = [
  */
 export const IMPERSONATION_FORMS = [
   "i, tina kotek",
-  "as governor of oregon, i",
-  "as the governor of oregon, i",
-  "as your governor, i",
   "i am the governor",
   "my administration",
   "vested in me",
 ] as const;
+
+/**
+ * Phrases that impersonate **when first person follows them** — "as your
+ * Governor … I", "as Governor of Oregon … my".
+ *
+ * Split from the exact forms because matching the whole phrase verbatim missed
+ * the obvious dodge: `As your Governor — and I say this plainly — I…` contains no
+ * listed form, normalises away from every one of them, and reaches the reader.
+ * Matching the anchor **alone** would be worse the other way, flagging the avatar
+ * legitimately describing her ("As Governor of Oregon, Tina Kotek signed…"), so
+ * the pronoun is what distinguishes description from impersonation.
+ */
+export const IMPERSONATION_ANCHORS = [
+  "as your governor",
+  "as governor of oregon",
+  "as the governor of oregon",
+  "as oregon's governor",
+] as const;
+
+/** How far past an anchor a first-person pronoun still reads as impersonation. */
+export const ANCHOR_PRONOUN_WINDOW = 80;
+
+const FIRST_PERSON = /\b(i|i'm|i've|my|me|mine)\b/;
 
 /**
  * The longest run of the avatar's own prose, in words, that may pass without the
@@ -134,6 +154,14 @@ export function screenOpening(opening: string): OpeningVerdict {
   const own = normalise(unquoted(opening)).toLowerCase();
   const form = IMPERSONATION_FORMS.find((f) => own.includes(f));
   if (form) return { kind: "impersonates", form };
+  for (const anchor of IMPERSONATION_ANCHORS) {
+    const at = own.indexOf(anchor);
+    if (at === -1) continue;
+    // The pronoun is what makes it impersonation rather than description, and it
+    // may sit past an interposed clause.
+    const after = own.slice(at + anchor.length, at + anchor.length + ANCHOR_PRONOUN_WINDOW);
+    if (FIRST_PERSON.test(after)) return { kind: "impersonates", form: anchor };
+  }
   if (!AVATAR_FRAME.some((f) => own.includes(f))) return { kind: "missing-frame" };
   return { kind: "ok" };
 }
