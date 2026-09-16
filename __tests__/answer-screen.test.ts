@@ -211,3 +211,42 @@ describe("refusal is proportionate — fabrication stops an answer, a missed cit
     expect(said(events)).toContain(PROVENANCE_NOTICE);
   });
 });
+
+describe("the SECOND quotation in an answer verifies as well as the first", () => {
+  it("releases several faithful quotations in a row", async () => {
+    // The bug this pins was invisible to a suite that only ever screened one
+    // quotation: the retained text ends with the previous quotation's CLOSING
+    // mark, so re-deriving the span across the join extracted the prose between
+    // two quotes instead of the quote. Every quotation after the first then
+    // failed as a fabrication. Found on the live runs, not here.
+    const events = await collect([
+      `${frame}, the record shows two things. `,
+      `Under ${EO}: "`,
+      "do hereby order that the State address",
+      '". And again, under the same order: "',
+      "unsheltered homelessness as an emergency",
+      '". That is the record.',
+    ]);
+    const text = said(events);
+    expect(text).toContain("do hereby order that the State address");
+    expect(text, "the second quotation must survive too").toContain(
+      "unsheltered homelessness as an emergency",
+    );
+    expect(text).not.toContain(PROVENANCE_NOTICE);
+  });
+
+  it("still catches a fabrication in the second position", async () => {
+    const events = await collect([
+      `${frame}, the record shows two things. `,
+      `Under ${EO}: "`,
+      "do hereby order that the State address",
+      '". And also: "',
+      "a 13% rise in unsheltered homelessness",
+      '".',
+    ]);
+    const text = said(events);
+    expect(text).toContain("do hereby order that the State address");
+    expect(text).not.toContain("13%");
+    expect(text).toContain(PROVENANCE_NOTICE);
+  });
+});

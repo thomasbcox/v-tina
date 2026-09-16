@@ -238,6 +238,48 @@ function verifiableTextsOf(
  * but each segment is still checked, so the report says which part is wrong
  * rather than condemning the whole span.
  */
+/**
+ * Verifies **one** quotation whose text is already known, against the citation in
+ * `context` (the prose that preceded it).
+ *
+ * Separate from `verifyQuotations` because the streaming path knows exactly which
+ * span it is holding and must not re-derive it: the text already emitted ends
+ * with the *closing* mark of the previous quotation, so pairing marks across
+ * `context + span` extracts the prose BETWEEN two quotations instead of the
+ * quotation itself. Every quotation after the first then failed as
+ * "not-in-any-passage" — a faithful quote reported as a fabrication, found on the
+ * live runs and invisible to a suite that only ever screened one quote at a time.
+ */
+export function verifyOneQuotation(
+  quoted: string,
+  context: string,
+  chunks: readonly RetrievedPolicyChunk[],
+): UnverifiedQuotation | null {
+  const text = normalise(quoted);
+  if (text === "") return null;
+  const titles = [...new Set(chunks.map((c) => c.source.documentTitle))];
+  const everything = [
+    ...chunks.map((c) => normalise(c.content)),
+    ...titles.map((t) => normalise(t)),
+  ];
+  const segments = text
+    .split(/\s*(?:\.\.\.|\u2026)\s*/)
+    .map((x) => x.trim())
+    .filter((x) => x !== "");
+  const inSome = (pool: string[]) => segments.every((seg) => pool.some((p) => p.includes(seg)));
+
+  const citedTitle = titles.find((t) => cites(context, t));
+  if (citedTitle === undefined) {
+    return inSome(everything) ? { text, reason: "no-citation" } : { text, reason: "not-in-any-passage" };
+  }
+  if (inSome(verifiableTextsOf(chunks, citedTitle))) return null;
+  return {
+    text,
+    citedAs: citedTitle,
+    reason: inSome(everything) ? "not-in-cited-document" : "not-in-any-passage",
+  };
+}
+
 export function verifyQuotations(
   answer: string,
   chunks: readonly RetrievedPolicyChunk[],

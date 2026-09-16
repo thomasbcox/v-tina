@@ -8,6 +8,7 @@ import {
 import {
   AVATAR_FRAME,
   screenOpening,
+  verifyOneQuotation,
   verifyQuotations,
 } from "../voice";
 import type { ClassificationResult } from "../safety";
@@ -318,8 +319,11 @@ export async function* screenedAnswer(
 
   /** Verifies one complete quotation, with the preceding text for its citation. */
   const quotationOk = (span: string): string | null => {
-    const bad = verifyQuotations(emitted + span, chunks);
-    const mine = bad.find((b) => span.includes(b.text.slice(0, 24)));
+    // The span's own text, not re-derived from `emitted + span`: the retained
+    // text ends with the PREVIOUS quotation's closing mark, so pairing across the
+    // join extracts the prose between two quotations instead of this one.
+    const inner = span.replace(/^["\u201C]/, "").replace(/["\u201D]$/, "");
+    const mine = verifyOneQuotation(inner, emitted, chunks);
     if (!mine) return null;
     // **Refuse on fabrication, not on a citation this code failed to recognise.**
     // `no-citation` means the words ARE the record's but no document name was
@@ -331,6 +335,13 @@ export async function* screenedAnswer(
       return null;
     }
     return `quotation ${mine.reason}: ${mine.text.slice(0, 60)}`;
+  };
+
+  /** The opening may hold complete quotations of its own; those are extracted
+   *  normally, because no earlier text precedes them. */
+  const openingQuotationsOk = (text: string): string | null => {
+    const bad = verifyQuotations(text, chunks).filter((b) => b.reason !== "no-citation");
+    return bad.length > 0 ? `quotation ${bad[0].reason}: ${bad[0].text.slice(0, 60)}` : null;
   };
 
   /** Releases the held opening, repairing or refusing per the screen. */
@@ -352,7 +363,7 @@ export async function* screenedAnswer(
       opening = `${AVATAR_FRAME[0]}, ${opening.charAt(0).toLowerCase()}${opening.slice(1)}`;
     }
     // The opening may itself carry a complete, cited quotation.
-    const why = quotationOk(opening);
+    const why = openingQuotationsOk(opening);
     if (why) {
       yield* refuse(why);
       return false;

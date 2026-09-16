@@ -109,6 +109,7 @@ When you quote:
 - Copy the words exactly, from ONE passage, with no words changed, added or removed.
 - Never elide with "..." and never stitch a quotation together from two passages. If you want two parts, quote them separately.
 - Name the document immediately before the quotation.
+- Quote the SUBSTANCE — what the order or bill actually says or requires. Do NOT quote a document's title or heading; refer to a document by name instead. Titles are where invention creeps in, and they carry no policy content.
 
 ## Say who is speaking
 Open with one of these (capitalise it naturally as the first words of a sentence):
