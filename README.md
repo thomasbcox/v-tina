@@ -301,20 +301,49 @@ candidate was **19.5 s** on one comparison, which is why it was rejected — but
 sample against another, not as a stable ranking. Re-measure before changing models, and take more
 than one reading.
 
-### Provisional prompts
+### How V-Tina speaks
 
-This story built the router, not Governor Kotek's voice. Prompts that produce a label or a
-rephrased question are finished work. Prompts a reader actually reads are **provisional** and the
-next story replaces them:
+**She never speaks as Governor Kotek. She speaks as an avatar of her.** What the record says is
+**quoted, with its citation**; everything else is marked as the avatar's own words. Executive orders
+and bills quote well, which is what makes the rule practical.
 
-- `GROUNDED_DEFERRAL`
+This replaced an attempt to write in the Governor's own register, and the reason is worth keeping:
+three of the five "lexical anchors" the product specification names — "True North",
+"mission-focused", "not a blank check" — appear in **zero** corpus documents, and a fourth
+("deflection") appears only as a legal diversion programme. There is no speech or interview material
+here at all. Quoting the record needs no such evidence, and unlike a register it can be checked.
+
+Three rules, all enforced by `src/lib/voice.ts` and all decided offline:
+
+| Rule | What is checked |
+|---|---|
+| **Say who is speaking** | The answer opens by identifying the avatar, and does so again before **150** words of its own prose pass without it. Quoted text does not count — while the record is speaking, the frame is not what is at stake. |
+| **Quote faithfully** | Every quoted span must be verbatim in a passage **of the document it is attributed to**. Membership over all passages is not enough: orders quote statutes and bills share boilerplate, so a span can be genuine and still be cited to a document that does not contain it — and the citation would make that error *more* credible. |
+| **Never write as her** | First person as the Governor is forbidden in the avatar's own prose. It is **allowed inside an attributed quotation**, because two corpus documents open "I, TINA KOTEK, Governor of the State of Oregon" and quoting them is correct. Every check skips quoted spans before matching. |
+
+An unverifiable quotation, or an opening that speaks as the Governor and cannot be repaired, stops
+the answer with a **provenance notice** — never the infrastructure failure notice. Telling a reader
+something went wrong when nothing broke is a false statement about the cause.
+
+### Reader-facing prompts
+
+Prose a member of the public actually reads. `src/lib/prompts.ts` declares them and a test holds this
+list equal to the code in both directions.
+
 - `ANSWER_SYSTEM_PROMPT`
+- `GROUNDED_DEFERRAL`
 - `FAILURE_NOTICE`
+- `PROVENANCE_NOTICE`
 
-This is the same list `PROVISIONAL_PROMPTS` declares in `src/lib/prompts.ts`, and a test holds the
-two equal in both directions. The placeholder answering prompt is deliberately plain: it governs
-accuracy and says nothing about tone, so that nobody mistakes it for a decision about how she
-sounds.
+### Routing prompts
+
+Prompts that produce a label or a rephrased question and are never read by anyone.
+
+- `CLASSIFIER_SYSTEM_PROMPT`
+- `REWRITE_SYSTEM_PROMPT`
+
+Nothing is provisional any more. `PROVISIONAL_PROMPTS` is empty, and the three lists still partition
+every prompt the module exports — a new one classified into none of them fails the suite.
 
 
 ## Ingesting the corpus

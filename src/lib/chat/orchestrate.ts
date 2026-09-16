@@ -3,7 +3,13 @@ import {
   ANSWER_SYSTEM_PROMPT,
   FAILURE_NOTICE,
   GROUNDED_DEFERRAL,
+  PROVENANCE_NOTICE,
 } from "../prompts";
+import {
+  AVATAR_FRAME,
+  screenOpening,
+  verifyQuotations,
+} from "../voice";
 import type { ClassificationResult } from "../safety";
 import type { ChatMessage } from "../fireworks";
 import { currentQuestion, type ChatRequestBody } from "./request";
@@ -221,11 +227,12 @@ export async function* orchestrateChat(
   if (gone()) return;
 
   try {
-    for await (const text of deps.answer(
-      buildAnswerMessages(body, question, chunks),
-      signal,
+    for await (const event of screenedAnswer(
+      deps.answer(buildAnswerMessages(body, question, chunks), signal),
+      chunks,
+      log,
     )) {
-      if (text) yield { type: "streamed_tokens", text };
+      yield event;
     }
   } catch (error) {
     log("generation failed", error);
@@ -239,4 +246,175 @@ export async function* orchestrateChat(
   // schema. Reported as not recorded so the absence is visible in the product
   // rather than hidden. Its own story; see the story file's Non-goals.
   yield { type: "audit_log_status", recorded: false };
+}
+
+/** How much opening to hold before judging it: the first complete sentence that
+ *  has something after it, or this many characters, whichever comes first. The
+ *  knob trading delay against an impersonation slipping past — stated, not
+ *  buried. A boundary with nothing after it is not a release point: there would
+ *  be nothing to strip an impersonating sentence back to. */
+export const OPENING_HOLD_CHARS = 240;
+
+/** How much already-emitted text to keep for citation context. A quotation is
+ *  cited just before it, and the verifier needs that text to know which document
+ *  the span claims to come from. */
+const CITATION_CONTEXT_CHARS = 240;
+
+/** Straight and typographic quote marks, as the answer may use either. */
+const OPEN_MARKS = ['"', "\u201C"];
+const CLOSE_OF: Record<string, string> = { '"': '"', "\u201C": "\u201D" };
+
+/** True when every quote mark in `text` is matched. An opening is not released
+ *  while a quotation is still open in it, or the quoted words would escape
+ *  verification entirely. */
+function marksBalanced(text: string): boolean {
+  let open = 0;
+  for (const ch of text) {
+    if (ch === '"') open ^= 1;
+    else if (ch === "\u201C") open += 1;
+    else if (ch === "\u201D") open -= 1;
+  }
+  return open === 0;
+}
+
+/**
+ * The answer, screened on its way to the reader. **Two holds, and only two.**
+ *
+ * The **opening** is held until `screenOpening` can judge it: an impersonation is
+ * stripped to a clean boundary, or refused if stripping would leave wreckage; a
+ * missing frame is prefixed rather than refused, because the likeliest slip
+ * should not cost an answer.
+ *
+ * Each **quotation** is held from its opening mark to its closing mark and
+ * verified against the passages before release — a citation makes a claim more
+ * credible, so words presented as the record's must actually be the record's. The
+ * text already emitted travels with the span, because that is where the citation
+ * naming the document lives. Prose outside quotations streams as it arrives.
+ *
+ * A refusal for either reason emits `PROVENANCE_NOTICE`, **never**
+ * `FAILURE_NOTICE`: telling a reader something went wrong when a provenance gate
+ * fired is a false statement about what happened.
+ */
+export async function* screenedAnswer(
+  tokens: AsyncIterable<string>,
+  chunks: readonly RetrievedPolicyChunk[],
+  log: (context: string, error: unknown) => void,
+): AsyncGenerator<ChatStreamEvent> {
+  let opening = "";
+  let openingReleased = false;
+  let quoting: string | null = null;
+  let closeMark = "";
+  let emitted = "";
+
+  const emit = function* (text: string): Generator<ChatStreamEvent> {
+    emitted = (emitted + text).slice(-CITATION_CONTEXT_CHARS);
+    yield { type: "streamed_tokens", text };
+  };
+
+  const refuse = function* (why: string): Generator<ChatStreamEvent> {
+    log("answer refused on provenance", why);
+    yield { type: "streamed_tokens", text: PROVENANCE_NOTICE };
+  };
+
+  /** Verifies one complete quotation, with the preceding text for its citation. */
+  const quotationOk = (span: string): string | null => {
+    const bad = verifyQuotations(emitted + span, chunks);
+    const mine = bad.find((b) => span.includes(b.text.slice(0, 24)));
+    return mine ? `quotation ${mine.reason}: ${mine.text.slice(0, 60)}` : null;
+  };
+
+  /** Releases the held opening, repairing or refusing per the screen. */
+  const releaseOpening = function* (): Generator<ChatStreamEvent, boolean> {
+    if (!marksBalanced(opening)) {
+      yield* refuse("answer ended inside an unterminated quotation");
+      return false;
+    }
+    const verdict = screenOpening(opening);
+    if (verdict.kind === "impersonates") {
+      const cut = opening.search(/(?<=[.!?])\s+(?=[A-Z"\u201C])/);
+      const rest = cut === -1 ? "" : opening.slice(cut).trim();
+      if (rest === "") {
+        yield* refuse(`opening impersonated ("${verdict.form}") and could not be repaired`);
+        return false;
+      }
+      opening = `${AVATAR_FRAME[0]}, ${rest.charAt(0).toLowerCase()}${rest.slice(1)}`;
+    } else if (verdict.kind === "missing-frame") {
+      opening = `${AVATAR_FRAME[0]}, ${opening.charAt(0).toLowerCase()}${opening.slice(1)}`;
+    }
+    // The opening may itself carry a complete, cited quotation.
+    const why = quotationOk(opening);
+    if (why) {
+      yield* refuse(why);
+      return false;
+    }
+    yield* emit(opening);
+    return true;
+  };
+
+  try {
+    for await (const text of tokens) {
+      if (!text) continue;
+
+      if (!openingReleased) {
+        opening += text;
+        const settled =
+          marksBalanced(opening) &&
+          (/[.!?]\s+\S/.test(opening) || opening.length >= OPENING_HOLD_CHARS);
+        if (!settled) continue;
+        const ok = yield* releaseOpening();
+        openingReleased = true;
+        if (!ok) return;
+        continue;
+      }
+
+      let buffer = text;
+      while (buffer !== "") {
+        if (quoting === null) {
+          const at = buffer.split("").findIndex((c) => OPEN_MARKS.includes(c));
+          if (at === -1) {
+            yield* emit(buffer);
+            buffer = "";
+          } else {
+            if (at > 0) yield* emit(buffer.slice(0, at));
+            closeMark = CLOSE_OF[buffer[at]];
+            quoting = buffer[at];
+            buffer = buffer.slice(at + 1);
+          }
+        } else {
+          const at = buffer.indexOf(closeMark);
+          if (at === -1) {
+            quoting += buffer;
+            buffer = "";
+          } else {
+            const span = `${quoting}${buffer.slice(0, at)}${closeMark}`;
+            const why = quotationOk(span);
+            if (why) {
+              yield* refuse(why);
+              return;
+            }
+            yield* emit(span);
+            quoting = null;
+            buffer = buffer.slice(at + 1);
+          }
+        }
+      }
+    }
+  } catch (error) {
+    // Generation died while the opening was still held. Release it — SCREENED,
+    // never raw — before the failure propagates: `FAILURE_NOTICE` promises
+    // nothing above it is affected, and silently swallowing generated text would
+    // make that untrue. Found by story 2's own suite.
+    if (!openingReleased && opening !== "" && marksBalanced(opening)) {
+      yield* releaseOpening();
+    }
+    throw error;
+  }
+
+  // A short answer may never have reached the release threshold.
+  if (!openingReleased && opening !== "") {
+    const ok = yield* releaseOpening();
+    if (!ok) return;
+  }
+  // An unterminated quotation is never released — it was never verifiable.
+  if (quoting !== null) yield* refuse("answer ended inside an unterminated quotation");
 }
