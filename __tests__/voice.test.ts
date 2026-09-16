@@ -151,6 +151,7 @@ describe("the one grammar", () => {
     const texts = [
       `Before ${q(`a long ${q("nested")} quotation that runs on`)} after.`,
       "It runs 'til the plan is done. Then more follows.",
+      "It runs 'til the Governor's plan is done. Then more follows.",
       "It is 'quoted' here. And 'til the end",
       `Open ${O}never closed at all`,
     ];
@@ -162,6 +163,17 @@ describe("the one grammar", () => {
         resume = resumed.resume;
       }
     }
+  });
+
+  it("a straight mark that is the last character received waits for the next one", () => {
+    // A token ending "Governor'" once closed the span "'til" opened, and a correct
+    // answer was refused before the "s" arrived.
+    const sofar = "It runs 'til the Governor'";
+    const held = lex(sofar, false);
+    expect(held.tokens.some((t) => t.kind === "violation"), "not decided before the next character").toBe(false);
+    expect(held.stable).toBeLessThan(sofar.length);
+    expect(lex(`${sofar}s plan is done. Then more.`, true).tokens.every((t) => t.kind === "prose")).toBe(true);
+    expect(lex(`${sofar} plan is done.`, true).tokens.some((t) => t.kind === "violation"), "a real closing mark still closes").toBe(true);
   });
 
   it("without the look-behind, a word split across tokens would read as a quotation", () => {
@@ -317,6 +329,24 @@ describe("AC3 — a quotation must be verbatim in the document it cites", () => 
       .toBe("straight-double-delimiter");
     expect(verifyQuotations(`Under ${EO}: 'a 13% rise in unsheltered homelessness'. Done.`, PASSAGES)[0].reason)
       .toBe("single-quote-delimiter");
+  });
+
+  it("reads the citation from the avatar's own words, never from inside a quotation", () => {
+    // The live refusal, on the real corpus text: EO 24-02 mentions EO 23-02, and that
+    // mention inside the first quotation became the citation for the second.
+    const eo2402 = "EO 24-02: Merge and Extend Executive Order 23-02 and Executive Order 23-09";
+    const eo2302 = "EO 23-02: Declaring State of Emergency Due to Homelessness";
+    const passages = [
+      chunk(eo2402, readFileSync("corpus/eo-24-02.md", "utf8")),
+      chunk(eo2302, readFileSync("corpus/eo-23-02.md", "utf8"), 1),
+    ];
+    const answer =
+      `Executive Order 24-02 continues that response. It states: ${q(
+        "At the time of this emergency declaration, EO 24-02 on January 9, 2024, the most recent Point in Time " +
+          "Count data available reflects information about homelessness on a single night in January 2023, " +
+          "before the emergency response by way of EO 23-02 was implemented.",
+      )} The same document states: ${q("About 62% of those experiencing homelessness were unsheltered;")}`;
+    expect(verifyQuotations(answer, passages)).toEqual([]);
   });
 
   it("treats the document's own title as record text", () => {

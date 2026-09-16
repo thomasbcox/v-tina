@@ -9,6 +9,7 @@ import {
   CITATION_WINDOW,
   LOOK_BEHIND_CHARS,
   cadenceAfter,
+  citationTextOf,
   indexPassages,
   lex,
   rawOf,
@@ -347,13 +348,16 @@ export async function* screenedAnswer(
   let held: LexResume | undefined;
   let openingDone = false;
   let refused = false;
-  /** The end of what the reader has received — where a quotation's citation is read. */
+  /** The avatar's own words at the end of what the reader has received — where a
+   *  quotation's citation is read. Built with `citationTextOf`. */
   let context = "";
   let cadence: CadenceState = { words: 0 };
 
-  function* emit(text: string): Generator<ChatStreamEvent> {
+  /** Sends `text` to the reader. `cites` is what it adds to the citation context:
+   *  all of it for the avatar's own words, less for anything quoted. */
+  function* emit(text: string, cites: string = text): Generator<ChatStreamEvent> {
     if (text === "") return;
-    context = (context + text).slice(-CITATION_WINDOW * 2);
+    context = (context + cites).slice(-CITATION_WINDOW * 2);
     yield { type: "streamed_tokens", text };
   }
 
@@ -388,7 +392,7 @@ export async function* screenedAnswer(
       return false;
     }
     cadence = cadenceAfter(text);
-    yield* emit(text);
+    yield* emit(text, lex(text, true).tokens.map(citationTextOf).join(""));
     return true;
   }
 
@@ -471,7 +475,7 @@ export async function* screenedAnswer(
           return;
         }
         if (problem) log("quotation released without a detected citation", problem.text.slice(0, 60));
-        yield* emit(t.raw);
+        yield* emit(t.raw, citationTextOf(t));
         released = end;
       }
       start = end;

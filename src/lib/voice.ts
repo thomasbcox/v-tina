@@ -154,11 +154,22 @@ function singleOpensAt(text: string, i: number, lookBehind: string): boolean {
 
 /** Does a straight single mark close a span that `open` began, before the sentence
  *  ends? `undefined` means the text ran out before either happened. Scanning starts at
- *  `from`, where an earlier call on a shorter text stopped. */
-function singleClosesAfter(text: string, open: number, from: number): number | null | undefined {
+ *  `from`, where an earlier call on a shorter text stopped.
+ *
+ *  A mark is a closer only when no letter follows it, so a mark that is the last
+ *  character received waits for the next one. It once counted "nothing yet" as "not a
+ *  letter": a model token ending `Governor'` closed a span that `'til` had opened, and
+ *  the answer was refused before the `s` arrived (found closing round b6039ac). */
+function singleClosesAfter(
+  text: string,
+  open: number,
+  from: number,
+  final: boolean,
+): number | null | undefined {
   for (let j = Math.max(open + 1, from); j < text.length; j += 1) {
-    if (text[j] === "'" && /\p{L}|[.,;:!?]/u.test(text[j - 1] ?? "") && !/\p{L}/u.test(text[j + 1] ?? " ")) {
-      return j;
+    if (text[j] === "'" && /\p{L}|[.,;:!?]/u.test(text[j - 1] ?? "")) {
+      if (j + 1 === text.length && !final) return undefined;
+      if (!/\p{L}/u.test(text[j + 1] ?? " ")) return j;
     }
     if (/[.!?]/.test(text[j]) && /\s/.test(text[j + 1] ?? "")) return null;
   }
@@ -245,7 +256,7 @@ export function lex(text: string, final: boolean, lookBehind = " ", resume?: Lex
 
     if (ch === "'" && (i === text.length - 1 ? !final : singleOpensAt(text, i, lookBehind))) {
       if (i === text.length - 1) break; // cannot yet tell what this is
-      const close = singleClosesAfter(text, i, resume?.at === i ? resume.scanned : i + 1);
+      const close = singleClosesAfter(text, i, resume?.at === i ? resume.scanned : i + 1, final);
       if (close === undefined && !final) {
         // Sentence not finished yet. The last character is judged again with the one
         // after it, which a sentence end needs.
@@ -375,10 +386,23 @@ function nearestCitation(context: string, citations: readonly CitationPattern[])
 }
 
 /**
+ * What a token contributes to the text a later quotation's citation is read from: the
+ * avatar's own words, and for anything quoted only a space, so words either side of it
+ * never join. **A quotation's text is the record's, and a document the record names is
+ * not the avatar's citation.** Found live closing round b6039ac: the model quoted EO
+ * 24-02, whose text mentions "EO 23-02", then wrote "The same document states:" and
+ * quoted EO 24-02 again, verbatim — and the mention inside the first quotation became the
+ * citation, so a faithful answer was refused.
+ */
+export function citationTextOf(token: Token): string {
+  return token.kind === "prose" ? token.text : " ";
+}
+
+/**
  * The document `context` cites **nearest to its end** — that is, nearest to the
  * quotation that follows it. Word-bounded, so `Measure 110` never matches inside
  * `110%`, and the closest citation wins rather than whichever document happened to
- * be retrieved first.
+ * be retrieved first. `context` is built with `citationTextOf`.
  */
 export function citedDocument(
   context: string,
@@ -466,7 +490,7 @@ export function verifyQuotedSpan(
 }
 
 /** Every quotation problem in a complete answer: grammar violations, and each
- *  quotation verified against the prose that precedes it. */
+ *  quotation verified against the avatar's own words before it. */
 export function verifyQuotations(
   answer: string,
   passages: PassageIndex | readonly RetrievedPolicyChunk[],
@@ -481,7 +505,7 @@ export function verifyQuotations(
       const problem = verifyQuotedSpan(token.text, before, index);
       if (problem) bad.push(problem);
     }
-    before += rawOf(token);
+    before += citationTextOf(token);
   }
   return bad;
 }

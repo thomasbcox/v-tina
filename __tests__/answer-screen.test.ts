@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { ChatStreamEvent, RetrievedPolicyChunk } from "../src/types";
 import { DISPLAY_FRAME, screenedAnswer } from "../src/lib/chat/orchestrate";
@@ -293,6 +294,41 @@ describe("AC8 — clean answers pass unaltered, streaming, with honest refusals"
     // a quotation opening, "agencies' " closes it, and a clean answer is refused.
     const answer = `${frame}, the record is clear. The Governor's staff and the agencies' work continue under the order.`;
     expect(await sameEveryWay(answer)).toBe(answer);
+  });
+
+  it("passes a word-initial apostrophe and a possessive in one sentence, however the tokens fall", async () => {
+    // Split after "Governor'", the mark once closed the span "'til" opened, and this
+    // correct answer was refused before the "s" arrived.
+    const answer = `${frame}, the record is clear. It runs 'til the Governor's plan is done. That is all.`;
+    expect(await sameEveryWay(answer)).toBe(answer);
+  });
+
+  it("releases a quotation cited in the avatar's words, whatever the quotation before it names", async () => {
+    // The live refusal, replayed on the real corpus text.
+    const at = (title: string, file: string, n: number): RetrievedPolicyChunk => ({
+      ...PASSAGES[0],
+      id: `live-${n}`,
+      content: readFileSync(file, "utf8"),
+      source: { ...PASSAGES[0].source, documentTitle: title },
+    });
+    const chunks = [
+      at("EO 24-02: Merge and Extend Executive Order 23-02 and Executive Order 23-09", "corpus/eo-24-02.md", 0),
+      at("EO 23-02: Declaring State of Emergency Due to Homelessness", "corpus/eo-23-02.md", 1),
+    ];
+    const quoted =
+      `${O}At the time of this emergency declaration, EO 24-02 on January 9, 2024, the most recent Point in Time ` +
+      "Count data available reflects information about homelessness on a single night in January 2023, before the " +
+      `emergency response by way of EO 23-02 was implemented.${C} The same document states: ` +
+      `${O}About 62% of those experiencing homelessness were unsheltered;${C}`;
+    // Both quotations after the opening; then the first inside it, where the opening's
+    // own words must carry the citation forward to the second.
+    for (const lead of [
+      "here is the record. Executive Order 24-02 continues that response. It states: ",
+      "Executive Order 24-02 continues that response and states: ",
+    ]) {
+      const answer = `${frame}, ${lead}${quoted}`;
+      expect(await sameEveryWay(answer, chunks), lead).toBe(answer);
+    }
   });
 
   it("streams progressively rather than as one block", async () => {

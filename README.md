@@ -332,8 +332,10 @@ recognise single marks, and a fabricated quotation in single quotes reached the 
 **How a citation is recognised.** Each document's kind is declared once — `EO` as "Executive Order",
 `SB` as "Senate Bill", `Ballot Measure` as "Measure" — and its number is never matched alone. The first
 version matched bare numbers, and `EO 24-02` contains "Springfield/Lane County (110%)", which made an
-unrelated statistic cite Ballot Measure 110. Matches are word-bounded and the citation nearest the
-quotation wins.
+unrelated statistic cite Ballot Measure 110. Matches are word-bounded, the citation nearest the
+quotation wins, and it is read **only from the avatar's own words**: a document named *inside* a
+quotation is the record talking, not the avatar citing, and reading it as a citation once refused a
+verbatim quotation of EO 24-02 because the passage quoted before it mentions EO 23-02.
 
 An unverifiable quotation, a quotation in the wrong marks, or an opening that speaks as the Governor
 and cannot be repaired stops the answer with a **provenance notice** — never the infrastructure
