@@ -330,7 +330,7 @@ are person-judged and owe none.
 - review/6 — ran (codex on glm-latest, 2 findings) -> reviews/answer-voice-screen.approach.b6039ac.json
 - review/8 — n/a — the approach pass gated it in both rounds: round f8eda18 (a BLOCKER reshaping the quote layer) and round b6039ac (a BLOCKER reshaping the streaming loop). The line-level critics have not yet run on this story.
 - close/3b — no activation
-- close/4 — presented: re-review only. Round b6039ac's finding 1 reshaped the streaming loop, so merge was not offered. Two defects found during verification, outside the approved findings, were put to Thomas as separate decisions.
+- close/4 — presented: re-review only. Round b6039ac's finding 1 reshaped the streaming loop, so merge was not offered. Two defects found during verification, outside the approved findings, were put to Thomas as separate decisions; he chose to fix both before the re-review.
 
 ## Build note (2026-09-15)
 
@@ -1218,10 +1218,10 @@ token is joined to it — about 10 ms for a single 4,000-word quotation.
 about 8×, the old code about 64×; the bound is 24×), and held text against the same words flowing (the
 bound is 8×).
 
-### Found while verifying — outside the approved findings, not fixed
+### Found while verifying — outside the approved findings
 
-Two defects that predate this round. Neither belongs to finding 1 or 2, so neither was touched; both
-are put to Thomas at the step-4 stop as separate decisions.
+Two defects that predate this round. Neither belongs to finding 1 or 2, so neither was touched until
+Thomas decided; both were then fixed — see *Fixes (defects A and B)* below.
 
 - **A. A straight apostrophe at the end of a token can get a clean answer refused.** In
   `singleClosesAfter`, a `'` that is the last character received counts as a closing mark, because "no
@@ -1301,3 +1301,64 @@ answer.
   **FIX NOW** — citations are read from the avatar's own words only.
 
 Both are applied before the re-review, so the next review reads them.
+
+## Fixes (2026-09-16, defects A and B)
+
+Gate green at **355 tests**; commits `dfbe098` and `0cb3fc2`.
+
+### A — a straight mark waits for the character after it
+
+`singleClosesAfter` no longer treats "no next character yet" as "not a letter": a `'` that is the last
+character received, with more text coming, stays undecided. The resumable scan already re-judges the
+last character on the next call, so nothing else changed. Tests: the grammar holds `It runs 'til the
+Governor'` undecided and reads it as prose once `s plan is done.` arrives, while a real closing mark
+still closes; the stream passes that sentence unaltered every way it is cut; and the case was added to
+the resume-equivalence texts.
+
+### B — citations come from the avatar's own words
+
+`citationTextOf` in `voice.ts` defines what a token contributes to the text a later quotation's
+citation is read from, and both `verifyQuotations` and the stream (the opening, and each released
+quotation) build their context with it.
+
+**The first version of this fix was wrong, and the live run caught it.** It dropped quoted text from the
+context entirely. That moved earlier citations closer: on the housing question, "SB 1537 provides:
+“…355 characters…” The order also frames the approach, stating that “…”" now had "SB 1537" within the
+240-character window, so an EO 23-04 quotation — "the order" — was cited to SB 1537 and a verbatim
+answer was **refused**. Before the fix that long quotation had kept "SB 1537" out of reach, and the
+quotation was released as uncited. The fix now **blanks quoted text to spaces of the same length**: the
+window reaches exactly as far as it always did, and only matching *inside* a quotation is gone. Both
+live shapes are regression tests on the real corpus files — the EO 24-02 refusal, and the SB 1537
+refusal the first attempt caused — including the path where the opening carries the citation forward.
+
+**Stated limit, unchanged by this fix:** the nearest document the avatar names still wins, and "the
+same order" is not followed back to a document. An anaphoric citation after another document's
+quotation can still be uncited (released, and logged) — it is no longer misattributed.
+
+## Post-fix verification (2026-09-16, defects A and B)
+
+### Demonstrate red
+
+| # | Sabotage | Result |
+|---|---|---|
+| SA | Defect A restored — a mark that is the last character received closes a span | **RED** — grammar and stream |
+| SB1 | Defect B restored offline — quoted text matched for citations | **RED** |
+| SB-remove | **The first attempt restored** — quoted text removed rather than blanked | **RED** — the long-quotation test, grammar and stream |
+| SB2 | Defect B restored in the stream — a released quotation's text matched | **RED** |
+| SB3 | Defect B restored for the opening — the opening's quotations matched | **RED** |
+
+### Live, after the corrected fix
+
+Four questions over HTTP against a fresh production build. Three answered cleanly — **27 of 27
+quotations shown to the reader verbatim in the corpus** — and the frame was repeated by the model
+itself. **One was refused, and correctly.** The housing answer was stopped at a quotation reported "not
+in any passage". That reason is independent of citations, so neither fix could produce it. It was run
+down rather than assumed: four reproductions with the endpoint's own retrieval returned the identical
+six passages, those passages contain the record's sentence, and that sentence verifies at that exact
+point in the answer. The withheld quotation therefore was not the record's wording — the screen
+caught a misquote, which is AC4. (The log keeps only a quotation's first 60 characters, which is why
+this had to be shown indirectly.)
+
+The homelessness probe that first exposed defect B, re-run with the same instruction: **1,035 real
+tokens, 783 led by a space, none trailing; no refusals; the injection fired once, at 162 words; no
+sentence starts past the target unframed; identical output when fed as one chunk.**
