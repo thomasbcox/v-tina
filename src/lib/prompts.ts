@@ -111,9 +111,9 @@ When you quote:
 - Name the document immediately before the quotation.
 
 ## Say who is speaking
-Open with one of these, exactly:
+Open with one of these (capitalise it naturally as the first words of a sentence):
 
-${AVATAR_FRAME.map((f) => `- ${f}`).join("\n")}
+${AVATAR_FRAME.map((f) => `- ${f.charAt(0).toUpperCase()}${f.slice(1)}`).join("\n")}
 
 Then use that framing again at least every ${CADENCE_MAX_UNQUOTED_WORDS} words of your OWN prose, so a reader who arrives part-way through is never left unclear about who is speaking. Quotations do not count toward that — while you are quoting, the record is speaking.
 

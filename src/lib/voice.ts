@@ -183,11 +183,23 @@ function shortTitle(documentTitle: string): string {
 /** How far before a quotation to look for its citation. */
 const CITATION_WINDOW = 180;
 
-/** Every distinct passage text belonging to `documentTitle`. */
-function passagesOf(chunks: readonly RetrievedPolicyChunk[], documentTitle: string): string[] {
-  return chunks
-    .filter((c) => c.source.documentTitle === documentTitle)
-    .map((c) => normalise(c.content));
+/**
+ * Every verifiable text belonging to `documentTitle` — its passages **and its
+ * own title**.
+ *
+ * The title counts because the system hands it to the model alongside the
+ * passage, so quoting it is quoting the record. Leaving it out made the verifier
+ * refuse a faithful answer on the first live run: the model quoted the document's
+ * title, the title is in no passage body, and a correct answer was stopped as a
+ * fabrication. That is the false-positive class the design review warned would
+ * train its reader to discount findings.
+ */
+function verifiableTextsOf(
+  chunks: readonly RetrievedPolicyChunk[],
+  documentTitle: string,
+): string[] {
+  const own = chunks.filter((c) => c.source.documentTitle === documentTitle);
+  return [...own.map((c) => normalise(c.content)), normalise(documentTitle)];
 }
 
 /**
@@ -210,7 +222,10 @@ export function verifyQuotations(
   chunks: readonly RetrievedPolicyChunk[],
 ): UnverifiedQuotation[] {
   const titles = [...new Set(chunks.map((c) => c.source.documentTitle))];
-  const allPassages = chunks.map((c) => normalise(c.content));
+  const allPassages = [
+    ...chunks.map((c) => normalise(c.content)),
+    ...titles.map((t) => normalise(t)),
+  ];
   const bad: UnverifiedQuotation[] = [];
   const spans = quotedSpans(answer);
 
@@ -251,7 +266,7 @@ export function verifyQuotations(
       }
       continue;
     }
-    if (inSome(passagesOf(chunks, citedTitle))) continue;
+    if (inSome(verifiableTextsOf(chunks, citedTitle))) continue;
     if (merged()) continue;
     bad.push({
       text: quoted,

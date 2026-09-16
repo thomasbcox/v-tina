@@ -243,3 +243,20 @@ describe("AC6 — the avatar re-identifies itself before the reader loses track"
     expect(checkCadence(words(CADENCE_MAX_UNQUOTED_WORDS + 5))).toHaveLength(1);
   });
 });
+
+describe("a document's own title is record text, not a fabrication", () => {
+  it("verifies a quotation of the title the system itself supplied", () => {
+    // Found by the FIRST live run, not by this suite: the model quoted the
+    // document's title — which the system hands it alongside the passage — and
+    // the verifier, knowing only passage bodies, stopped a correct answer as a
+    // fabrication. A false positive of exactly the class that teaches its reader
+    // to ignore findings.
+    const answer = `Under ${EO}, the document is titled "Declaring State of Emergency".`;
+    expect(verifyQuotations(answer, PASSAGES)).toEqual([]);
+  });
+
+  it("still rejects a title that belongs to a different document", () => {
+    const answer = `Under ${SB}: "Declaring State of Emergency".`;
+    expect(verifyQuotations(answer, PASSAGES)[0].reason).toBe("not-in-cited-document");
+  });
+});
