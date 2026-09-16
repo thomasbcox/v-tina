@@ -313,17 +313,32 @@ three of the five "lexical anchors" the product specification names — "True No
 ("deflection") appears only as a legal diversion programme. There is no speech or interview material
 here at all. Quoting the record needs no such evidence, and unlike a register it can be checked.
 
-Three rules, all enforced by `src/lib/voice.ts` and all decided offline:
+Three rules. All of them derive from **one grammar** in `src/lib/voice.ts` — the streaming answer path
+and every offline check call the same lexer, so they cannot disagree about what a quotation is.
 
-| Rule | What is checked |
+| Rule | What is enforced |
 |---|---|
-| **Say who is speaking** | The answer opens by identifying the avatar, and does so again before **150** words of its own prose pass without it. Quoted text does not count — while the record is speaking, the frame is not what is at stake. |
-| **Quote faithfully** | Every quoted span must be verbatim in a passage **of the document it is attributed to**. Membership over all passages is not enough: orders quote statutes and bills share boilerplate, so a span can be genuine and still be cited to a document that does not contain it — and the citation would make that error *more* credible. |
-| **Never write as her** | First person as the Governor is forbidden in the avatar's own prose. It is **allowed inside an attributed quotation**, because two corpus documents open "I, TINA KOTEK, Governor of the State of Oregon" and quoting them is correct. Every check skips quoted spans before matching. |
+| **Say who is speaking** | The answer opens by identifying the avatar. After about **150** of its own words it identifies itself again — and if the model does not, the answer path **injects** the frame at the next sentence start. No reader meets more than **200** of the avatar's own words without it. Quoted text does not count: while the record is speaking, the frame is not what is at stake. |
+| **Quote faithfully** | A quotation goes in curly marks, `“like this”`, and must be verbatim — contiguous, unelided — in a passage **of the document it is cited to**. Membership over all passages is not enough: orders quote statutes and bills share boilerplate, so a span can be genuine and still cited to a document that does not contain it. |
+| **Never write as her** | First person as the Governor is forbidden in the avatar's own prose, and **allowed inside a quotation**, because two corpus documents open "I, TINA KOTEK, Governor of the State of Oregon" and quoting them is correct. |
 
-An unverifiable quotation, or an opening that speaks as the Governor and cannot be repaired, stops
-the answer with a **provenance notice** — never the infrastructure failure notice. Telling a reader
-something went wrong when nothing broke is a false statement about the cause.
+**Why curly marks, and only curly marks.** They are the one delimiter that can be nested reliably:
+opening and closing are different characters. The corpus uses them inside its own text — 710 marks,
+mostly bills quoting defined terms — so a quotation of that text contains curly marks of its own, and
+the grammar tracks the nesting rather than closing at the first inner mark. A straight double quote
+cannot be nested that way, and **a single-quoted span is refused outright**: the first version did not
+recognise single marks, and a fabricated quotation in single quotes reached the reader unverified.
+
+**How a citation is recognised.** Each document's kind is declared once — `EO` as "Executive Order",
+`SB` as "Senate Bill", `Ballot Measure` as "Measure" — and its number is never matched alone. The first
+version matched bare numbers, and `EO 24-02` contains "Springfield/Lane County (110%)", which made an
+unrelated statistic cite Ballot Measure 110. Matches are word-bounded and the citation nearest the
+quotation wins.
+
+An unverifiable quotation, a quotation in the wrong marks, or an opening that speaks as the Governor
+and cannot be repaired stops the answer with a **provenance notice** — never the infrastructure
+failure notice. Telling a reader something went wrong when nothing broke is a false statement about
+the cause.
 
 ### Reader-facing prompts
 

@@ -6,8 +6,15 @@ import type { RetrievedPolicyChunk } from "../types";
  * V-Tina never speaks as Governor Kotek. She speaks as an avatar **of** her: what
  * the record says is quoted with its citation, and everything else is marked as
  * the avatar's own words. That direction is what makes this module possible —
- * "does this prose sound like her" was never decidable, while "is this quoted
- * span verbatim in the document it cites" is a function.
+ * "does this prose sound like her" was never decidable, while "is this quoted span
+ * verbatim in the document it cites" is a function.
+ *
+ * **Everything here derives from one grammar, `lex`.** The first version decided
+ * "what is a quotation" in three separate places, and they drifted: a fabricated
+ * quotation in single quotes streamed to the reader unverified, and an elided quote
+ * was accepted against an approved criterion (approach review, round f8eda18,
+ * finding 1). The streaming path and every offline check now call the same lexer,
+ * so they cannot disagree about where a quotation starts and ends.
  *
  * Everything here is pure. No model, no network, no clock.
  */
@@ -16,9 +23,8 @@ import type { RetrievedPolicyChunk } from "../types";
  * How the avatar identifies itself. The **authority** for both the prompt (which
  * requires one of these) and the screen (which looks for one), so the two cannot
  * name different things — the pattern `SAFETY_CLASSIFICATIONS` already sets.
- *
- * Matched case-insensitively on a normalised copy, so ordinary capitalisation
- * and spacing differences do not read as a missing frame.
+ * Every member names whose avatar this is; a test asserts that, because a frame
+ * naming nobody would pass every derived check while telling a reader nothing.
  */
 export const AVATAR_FRAME = [
   "as a virtual avatar of the governor",
@@ -27,13 +33,10 @@ export const AVATAR_FRAME = [
 ] as const;
 
 /**
- * First person **as the Governor** — the forms the avatar must never write.
- *
- * These appear in the corpus as operative text: two executive orders open
- * "I, TINA KOTEK, Governor of the State of Oregon …". Quoting that is exactly
- * what this story asks for, which is why every check here skips quoted spans
- * before matching. A quotation-blind screen would fire on the answer shape the
- * prompt is written to produce.
+ * First person **as the Governor**, as exact phrases. These appear in the corpus as
+ * operative text — two executive orders open "I, TINA KOTEK, Governor of the State
+ * of Oregon" — so they are matched only in the avatar's own prose, never inside a
+ * quotation, and quoting them is correct.
  */
 export const IMPERSONATION_FORMS = [
   "i, tina kotek",
@@ -43,15 +46,11 @@ export const IMPERSONATION_FORMS = [
 ] as const;
 
 /**
- * Phrases that impersonate **when first person follows them** — "as your
- * Governor … I", "as Governor of Oregon … my".
- *
- * Split from the exact forms because matching the whole phrase verbatim missed
- * the obvious dodge: `As your Governor — and I say this plainly — I…` contains no
- * listed form, normalises away from every one of them, and reaches the reader.
- * Matching the anchor **alone** would be worse the other way, flagging the avatar
- * legitimately describing her ("As Governor of Oregon, Tina Kotek signed…"), so
- * the pronoun is what distinguishes description from impersonation.
+ * Phrases that impersonate **when first person follows them** — "as your Governor
+ * … I". Matched with the pronoun rather than verbatim, because `As your Governor —
+ * and I say this plainly — I…` contains no listed phrase and escaped exact matching;
+ * and not matched alone, because the avatar may describe her ("As Governor of
+ * Oregon, Tina Kotek signed…").
  */
 export const IMPERSONATION_ANCHORS = [
   "as your governor",
@@ -66,99 +65,214 @@ export const ANCHOR_PRONOUN_WINDOW = 80;
 const FIRST_PERSON = /\b(i|i'm|i've|my|me|mine)\b/;
 
 /**
- * The longest run of the avatar's own prose, in words, that may pass without the
- * avatar identifying itself again.
+ * When the avatar should identify itself again: after about this many of its own
+ * words. The prompt asks for this, and the answer path **injects** the frame at the
+ * first sentence start past it when the model has not.
  *
- * Thomas at the step-7 consult: "once at the top then repeated every few
- * paragraphs or every roughly 100-200 non-quoted words." The middle of that range.
- * **Quoted text does not count toward it** — while the reader is being shown the
- * record they are not being shown the avatar's assertions, so the frame is not
- * what is at stake.
+ * Thomas: "once at the top then repeated every few paragraphs or every roughly
+ * 100-200 non-quoted words." This is the middle of that range.
  */
-export const CADENCE_MAX_UNQUOTED_WORDS = 150;
+export const CADENCE_TARGET_WORDS = 150;
 
-/** Straight and typographic pairs, in open/close order. */
-const QUOTE_PAIRS: ReadonlyArray<readonly [string, string]> = [
-  ['"', '"'],
-  ["“", "”"],
-];
+/**
+ * The ceiling a reader is guaranteed: no run of the avatar's own words longer than
+ * this without a re-identification. The top of Thomas's range.
+ *
+ * **Why two numbers, not one.** The frame is only ever placed at the start of a
+ * sentence — never splitting one in half — so enforcement triggers at the target
+ * and lands at the next sentence boundary. A single bound made that impossible to
+ * satisfy: the first streaming test showed stretches of 151 and 157 words against a
+ * bound of 150, because the sentence in progress when the count crossed had to
+ * finish first. The gap between target and ceiling is the allowance for that
+ * sentence. **Stated limit:** one sentence longer than that gap can still overshoot.
+ */
+export const CADENCE_MAX_UNQUOTED_WORDS = 200;
 
-/** Collapses runs of whitespace so a line-wrapped quotation still matches the
- *  passage it came from. Nothing else is altered — case and punctuation are the
- *  record's, and normalising them would let a misquote pass. */
-export function normalise(text: string): string {
-  return text.replace(/\s+/g, " ").trim();
+/** How far before a quotation to look for its citation. One constant, shared by
+ *  the streaming path and every offline check; they previously used 180 and 240. */
+export const CITATION_WINDOW = 240;
+
+// ---------------------------------------------------------------------------
+// The grammar
+// ---------------------------------------------------------------------------
+
+/** Opening and closing curly double marks — the ONLY quotation delimiters. */
+const OPEN = "“";
+const CLOSE = "”";
+/** An opening curly single mark. The corpus contains none, so it is never prose. */
+const SINGLE_OPEN = "‘";
+
+export type Token =
+  /** The avatar's own words. */
+  | { readonly kind: "prose"; readonly text: string }
+  /** A quotation of the record: `text` excludes the outer marks; `raw` includes them. */
+  | { readonly kind: "quotation"; readonly text: string; readonly raw: string }
+  /** Something presented as quoted that the grammar does not accept. */
+  | { readonly kind: "violation"; readonly raw: string; readonly reason: GrammarViolation };
+
+export type GrammarViolation =
+  /** A straight double quote used as a delimiter. It cannot be one: it is not
+   *  directional, and passages use it internally, so nesting would be ambiguous. */
+  | "straight-double-delimiter"
+  /** A single-quoted span. This is the bypass that let a fabrication through. */
+  | "single-quote-delimiter"
+  /** A quotation that opened and never closed. */
+  | "unterminated";
+
+export interface LexResult {
+  readonly tokens: readonly Token[];
+  /** Length of the prefix whose tokenization cannot change with more input. The
+   *  streaming path releases exactly this much and holds the rest. */
+  readonly stable: number;
 }
 
-export interface QuotedSpan {
-  /** The quoted text, without its marks. */
-  readonly text: string;
-  /** Index of the opening mark in the source string. */
-  readonly start: number;
-  /** Index just past the closing mark. */
-  readonly end: number;
+/** A straight apostrophe that could be opening a single-quoted span: at a word
+ *  start, followed by a letter. Mid-word (`Oregon's`) it is never a delimiter. */
+function singleOpensAt(text: string, i: number): boolean {
+  if (text[i] !== "'") return false;
+  const before = i === 0 ? " " : text[i - 1];
+  const after = text[i + 1];
+  return /[\s(\[:—-]/.test(before) && after !== undefined && /\p{L}/u.test(after);
+}
+
+/** Does a straight single mark close a span that `open` began, before the sentence
+ *  ends? `undefined` means the text ran out before either happened. */
+function singleClosesAfter(text: string, open: number): number | null | undefined {
+  for (let j = open + 1; j < text.length; j += 1) {
+    if (text[j] === "'" && /\p{L}|[.,;:!?]/u.test(text[j - 1] ?? "") && !/\p{L}/u.test(text[j + 1] ?? " ")) {
+      return j;
+    }
+    if (/[.!?]/.test(text[j]) && /\s/.test(text[j + 1] ?? "")) return null;
+  }
+  return undefined;
 }
 
 /**
- * The quoted spans in `text`, outermost first.
+ * The one grammar.
  *
- * Marks are paired by scanning, which a **nested** quotation would break: corpus
- * passages contain their own quoted terms (`"unsheltered homelessness"`), so a
- * faithful quotation of one reproduces them. `verifyQuotations` handles that by
- * trying merged spans; extraction stays simple on purpose.
+ * - A **quotation** opens with `“` and closes when curly nesting returns to depth
+ *   zero. Curly marks are directional, so nesting is trackable — which matters,
+ *   because the corpus uses curly marks inside its own text (710 of them, mostly
+ *   bills quoting defined terms). A faithful quotation reproduces them, and a
+ *   grammar that closed at the first inner `”` would refuse it.
+ * - A **straight double quote** outside a quotation is a violation. Inside one it
+ *   is content.
+ * - A **single-quoted span** — `‘` anywhere, or a straight `'` at a word start that
+ *   closes before the sentence ends — is a violation. `’` alone is always an
+ *   apostrophe: the corpus has 286 of them and no opening `‘` at all.
+ *
+ * `final` says no more text is coming, which resolves anything still open.
  */
-export function quotedSpans(text: string): QuotedSpan[] {
-  const spans: QuotedSpan[] = [];
-  for (const [open, close] of QUOTE_PAIRS) {
-    let i = 0;
-    for (;;) {
-      const a = text.indexOf(open, i);
-      if (a === -1) break;
-      const b = text.indexOf(close, a + 1);
-      if (b === -1) break;
-      spans.push({ text: text.slice(a + 1, b), start: a, end: b + 1 });
-      i = b + 1;
+export function lex(text: string, final: boolean): LexResult {
+  const tokens: Token[] = [];
+  let prose = "";
+  let i = 0;
+  let stable = 0;
+
+  const flushProse = () => {
+    if (prose !== "") tokens.push({ kind: "prose", text: prose });
+    prose = "";
+  };
+
+  while (i < text.length) {
+    const ch = text[i];
+
+    if (ch === OPEN) {
+      let depth = 0;
+      let j = i;
+      for (; j < text.length; j += 1) {
+        if (text[j] === OPEN) depth += 1;
+        else if (text[j] === CLOSE && --depth === 0) break;
+      }
+      if (j >= text.length) {
+        // Still open.
+        if (!final) break;
+        flushProse();
+        tokens.push({ kind: "violation", raw: text.slice(i), reason: "unterminated" });
+        i = text.length;
+        stable = i;
+        break;
+      }
+      flushProse();
+      tokens.push({ kind: "quotation", text: text.slice(i + 1, j), raw: text.slice(i, j + 1) });
+      i = j + 1;
+      stable = i;
+      continue;
     }
+
+    if (ch === '"' || ch === SINGLE_OPEN) {
+      flushProse();
+      tokens.push({
+        kind: "violation",
+        raw: ch,
+        reason: ch === '"' ? "straight-double-delimiter" : "single-quote-delimiter",
+      });
+      i += 1;
+      stable = i;
+      continue;
+    }
+
+    if (ch === "'" && (i === text.length - 1 ? !final : singleOpensAt(text, i))) {
+      if (i === text.length - 1) break; // cannot yet tell what this is
+      const close = singleClosesAfter(text, i);
+      if (close === undefined && !final) break; // sentence not finished yet
+      if (typeof close === "number") {
+        flushProse();
+        tokens.push({ kind: "violation", raw: text.slice(i, close + 1), reason: "single-quote-delimiter" });
+        i = close + 1;
+        stable = i;
+        continue;
+      }
+      // It was an apostrophe after all.
+    }
+
+    prose += ch;
+    i += 1;
+    stable = i;
   }
-  return spans.sort((x, y) => x.start - y.start);
+
+  flushProse();
+  return { tokens, stable: final ? text.length : stable };
 }
 
-/** `text` with every quoted span removed, so the avatar's own prose is what is
- *  left. This is what every check below matches against. */
-export function unquoted(text: string): string {
-  const spans = quotedSpans(text);
-  if (spans.length === 0) return text;
-  let out = "";
-  let cursor = 0;
-  for (const s of spans) {
-    if (s.start < cursor) continue; // overlapping (nested) — already removed
-    out += text.slice(cursor, s.start) + " ";
-    cursor = s.end;
-  }
-  return out + text.slice(cursor);
+/** Collapses whitespace so a line-wrapped quotation still matches its passage, and
+ *  folds quote-mark glyph style (curly ↔ straight) — a model reproducing `“` as `"`
+ *  inside a quotation has not altered a word. Case, digits and every other
+ *  character are the record's, and normalising them would let a misquote pass. */
+export function normalise(text: string): string {
+  return text
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
 }
+
+/** The avatar's own words — every prose token, joined. */
+export function proseOf(text: string): string {
+  return lex(text, true)
+    .tokens.filter((t): t is Extract<Token, { kind: "prose" }> => t.kind === "prose")
+    .map((t) => t.text)
+    .join(" ");
+}
+
+// ---------------------------------------------------------------------------
+// The opening
+// ---------------------------------------------------------------------------
 
 export type OpeningVerdict =
   | { kind: "ok" }
   | { kind: "impersonates"; form: string }
   | { kind: "missing-frame" };
 
-/**
- * Judges an answer's opening: does it identify the avatar, and does it speak as
- * the Governor?
- *
- * **Quoted text is skipped before matching**, which is the whole reason this is
- * safe to run on an answer that opens by quoting an order.
- */
+/** Judges an opening's own prose — quotations are excluded by the grammar, which
+ *  is the whole reason this is safe on an answer that opens by quoting an order. */
 export function screenOpening(opening: string): OpeningVerdict {
-  const own = normalise(unquoted(opening)).toLowerCase();
+  const own = normalise(proseOf(opening)).toLowerCase();
   const form = IMPERSONATION_FORMS.find((f) => own.includes(f));
   if (form) return { kind: "impersonates", form };
   for (const anchor of IMPERSONATION_ANCHORS) {
     const at = own.indexOf(anchor);
     if (at === -1) continue;
-    // The pronoun is what makes it impersonation rather than description, and it
-    // may sit past an interposed clause.
     const after = own.slice(at + anchor.length, at + anchor.length + ANCHOR_PRONOUN_WINDOW);
     if (FIRST_PERSON.test(after)) return { kind: "impersonates", form: anchor };
   }
@@ -166,203 +280,153 @@ export function screenOpening(opening: string): OpeningVerdict {
   return { kind: "ok" };
 }
 
+// ---------------------------------------------------------------------------
+// Citations
+// ---------------------------------------------------------------------------
+
+/**
+ * How Oregon documents are cited in prose, by the kind named in their title.
+ *
+ * Declared rather than guessed. The first version matched a document's bare number,
+ * so Ballot Measure 110's key was `110` — and EO 24-02 contains
+ * "Springfield/Lane County (110%)", which made an unrelated statistic cite the
+ * wrong document. A number is now never matched without its kind.
+ */
+export const CITATION_KINDS: Readonly<Record<string, readonly string[]>> = {
+  EO: ["EO", "Executive Order", "Order"],
+  HB: ["HB", "House Bill"],
+  SB: ["SB", "Senate Bill"],
+  "Ballot Measure": ["Ballot Measure", "Measure"],
+};
+
+/** The ways a document can be cited, derived from its own title. */
+export function citationAliases(documentTitle: string): string[] {
+  const short = (documentTitle.split(":")[0] ?? documentTitle).trim();
+  const m = /^(.*?)\s+(\d+(?:-\d+)?)\b/.exec(short);
+  if (!m) return [short];
+  const [, kind, id] = m;
+  const spellings = CITATION_KINDS[kind] ?? [kind];
+  return [...new Set([short, ...spellings.map((s) => `${s} ${id}`)])];
+}
+
+const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * The document `context` cites **nearest to its end** — that is, nearest to the
+ * quotation that follows it. Word-bounded, so `Measure 110` never matches inside
+ * `110%`, and the closest citation wins rather than whichever document happened to
+ * be retrieved first.
+ */
+export function citedDocument(
+  context: string,
+  documentTitles: readonly string[],
+): string | undefined {
+  const window = context.slice(-CITATION_WINDOW);
+  let best: { title: string; end: number } | undefined;
+  for (const title of documentTitles) {
+    for (const alias of citationAliases(title)) {
+      const re = new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegex(alias)}(?![\\p{L}\\p{N}-])`, "giu");
+      for (const m of window.matchAll(re)) {
+        const end = (m.index ?? 0) + m[0].length;
+        if (!best || end > best.end) best = { title, end };
+      }
+    }
+  }
+  return best?.title;
+}
+
+// ---------------------------------------------------------------------------
+// Verification
+// ---------------------------------------------------------------------------
+
 export interface UnverifiedQuotation {
   readonly text: string;
-  /** The document the answer attributes it to, or undefined if none was found. */
   readonly citedAs?: string;
-  readonly reason: "no-citation" | "not-in-cited-document" | "not-in-any-passage";
-}
-
-/** The short form of a document title, as an answer would cite it: everything
- *  before the first colon. Derived from the passage's own title rather than a
- *  list, so a new document needs no edit here. */
-function shortTitle(documentTitle: string): string {
-  return (documentTitle.split(":")[0] ?? documentTitle).trim();
-}
-
-/**
- * The identifier inside a short title — `23-04` from "EO 23-04", `1537` from
- * "SB 1537 (2024)".
- *
- * Needed because a model cites the document as a person would, not as the
- * metadata spells it: the first live run produced "Executive Order 23-04" where
- * the title reads "EO 23-04", so literal matching saw no citation at all and
- * refused a correct answer. The number is what both spellings share.
- */
-function citationKey(documentTitle: string): string | undefined {
-  return /\b\d+(?:-\d+)?\b/.exec(shortTitle(documentTitle))?.[0];
-}
-
-/** Does `window` cite `documentTitle`, in either the metadata's spelling or a
- *  reader's? */
-function cites(window: string, documentTitle: string): boolean {
-  if (window.includes(shortTitle(documentTitle))) return true;
-  const key = citationKey(documentTitle);
-  return key !== undefined && window.includes(key);
-}
-
-/** How far before a quotation to look for its citation. */
-const CITATION_WINDOW = 180;
-
-/**
- * Every verifiable text belonging to `documentTitle` — its passages **and its
- * own title**.
- *
- * The title counts because the system hands it to the model alongside the
- * passage, so quoting it is quoting the record. Leaving it out made the verifier
- * refuse a faithful answer on the first live run: the model quoted the document's
- * title, the title is in no passage body, and a correct answer was stopped as a
- * fabrication. That is the false-positive class the design review warned would
- * train its reader to discount findings.
- */
-function verifiableTextsOf(
-  chunks: readonly RetrievedPolicyChunk[],
-  documentTitle: string,
-): string[] {
-  const own = chunks.filter((c) => c.source.documentTitle === documentTitle);
-  return [...own.map((c) => normalise(c.content)), normalise(documentTitle)];
+  readonly reason:
+    | "no-citation"
+    | "not-in-cited-document"
+    | "not-in-any-passage"
+    | "elided"
+    | GrammarViolation;
 }
 
 /**
- * Reports every quoted span that is not verbatim in a passage **of the document
- * it is attributed to**.
+ * Verifies **one** quotation against the citation in the text before it.
  *
- * Membership over all passages is not enough, and the corpus is why: executive
- * orders quote statutes and bills share boilerplate, so a span can be genuine and
- * still be cited to a document that does not contain it. The reader then follows
- * a citation to a document without those words, and the citation has made the
- * error *more* credible — which is the failure this whole design exists to
- * prevent.
+ * The only verifier — both the streaming path and `verifyQuotations` call it. The
+ * earlier second verifier re-derived spans from text and is what mis-extracted
+ * every quotation after the first on the live runs.
  *
- * Elision is treated as a violation of the quoting contract the prompt states,
- * but each segment is still checked, so the report says which part is wrong
- * rather than condemning the whole span.
+ * Elision is rejected outright, as AC3 and the prompt both say. The first version
+ * split on the ellipsis and checked each segment separately, which accepted a
+ * faithful elision against the approved criterion — and could stitch two passages
+ * of one document into a single "quotation".
  */
-/**
- * Verifies **one** quotation whose text is already known, against the citation in
- * `context` (the prose that preceded it).
- *
- * Separate from `verifyQuotations` because the streaming path knows exactly which
- * span it is holding and must not re-derive it: the text already emitted ends
- * with the *closing* mark of the previous quotation, so pairing marks across
- * `context + span` extracts the prose BETWEEN two quotations instead of the
- * quotation itself. Every quotation after the first then failed as
- * "not-in-any-passage" — a faithful quote reported as a fabrication, found on the
- * live runs and invisible to a suite that only ever screened one quote at a time.
- */
-export function verifyOneQuotation(
+export function verifyQuotedSpan(
   quoted: string,
   context: string,
   chunks: readonly RetrievedPolicyChunk[],
 ): UnverifiedQuotation | null {
   const text = normalise(quoted);
   if (text === "") return null;
-  const titles = [...new Set(chunks.map((c) => c.source.documentTitle))];
-  const everything = [
-    ...chunks.map((c) => normalise(c.content)),
-    ...titles.map((t) => normalise(t)),
-  ];
-  const segments = text
-    .split(/\s*(?:\.\.\.|\u2026)\s*/)
-    .map((x) => x.trim())
-    .filter((x) => x !== "");
-  const inSome = (pool: string[]) => segments.every((seg) => pool.some((p) => p.includes(seg)));
+  if (/\.\.\.|…/.test(text)) return { text, reason: "elided" };
 
-  const citedTitle = titles.find((t) => cites(context, t));
-  if (citedTitle === undefined) {
-    return inSome(everything) ? { text, reason: "no-citation" } : { text, reason: "not-in-any-passage" };
+  const titles = [...new Set(chunks.map((c) => c.source.documentTitle))];
+  // A document's title is record text too: the system hands it to the model
+  // alongside the passage (first live run).
+  const textsOf = (title: string) => [
+    ...chunks.filter((c) => c.source.documentTitle === title).map((c) => normalise(c.content)),
+    normalise(title),
+  ];
+  const everywhere = titles.flatMap(textsOf);
+  const inSome = (pool: string[]) => pool.some((p) => p.includes(text));
+
+  const cited = citedDocument(context, titles);
+  if (cited === undefined) {
+    return inSome(everywhere) ? { text, reason: "no-citation" } : { text, reason: "not-in-any-passage" };
   }
-  if (inSome(verifiableTextsOf(chunks, citedTitle))) return null;
+  if (inSome(textsOf(cited))) return null;
   return {
     text,
-    citedAs: citedTitle,
-    reason: inSome(everything) ? "not-in-cited-document" : "not-in-any-passage",
+    citedAs: cited,
+    reason: inSome(everywhere) ? "not-in-cited-document" : "not-in-any-passage",
   };
 }
 
+/** Every quotation problem in a complete answer: grammar violations, and each
+ *  quotation verified against the prose that precedes it. */
 export function verifyQuotations(
   answer: string,
   chunks: readonly RetrievedPolicyChunk[],
 ): UnverifiedQuotation[] {
-  const titles = [...new Set(chunks.map((c) => c.source.documentTitle))];
-  const allPassages = [
-    ...chunks.map((c) => normalise(c.content)),
-    ...titles.map((t) => normalise(t)),
-  ];
   const bad: UnverifiedQuotation[] = [];
-  const spans = quotedSpans(answer);
-
-  for (const [index, span] of spans.entries()) {
-    const quoted = normalise(span.text);
-    if (quoted === "") continue;
-
-    // Which document does the answer attribute this to? Look backwards from the
-    // opening mark for any retrieved document's short title.
-    const before = answer.slice(Math.max(0, span.start - CITATION_WINDOW), span.start);
-    const citedTitle = titles.find((t) => cites(before, t));
-
-    // Segments: the quoting contract forbids elision, but a span that elides is
-    // reported by the segment that fails rather than in full.
-    const segments = quoted
-      .split(/\s*(?:\.\.\.|…)\s*/)
-      .map((x) => x.trim())
-      .filter((x) => x !== "");
-
-    const inSome = (pool: string[]) =>
-      segments.every((seg) => pool.some((p) => p.includes(seg)));
-
-    // A nested quotation breaks naive pairing, so try this span merged with the
-    // ones that follow before declaring it unverified.
-    const merged = (): boolean => {
-      for (let j = index + 1; j < Math.min(spans.length, index + 4); j += 1) {
-        const wide = normalise(answer.slice(span.start + 1, spans[j].end - 1));
-        if (allPassages.some((p) => p.includes(wide))) return true;
-      }
-      return false;
-    };
-
-    if (citedTitle === undefined) {
-      if (!inSome(allPassages) && !merged()) {
-        bad.push({ text: quoted, reason: "not-in-any-passage" });
-      } else {
-        bad.push({ text: quoted, reason: "no-citation" });
-      }
-      continue;
+  let before = "";
+  for (const token of lex(answer, true).tokens) {
+    if (token.kind === "prose") {
+      before += token.text;
+    } else if (token.kind === "violation") {
+      bad.push({ text: token.raw, reason: token.reason });
+      before += token.raw;
+    } else {
+      const problem = verifyQuotedSpan(token.text, before, chunks);
+      if (problem) bad.push(problem);
+      before += token.raw;
     }
-    if (inSome(verifiableTextsOf(chunks, citedTitle))) continue;
-    if (merged()) continue;
-    bad.push({
-      text: quoted,
-      citedAs: citedTitle,
-      reason: inSome(allPassages) ? "not-in-cited-document" : "not-in-any-passage",
-    });
   }
   return bad;
 }
 
+// ---------------------------------------------------------------------------
+// Cadence
+// ---------------------------------------------------------------------------
+
 export interface CadenceGap {
-  /** How many of the avatar's own words ran without a re-identification. */
   readonly words: number;
 }
 
-/**
- * Reports runs of the avatar's own prose that pass the declared bound without the
- * avatar identifying itself again.
- *
- * Quoted text is removed first: a reader being shown the record is not being
- * shown the avatar's assertions, so a long quotation is not a long silence about
- * who is speaking.
- */
-export function checkCadence(
-  answer: string,
-  bound: number = CADENCE_MAX_UNQUOTED_WORDS,
-): CadenceGap[] {
-  const own = normalise(unquoted(answer));
-  const lower = own.toLowerCase();
-  const gaps: CadenceGap[] = [];
-
-  // Where does the avatar identify itself, in word positions?
-  const words = own.split(" ").filter((w) => w !== "");
+/** Word positions, in the avatar's own prose, at which it identifies itself. */
+function framePositions(ownProse: string): number[] {
+  const lower = ownProse.toLowerCase();
   const marks: number[] = [];
   for (const frame of AVATAR_FRAME) {
     let from = 0;
@@ -373,13 +437,31 @@ export function checkCadence(
       from = at + frame.length;
     }
   }
-  marks.sort((a, b) => a - b);
+  return marks.sort((a, b) => a - b);
+}
 
+/** Reports runs of the avatar's own prose past the bound with no re-identification.
+ *  Used by the suite and the stress story; the answer path enforces the same bound
+ *  as it streams. */
+export function checkCadence(answer: string, bound: number = CADENCE_MAX_UNQUOTED_WORDS): CadenceGap[] {
+  const own = normalise(proseOf(answer));
+  const total = own.split(" ").filter((w) => w !== "").length;
+  const gaps: CadenceGap[] = [];
   let cursor = 0;
-  for (const mark of marks) {
+  for (const mark of framePositions(own)) {
     if (mark - cursor > bound) gaps.push({ words: mark - cursor });
     cursor = mark;
   }
-  if (words.length - cursor > bound) gaps.push({ words: words.length - cursor });
+  if (total - cursor > bound) gaps.push({ words: total - cursor });
   return gaps;
+}
+
+/** How many of the avatar's own words `prose` contains after its last frame, or
+ *  `undefined` when it contains no frame. The streaming path's cadence counter. */
+export function wordsAfterLastFrame(prose: string): number | undefined {
+  const own = normalise(prose);
+  const marks = framePositions(own);
+  if (marks.length === 0) return undefined;
+  const total = own.split(" ").filter((w) => w !== "").length;
+  return total - marks[marks.length - 1];
 }
