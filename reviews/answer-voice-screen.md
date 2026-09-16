@@ -329,8 +329,8 @@ are person-judged and owe none.
 - frame/9 — demonstrated red for all nine sized criteria against the ratified regressions (two sabotages were incomplete on the first attempt, reported as such and redone). Plus four defects the live runs found that the suite could not, each now covered by a red-able test.
 - review/6 — ran (codex on glm-latest, 2 findings) -> reviews/answer-voice-screen.approach.b6039ac.json
 - review/8 — n/a — the approach pass gated it in both rounds: round f8eda18 (a BLOCKER reshaping the quote layer) and round b6039ac (a BLOCKER reshaping the streaming loop). The line-level critics have not yet run on this story.
-- close/3b — no activation. No guard-hook block; the reviewer harness promoted the round's only pass on its first attempt; this repo ships no install.sh to drift.
-- close/4 — presented: re-review only. The approved set includes a BLOCKER that reshapes the quote layer (finding 1), so merge was not offered.
+- close/3b — no activation
+- close/4 — presented: re-review only. Round b6039ac's finding 1 reshaped the streaming loop, so merge was not offered. Two defects found during verification, outside the approved findings, were put to Thomas as separate decisions.
 
 ## Build note (2026-09-15)
 
@@ -1142,3 +1142,150 @@ fallback that only activates when the model slips, tested only with input the mo
 never exercised.** The fix must be tested with token shapes taken from real model output.
 
 **Correctness and hidden-failure: not run.** Finding 1 reshapes the code both critics would read.
+
+## Fixes (2026-09-16, approach round 2 — b6039ac)
+
+Gate green at **349 tests**; commits `3077f9f` (the fixes) and `796054d` (a test demonstrate-red showed
+was missing). Production build clean.
+
+### First, real model output
+
+The lesson recorded with the decisions was that the fallback had only ever been tested with token
+shapes no model sends. So before any code changed, the live answer model's stream was captured token
+by token: **256 tokens, 185 led by a space, none trailing one**. A paragraph break arrives glued to the
+next word (`"\n\nExecutive"`) and an opening quotation mark arrives as `" “"`. It is committed as
+`__tests__/fixtures/answer-stream.json` together with the passages retrieved for its question, and
+every quotation in it verifies against them.
+
+### Finding 1 (BLOCKER, option A) — the cadence, on real token shapes
+
+**What was wrong, precisely.** The stream decided "a sentence starts here" by asking whether the text
+*already sent* ended in whitespace. A tokeniser attaches the space to the following word, so it never
+did, and the frame was never injected.
+
+**What replaced it** — one cadence rule in `src/lib/voice.ts` that reads the answer's characters by
+position, so where the tokens fell cannot change any judgement:
+
+- `isSentenceStart`: a capital letter after `.`, `!` or `?` (plus any closing marks) and whitespace, or
+  after a blank line. It will not split at `Gov.`, `Mt.`, `U.S.`, an initial, a lowercase continuation
+  or a semicolon. **Checked against the platform before it was written:** Node's built-in sentence
+  segmenter (`Intl.Segmenter`) breaks after "U.S.", "Gov." and "Mt.", so it offered nothing over a short
+  declared list, `NON_TERMINAL_ABBREVIATIONS`.
+- `scanCadence`: counts the avatar's own words (a word split across tokens is one word), resets at a
+  frame the model writes itself, and stops at the first sentence start past the target that does not
+  open with the frame. **The stream injects where it stops and `checkCadence` reports where it stops**,
+  so the enforcement and its check cannot disagree.
+- At that sentence start the stream holds a few characters, until the first word is complete and it
+  is clear the model is not writing the frame itself. An injected frame therefore never lowercases half
+  a word or doubles a frame the model was already writing.
+
+**Option A, as Thomas chose it.** `CADENCE_MAX_UNQUOTED_WORDS` is deleted. `checkCadence` reports
+sentence starts past the target without a frame, and does not report one long sentence — the stated
+limit. The README now says "about **150** … there is no hard ceiling", and a test pins that row to the
+constant and against the withdrawn promise. **AC6 and its oracle row were amended to match the
+decision, and marked as amendments.** Left as written, AC6 would still promise the bound Thomas
+withdrew — the same disagreement between spec, README and code that the finding named.
+
+**Tests.** Every stream cadence test runs its answer five ways — real-shaped tokens, trailing-space
+chunks (the old shape), one character at a time, seven characters, and whole — and asserts the reader
+receives identical text each way. The captured real answer is replayed and must come through
+unaltered.
+
+### Finding 2 (IMPORTANT) — the stream, linear
+
+**The recorded remedy, implemented.** `lex(text, final, lookBehind)` lexes only unreleased text, given
+the one character before it that the apostrophe rule reads. `indexPassages` prepares each answer's
+passages and citation patterns once, and `verifyQuotedSpan` reads that index.
+
+**The recorded remedy was not enough on its own, and measurement showed it — stated here rather than
+slipped in.** After it, an ordinary answer was linear: 4,000 one-word tokens went from **465 ms to
+6 ms**. But the grammar deliberately holds text back — a quotation until it closes, a straight
+apostrophe until its sentence ends — and held text was still rescanned from its start on every token:
+**444 ms** for a 4,000-word quotation still open, **575 ms** for an apostrophe waiting on its sentence
+end. Keeping the whole answer in one string also made every slice copy all of it. Two additions, both
+inside the same finding:
+
+- `lex` returns where its scan of a held construct stopped (`LexResume`), and the next call resumes
+  there. That changes how much is read, never what is decided: a test compares resumed and fresh
+  results at every length of four texts.
+- The stream discards released text beyond `LOOK_BEHIND_CHARS` (88 characters), the furthest back any
+  rule reads.
+
+Result: **10 ms** and **6 ms**. **Stated limit:** held text is still copied once per token when the next
+token is joined to it — about 10 ms for a single 4,000-word quotation.
+
+**Tests.** Two cost tests, both ratios rather than clocks: an answer eight times longer (linear work is
+about 8×, the old code about 64×; the bound is 24×), and held text against the same words flowing (the
+bound is 8×).
+
+### Found while verifying — outside the approved findings, not fixed
+
+Two defects that predate this round. Neither belongs to finding 1 or 2, so neither was touched; both
+are put to Thomas at the step-4 stop as separate decisions.
+
+- **A. A straight apostrophe at the end of a token can get a clean answer refused.** In
+  `singleClosesAfter`, a `'` that is the last character received counts as a closing mark, because "no
+  next character yet" reads as "not a letter". If the same sentence opened with a word-initial straight
+  apostrophe, the stream decides a quotation violation before the next token can show the word was
+  `Governor's`. Reproduced: `It runs 'til the Governor's plan is done.` passes whole and unaltered, but
+  is refused with the provenance notice when split after `Governor'` — and when fed as model-shaped
+  tokens. The fix would hold that one character until the next arrives.
+- **B. A document named inside a quotation is taken as the next quotation's citation.** Found live. The
+  model quoted EO 24-02 — a passage that itself mentions "EO 23-02" — then wrote "The same document
+  states:" and quoted EO 24-02 again, verbatim. `citedDocument` took the "EO 23-02" inside the previous
+  *quotation* as the nearest citation, judged the verbatim quotation "not in the cited document", and
+  **refused a legitimate answer**. Reading citations from the avatar's own prose only would have cited
+  EO 24-02. A related, harmless but noisy symptom: across the three live answers below, 13 quotations
+  were released under "no detected citation" — all verbatim, but cited with phrases such as "the same
+  order" that the citation rule does not follow.
+
+## Post-fix verification (2026-09-16, round b6039ac)
+
+### Demonstrate red
+
+Run after the fixes were committed. The helper refuses a dirty tree, reports a sabotage that did not
+apply as vacuous, and restores the exact original bytes.
+
+| # | Sabotage | Result |
+|---|---|---|
+| S1 | **The confirmed gap** — injection decided from the text already sent, as before | **RED** — 5 stream tests |
+| S2 | A hard ceiling restored — the frame forced in mid-sentence past 200 words | **RED** — the stated-limit tests, stream and rule |
+| S3 | Abbreviation guard removed | **RED** |
+| S4 | The model's own frame at a due sentence start not recognised | **RED** |
+| S5 | No hold while a sentence might still open with the frame | **RED** — the model's frame, split across tokens, is doubled |
+| S6 | No hold for the first word to finish | **RED** |
+| S7 | A frame the model writes no longer resets the count | **RED** |
+| S8 | A blank line no longer starts a sentence | **RED** |
+| S9 | **The quadratic stream** — whole answer kept and re-lexed on every token | **RED** — the size-ratio test |
+| S10 | Held text rescanned on every token (resume ignored) | **RED** — the held-versus-flowing test |
+| S11 | A resumed scan skips re-judging the last character | **RED** — resume equivalence |
+| S12 | The stream lexes a continuation without its look-behind | **GREEN on the first run: no stream test put a token boundary before an apostrophe.** Test added in `796054d`; **RED** on re-run |
+| S13 | The passage index forgets document titles | **RED** |
+| S14 | The README's withdrawn ceiling restored | **RED** |
+| S15 | The tests' token shape no longer the real one | **RED** — the shape pin |
+
+### Live — the injection on real model output, for the first time
+
+The shipped prompt asks the model to repeat the frame and it does, so the injection had never run on
+real output. A throwaway probe, not shipped, removed that one instruction, streamed the real answer
+model, and fed its real tokens through the real screen:
+
+- **436 tokens, 361 led by a space, none trailing** — the same shape again.
+- The raw answer carried one frame and a **155-word** unframed stretch. The screen **injected once**, at
+  the next sentence start, and no sentence in the result starts past the target unframed: "…include
+  the Birth Through Five Literacy Plan. As a virtual avatar of the Governor, that is the specific early
+  literacy funding pathway for young children in the record."
+- The same answer fed as one whole chunk gave **identical** output.
+
+An earlier probe, on a homelessness question, was refused before it reached the due point. That refusal
+is defect B above, not the cadence.
+
+### Live, through the running endpoint
+
+Production build and `next start`; three questions over HTTP, one per pillar. All in bounds, all
+**streamed progressively** (161–169 text events each), **no refusals and no injections** — the model
+repeated the frame unprompted. **25 of 25 quotations** are verbatim in the corpus, checked by a script
+with its own quotation matching, independent of `voice.ts`. On the first pass two questions hit
+provider failures — a classifier timeout that failed closed to the deferral, and an embeddings 503
+reported as the infrastructure notice. Both are the designed behaviour, and both questions answered on
+retry.
