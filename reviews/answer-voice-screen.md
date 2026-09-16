@@ -1145,7 +1145,7 @@ never exercised.** The fix must be tested with token shapes taken from real mode
 
 ## Fixes (2026-09-16, approach round 2 — b6039ac)
 
-Gate green at **349 tests**; commits `3077f9f` (the fixes) and `796054d` (a test demonstrate-red showed
+Gate green at **350 tests**; commits `3077f9f` (the fixes) and `796054d` (a test demonstrate-red showed
 was missing). Production build clean.
 
 ### First, real model output
