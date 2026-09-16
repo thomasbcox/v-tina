@@ -287,6 +287,14 @@ describe("AC8 — clean answers pass unaltered, streaming, with honest refusals"
     expect(said(await collect(pieces))).toBe(pieces.join(""));
   });
 
+  it("reads a possessive split at its apostrophe as prose, however the tokens fall", async () => {
+    // The stream lexes only unreleased text, so a token boundary can fall between
+    // "Governor" and "'s". Without the character before it, that apostrophe looks like
+    // a quotation opening, "agencies' " closes it, and a clean answer is refused.
+    const answer = `${frame}, the record is clear. The Governor's staff and the agencies' work continue under the order.`;
+    expect(await sameEveryWay(answer)).toBe(answer);
+  });
+
   it("streams progressively rather than as one block", async () => {
     const events = await collect([`${frame}, first part here. `, "second part. ", "third part. ", "fourth part."]);
     expect(events.filter((e) => e.type === "streamed_tokens").length).toBeGreaterThan(2);
