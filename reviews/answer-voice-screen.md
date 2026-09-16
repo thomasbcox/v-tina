@@ -322,11 +322,105 @@ are person-judged and owe none.
 ## Loop record
 
 - frame/6 — ran twice. Round 1 (superseded design) -> reviews/answer-voice-screen.design.fdc04f4.json. Round 2, the binding pass, after Thomas inverted the design at the consult: codex on kimi-latest, 6 findings, 13 regressions -> reviews/answer-voice-screen.design.896817f.json
-- frame/9 — not yet reached
+- frame/9 — demonstrated red for all nine sized criteria against the ratified regressions (two sabotages were incomplete on the first attempt, reported as such and redone). Plus four defects the live runs found that the suite could not, each now covered by a red-able test.
 - review/6 — not yet reached
 - review/8 — not yet reached
 - close/3b — not yet reached
 - close/4 — not yet reached
+
+## Build note (2026-09-15)
+
+| AC | Where it is satisfied |
+|---|---|
+| 1 | `AVATAR_FRAME` + `screenOpening` in `src/lib/voice.ts`; tests `__tests__/voice.test.ts` |
+| 2 | `ANSWER_SYSTEM_PROMPT` in `src/lib/prompts.ts`; read live |
+| 3 | `verifyQuotations` / `verifyOneQuotation` — verbatim in the **cited** document |
+| 4 | `screenedAnswer` in `src/lib/chat/orchestrate.ts` — each quotation held and verified before release |
+| 5 | The prompt's quote-first rule; read live |
+| 6 | `CADENCE_MAX_UNQUOTED_WORDS` + `checkCadence` |
+| 7 | `IMPERSONATION_FORMS` + `IMPERSONATION_ANCHORS`, matched outside quotations |
+| 8 | `screenedAnswer`'s release points and `PROVENANCE_NOTICE` |
+| 9 | Pins in `__tests__/answer-screen.test.ts` |
+| 10 | One set of constants in `voice.ts`, interpolated into the prompt; README pairing |
+| 11 | Reviewer |
+| 12 | Three lists in `prompts.ts` + `__tests__/readme-prompts.test.ts` |
+| 13 | Scope containment |
+
+## Step-9 verification (2026-09-15)
+
+Gate green at **328 tests**. Production build clean.
+
+### Demonstrate red — the ratified regressions
+
+| Sabotage (ratified regression) | Result |
+|---|---|
+| **AC1** — the frame constant weakened to name nobody | **RED** |
+| **AC3** — set membership instead of the cited document | **RED** |
+| **AC7** — exact matching, so an interposed clause escapes | **RED** |
+| **AC7** — the screen stops skipping quoted text | **RED** |
+| **AC8** — a provenance refusal dressed as an infrastructure failure | **RED** |
+| **AC12** — a voice-bearing prompt exported from another module | **RED** |
+| **AC9** — the deferral loses the portal | **RED** |
+| AC4 *(mine — criterion added after the review)* — verification disabled | **RED** |
+| AC6 *(mine)* — the cadence bound disabled | **RED** |
+
+**Two sabotages first reported "dead assertion" and were wrong to.** Each had a second code path
+untouched — verification runs at two call sites, and cadence checks both inter-mark and trailing
+runs. Redone completely, both went red. A sabotage that does not fully apply proves nothing, and
+saying so beats recording a false clean.
+
+**Criterion numbering.** The ratified regressions name the criteria as they stood at the round-2
+review; criteria 4 and 6 were added afterwards at the consult, shifting the later numbers. The
+mapping is: review AC1→1, AC3→3, AC5→7, AC6→8, AC7→9, AC8→10, AC10→12.
+
+### Four defects the live runs found that the suite could not
+
+The suite drives a fake model, so it only ever sees the cases its author imagined. Every one of
+these came from running the real thing.
+
+1. **A document's own title read as a fabrication.** The model quoted the title the system itself
+   hands it; the verifier knew only passage bodies and stopped a correct answer. Titles are now
+   verifiable text.
+2. **Citations written the way a reader writes them were invisible.** The model cited "Executive
+   Order 23-04" where the metadata reads "EO 23-04", so no citation was detected and a faithful
+   quotation was refused. Matching now also uses the identifier the two spellings share.
+3. **Every quotation after the first was mis-extracted.** The held span was re-derived from
+   `emitted + span`, and the retained text ends with the *previous* quotation's closing mark — so
+   mark-pairing returned the prose *between* two quotations. Faithful quotes failed as fabrications.
+   The streaming path now verifies the span it is actually holding.
+4. **The opening hold swallowed whole answers.** It waited for the entire accumulation to balance,
+   which a quote-heavy answer rarely does at a token boundary — so one bad quotation late in an
+   answer discarded every good one before it. It now releases at the earliest sentence end where no
+   quotation is open.
+
+Each is covered by a test that goes red without the fix. **Refusal was also made proportionate**: a
+quotation whose words are genuinely in the record but whose citation this code failed to recognise
+is reported, not refused — no reader is misdirected to a specific document by a missing citation,
+and refusing it suppressed correct answers.
+
+### The live answer, and what it shows
+
+Question: *"What has Oregon done to increase housing production?"*
+
+The avatar identified itself at the top, **re-identified itself mid-answer**, made **seven
+quotations — all released**, each attributed to a named document, never wrote in the Governor's first
+person, and closed with *"These passages do not describe other measures, so I cannot speak to
+anything beyond them."* Six quoted spans were checked by hand against the corpus afterwards: **all
+six are verbatim in the documents they cite** (five in `eo-23-04.md`, one in `sb-1537.md`).
+
+**The screen caught a real fabrication before the fixes, and it is worth recording.** Asked about
+early literacy, the model quoted a legislative title as *"An Act relating to early literacy; creating
+new provisions;"* — the record reads *"An Act relating to early literacy (Oregon Laws 2023, chapter
+534)"*. The clause **"; creating new provisions;" appears nowhere in the corpus.** A plausible,
+confidently-cited invention, stopped before a reader saw it. That is the risk this whole story was
+built for, caught in the wild on its first day. The prompt now also forbids quoting titles at all —
+they carry no policy content and are where invention crept in.
+
+### Still true, and stated rather than engineered away
+
+Whether the model quotes rather than paraphrases, and whether it slips into her first person in its
+own prose, remain read by a person. The suite cannot judge either: it drives a fake model, and the
+corpus legitimately contains her first person inside quotable text.
 
 ## Open questions
 
