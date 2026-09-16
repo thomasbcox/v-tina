@@ -249,25 +249,19 @@ export async function* orchestrateChat(
   yield { type: "audit_log_status", recorded: false };
 }
 
-/** How much opening to hold before judging it: the first complete sentence that
- *  has something after it, or this many characters, whichever comes first. The
- *  knob trading delay against an impersonation slipping past — stated, not
- *  buried. A boundary with nothing after it is not a release point: there would
- *  be nothing to strip an impersonating sentence back to. */
+/** How much opening to hold before judging it: the earliest complete sentence
+ *  that ends at a point where no quotation is open, or this many characters. The
+ *  knob trading delay against an impersonation slipping past. */
 export const OPENING_HOLD_CHARS = 240;
 
-/** How much already-emitted text to keep for citation context. A quotation is
- *  cited just before it, and the verifier needs that text to know which document
- *  the span claims to come from. */
+/** How much already-emitted text to keep for citation context: a quotation is
+ *  cited just before it. */
 const CITATION_CONTEXT_CHARS = 240;
 
-/** Straight and typographic quote marks, as the answer may use either. */
 const OPEN_MARKS = ['"', "\u201C"];
 const CLOSE_OF: Record<string, string> = { '"': '"', "\u201C": "\u201D" };
 
-/** True when every quote mark in `text` is matched. An opening is not released
- *  while a quotation is still open in it, or the quoted words would escape
- *  verification entirely. */
+/** True when every quote mark in `text` is matched. */
 function marksBalanced(text: string): boolean {
   let open = 0;
   for (const ch of text) {
@@ -281,20 +275,19 @@ function marksBalanced(text: string): boolean {
 /**
  * The answer, screened on its way to the reader. **Two holds, and only two.**
  *
- * The **opening** is held until `screenOpening` can judge it: an impersonation is
- * stripped to a clean boundary, or refused if stripping would leave wreckage; a
- * missing frame is prefixed rather than refused, because the likeliest slip
- * should not cost an answer.
+ * The **opening** is held until it can be judged — the earliest sentence boundary
+ * at which no quotation is open. Releasing at the earliest such point matters:
+ * a quote-heavy answer is unbalanced at most token boundaries, and waiting for
+ * the whole accumulation to balance let the opening swallow entire answers, so
+ * one unverifiable quotation late in an answer discarded every good one before it.
  *
- * Each **quotation** is held from its opening mark to its closing mark and
- * verified against the passages before release — a citation makes a claim more
- * credible, so words presented as the record's must actually be the record's. The
- * text already emitted travels with the span, because that is where the citation
- * naming the document lives. Prose outside quotations streams as it arrives.
+ * Each **quotation** is then held from its opening mark to its closing mark and
+ * verified before release — a citation makes a claim more credible, so words
+ * presented as the record's must be the record's. Prose outside quotations
+ * streams as it arrives.
  *
- * A refusal for either reason emits `PROVENANCE_NOTICE`, **never**
- * `FAILURE_NOTICE`: telling a reader something went wrong when a provenance gate
- * fired is a false statement about what happened.
+ * A refusal emits `PROVENANCE_NOTICE`, **never** `FAILURE_NOTICE`: telling a
+ * reader something went wrong when a provenance gate fired is false about cause.
  */
 export async function* screenedAnswer(
   tokens: AsyncIterable<string>,
@@ -306,136 +299,149 @@ export async function* screenedAnswer(
   let quoting: string | null = null;
   let closeMark = "";
   let emitted = "";
+  let refused = false;
 
-  const emit = function* (text: string): Generator<ChatStreamEvent> {
+  function* emit(text: string): Generator<ChatStreamEvent> {
     emitted = (emitted + text).slice(-CITATION_CONTEXT_CHARS);
     yield { type: "streamed_tokens", text };
-  };
+  }
 
-  const refuse = function* (why: string): Generator<ChatStreamEvent> {
+  function* refuse(why: string): Generator<ChatStreamEvent> {
+    refused = true;
     log("answer refused on provenance", why);
     yield { type: "streamed_tokens", text: PROVENANCE_NOTICE };
-  };
+  }
 
-  /** Verifies one complete quotation, with the preceding text for its citation. */
-  const quotationOk = (span: string): string | null => {
-    // The span's own text, not re-derived from `emitted + span`: the retained
-    // text ends with the PREVIOUS quotation's closing mark, so pairing across the
-    // join extracts the prose between two quotations instead of this one.
+  /** Verifies the span this code is holding, using the preceding text for its
+   *  citation. The span's text is NOT re-derived from `emitted + span`: the
+   *  retained text ends with the previous quotation's closing mark, so pairing
+   *  across the join extracts the prose between two quotations instead. */
+  function quotationProblem(span: string): string | null {
     const inner = span.replace(/^["\u201C]/, "").replace(/["\u201D]$/, "");
-    const mine = verifyOneQuotation(inner, emitted, chunks);
-    if (!mine) return null;
-    // **Refuse on fabrication, not on a citation this code failed to recognise.**
-    // `no-citation` means the words ARE the record's but no document name was
-    // detected nearby — a reader is not misdirected to a specific document, which
-    // is the harm. Refusing it suppressed correct answers on the first live runs.
-    // It is still reported by the verifier; it just does not stop the answer.
-    if (mine.reason === "no-citation") {
-      log("quotation released without a detected citation", mine.text.slice(0, 60));
+    const bad = verifyOneQuotation(inner, emitted, chunks);
+    if (!bad) return null;
+    // Refuse on fabrication, not on a citation this code failed to recognise: a
+    // reader is not misdirected to a specific document by a missing citation, and
+    // refusing it suppressed correct answers on the live runs.
+    if (bad.reason === "no-citation") {
+      log("quotation released without a detected citation", bad.text.slice(0, 60));
       return null;
     }
-    return `quotation ${mine.reason}: ${mine.text.slice(0, 60)}`;
-  };
+    return `quotation ${bad.reason}: ${bad.text.slice(0, 60)}`;
+  }
 
-  /** The opening may hold complete quotations of its own; those are extracted
-   *  normally, because no earlier text precedes them. */
-  const openingQuotationsOk = (text: string): string | null => {
-    const bad = verifyQuotations(text, chunks).filter((b) => b.reason !== "no-citation");
-    return bad.length > 0 ? `quotation ${bad[0].reason}: ${bad[0].text.slice(0, 60)}` : null;
-  };
+  /** Streams text, holding each quotation until it verifies. */
+  function* streamRest(text: string): Generator<ChatStreamEvent> {
+    let buffer = text;
+    while (buffer !== "" && !refused) {
+      if (quoting === null) {
+        const at = buffer.split("").findIndex((c) => OPEN_MARKS.includes(c));
+        if (at === -1) {
+          yield* emit(buffer);
+          buffer = "";
+        } else {
+          if (at > 0) yield* emit(buffer.slice(0, at));
+          closeMark = CLOSE_OF[buffer[at]];
+          quoting = buffer[at];
+          buffer = buffer.slice(at + 1);
+        }
+      } else {
+        const at = buffer.indexOf(closeMark);
+        if (at === -1) {
+          quoting += buffer;
+          buffer = "";
+        } else {
+          const span = `${quoting}${buffer.slice(0, at)}${closeMark}`;
+          const why = quotationProblem(span);
+          if (why) {
+            yield* refuse(why);
+            return;
+          }
+          yield* emit(span);
+          quoting = null;
+          buffer = buffer.slice(at + 1);
+        }
+      }
+    }
+  }
 
   /** Releases the held opening, repairing or refusing per the screen. */
-  const releaseOpening = function* (): Generator<ChatStreamEvent, boolean> {
-    if (!marksBalanced(opening)) {
-      yield* refuse("answer ended inside an unterminated quotation");
-      return false;
-    }
+  function* releaseOpening(hasMore: boolean): Generator<ChatStreamEvent, boolean> {
     const verdict = screenOpening(opening);
     if (verdict.kind === "impersonates") {
       const cut = opening.search(/(?<=[.!?])\s+(?=[A-Z"\u201C])/);
-      const rest = cut === -1 ? "" : opening.slice(cut).trim();
-      if (rest === "") {
-        yield* refuse(`opening impersonated ("${verdict.form}") and could not be repaired`);
-        return false;
+      const kept = cut === -1 ? "" : opening.slice(cut).trim();
+      if (kept === "") {
+        // Nothing survives the strip. If the answer continues, drop the
+        // impersonating sentence and let the rest stand behind the frame — the
+        // reader loses one sentence of the model's throat-clearing, not the
+        // answer. Only when nothing follows is there an answer to refuse.
+        if (!hasMore) {
+          yield* refuse(`opening impersonated ("${verdict.form}") and could not be repaired`);
+          return false;
+        }
+        log("impersonating opening dropped", verdict.form);
+        opening = `${AVATAR_FRAME[0]}, `;
+        yield* emit(opening);
+        return true;
       }
-      opening = `${AVATAR_FRAME[0]}, ${rest.charAt(0).toLowerCase()}${rest.slice(1)}`;
+      opening = `${AVATAR_FRAME[0]}, ${kept.charAt(0).toLowerCase()}${kept.slice(1)}`;
     } else if (verdict.kind === "missing-frame") {
       opening = `${AVATAR_FRAME[0]}, ${opening.charAt(0).toLowerCase()}${opening.slice(1)}`;
     }
-    // The opening may itself carry a complete, cited quotation.
-    const why = openingQuotationsOk(opening);
-    if (why) {
-      yield* refuse(why);
+    // The opening may carry complete quotations of its own; nothing precedes
+    // them, so ordinary extraction is correct here.
+    const bad = verifyQuotations(opening, chunks).filter((b) => b.reason !== "no-citation");
+    if (bad.length > 0) {
+      yield* refuse(`quotation ${bad[0].reason}: ${bad[0].text.slice(0, 60)}`);
       return false;
     }
     yield* emit(opening);
     return true;
-  };
+  }
+
+  /** The earliest sentence end at which no quotation is open. */
+  function releasePoint(text: string): number {
+    for (const m of text.matchAll(/[.!?]\s+(?=\S)/g)) {
+      const at = (m.index ?? 0) + m[0].length;
+      if (marksBalanced(text.slice(0, at))) return at;
+    }
+    return text.length >= OPENING_HOLD_CHARS && marksBalanced(text) ? text.length : -1;
+  }
 
   try {
     for await (const text of tokens) {
-      if (!text) continue;
-
-      if (!openingReleased) {
-        opening += text;
-        const settled =
-          marksBalanced(opening) &&
-          (/[.!?]\s+\S/.test(opening) || opening.length >= OPENING_HOLD_CHARS);
-        if (!settled) continue;
-        const ok = yield* releaseOpening();
-        openingReleased = true;
-        if (!ok) return;
+      if (!text || refused) continue;
+      if (openingReleased) {
+        yield* streamRest(text);
         continue;
       }
-
-      let buffer = text;
-      while (buffer !== "") {
-        if (quoting === null) {
-          const at = buffer.split("").findIndex((c) => OPEN_MARKS.includes(c));
-          if (at === -1) {
-            yield* emit(buffer);
-            buffer = "";
-          } else {
-            if (at > 0) yield* emit(buffer.slice(0, at));
-            closeMark = CLOSE_OF[buffer[at]];
-            quoting = buffer[at];
-            buffer = buffer.slice(at + 1);
-          }
-        } else {
-          const at = buffer.indexOf(closeMark);
-          if (at === -1) {
-            quoting += buffer;
-            buffer = "";
-          } else {
-            const span = `${quoting}${buffer.slice(0, at)}${closeMark}`;
-            const why = quotationOk(span);
-            if (why) {
-              yield* refuse(why);
-              return;
-            }
-            yield* emit(span);
-            quoting = null;
-            buffer = buffer.slice(at + 1);
-          }
-        }
-      }
+      opening += text;
+      const split = releasePoint(opening);
+      if (split === -1) continue;
+      const rest = opening.slice(split);
+      opening = opening.slice(0, split);
+      const ok = yield* releaseOpening(rest !== "");
+      openingReleased = true;
+      if (!ok) return;
+      if (rest !== "") yield* streamRest(rest);
     }
   } catch (error) {
-    // Generation died while the opening was still held. Release it — SCREENED,
-    // never raw — before the failure propagates: `FAILURE_NOTICE` promises
-    // nothing above it is affected, and silently swallowing generated text would
-    // make that untrue. Found by story 2's own suite.
-    if (!openingReleased && opening !== "" && marksBalanced(opening)) {
-      yield* releaseOpening();
-    }
+    // Generation died with the opening still held. Release it — SCREENED, never
+    // raw — before the failure propagates: `FAILURE_NOTICE` promises nothing
+    // above it is affected. Found by story 2's own suite.
+    if (!openingReleased && opening !== "" && marksBalanced(opening)) yield* releaseOpening(false);
     throw error;
   }
 
-  // A short answer may never have reached the release threshold.
+  if (refused) return;
   if (!openingReleased && opening !== "") {
-    const ok = yield* releaseOpening();
+    if (!marksBalanced(opening)) {
+      yield* refuse("answer ended inside an unterminated quotation");
+      return;
+    }
+    const ok = yield* releaseOpening(false);
     if (!ok) return;
   }
-  // An unterminated quotation is never released — it was never verifiable.
   if (quoting !== null) yield* refuse("answer ended inside an unterminated quotation");
 }
