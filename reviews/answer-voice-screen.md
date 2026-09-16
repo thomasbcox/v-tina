@@ -323,7 +323,7 @@ are person-judged and owe none.
 
 - frame/6 — ran twice. Round 1 (superseded design) -> reviews/answer-voice-screen.design.fdc04f4.json. Round 2, the binding pass, after Thomas inverted the design at the consult: codex on kimi-latest, 6 findings, 13 regressions -> reviews/answer-voice-screen.design.896817f.json
 - frame/9 — demonstrated red for all nine sized criteria against the ratified regressions (two sabotages were incomplete on the first attempt, reported as such and redone). Plus four defects the live runs found that the suite could not, each now covered by a red-able test.
-- review/6 — not yet reached
+- review/6 — ran (codex on glm-latest, 3 findings) -> reviews/answer-voice-screen.approach.f8eda18.json
 - review/8 — not yet reached
 - close/3b — not yet reached
 - close/4 — not yet reached
@@ -803,3 +803,90 @@ written against risks the story no longer runs. The round-2 pass below is the bi
   clause therefore contains the exact string `IMPERSONATION_FORMS` would list.
 - **Nested quotation is present too**: EO passages contain their own quoted terms (for example
   `"unsheltered homelessness"`), so naive mark-pairing will mis-extract spans.
+
+## Codex (glm-latest) approach review (2026-09-16, base main, HEAD f8eda18)
+
+**Verdict.** 2026-09-16 06:56:27 PDT — The macro shape is sound and I would keep it: pure policy in voice.ts,
+  an injectable async-generator orchestrator, shared prompt/screen constants, and no new
+  dependency. A TransformStream would add transport coupling without removing the necessary
+  opening and quotation state. I would not build the textual provenance layer as shipped: the
+  quote grammar is duplicated and partly forgiving, citation attribution is an unanchored
+  numeric-substring heuristic, and cadence is documented as enforced but has no runtime
+  consumer. Those three shapes need correction before merge.
+
+### BLOCKER
+
+**The quote contract has three parsers and no single grammar** — reversibility: one-way · standing: kludgy
+
+- **Claim:** The async-generator seam is right, but quotation tokenization is implemented
+  independently by quotedSpans, verifyQuotations, and screenedAnswer's character scanner. The
+  copies already diverge: offline verification has a merged-span fallback for nested quotes,
+  while the streaming scanner closes at the first matching mark, so a straight-quoted outer span
+  containing a straight inner quote emits the inner term as unverified prose. Single-quoted
+  model output is not recognized at all and bypasses AC4. Apostrophes inside double quotes are
+  harmless, but single-quote delimiters and nested same-mark quotes are realistic model output.
+  The verifier also splits on ellipsis and passes when each segment is found, although AC3 and
+  the prompt both forbid elision; a segmented quotation can even combine passages. This is the
+  same class of live bug that motivated verifyOneQuotation, now encoded as two verifiers that
+  can drift again.
+- **Alternative:** Keep the hold-each-quotation design, but define one explicit quote grammar
+  and implement one small pure lexer that emits prose and quotation tokens across chunk
+  boundaries. Have both offline and streaming paths call the same verifyQuotedSpan(span,
+  precedingContext, chunks). Either reject ellipses to match AC3, or change the spec and prompt
+  to permit segmented quotations. For marks, require unambiguous curly outer quotes in the
+  prompt and treat any other outer delimiter as a provenance violation; do not add a parser
+  dependency for this.
+- **Win:** One quote grammar replaces three ad hoc paths, closes the single-quote and nested-
+  mark bypasses, makes elision behavior match AC3, removes the merged-span fallback and
+  duplicate verifier, and lets tests exercise the same tokenization the runtime uses.
+
+### IMPORTANT
+
+**Bare numeric citation matching can attribute a quote to the wrong document** — reversibility: two-way · standing: kludgy
+
+- **Claim:** Citation detection reduces a title to a bare identifier and then uses unanchored
+  substring matching. Ballot Measure 110 becomes the bare string 110, and the corpus itself
+  contains 110% in EO 24-02, so an unrelated statistic in the preceding window can make a
+  following quotation appear cited to Ballot Measure 110. A year such as 2024 is usually
+  shielded only because citationKey happens to take the first number in a title such as SB 1537
+  (2024); that is incidental rather than a designed rule. titles.find also selects retrieval
+  order rather than the nearest citation, and the offline and streaming paths use different
+  context windows of 180 and 240 characters. The result is false wrong-document attribution,
+  false refusals of faithful quotations, and ambiguous behaviour when several documents are
+  named nearby.
+- **Alternative:** Derive a small declarative citation alias table from source metadata—for
+  example EO/Executive Order 23-02, SB 1537, and Ballot Measure/Measure 110—and match those
+  aliases with word-boundary patterns immediately before each quote. Select the nearest match
+  and share one context-window constant. Alternatively, require a canonical citation prefix in
+  the answering prompt. No dependency is needed.
+- **Win:** Eliminates incidental-number attribution and retrieval-order ambiguity, centralizes
+  the citation contract, and reduces false refusals while preserving the wrong-document check.
+
+**Cadence is test-only while documented as enforced** — reversibility: two-way · standing: nonstandard
+
+- **Claim:** checkCadence has no production caller. screenedAnswer enforces only the opening and
+  quotation holds; after the opening is released, an arbitrarily long run of unquoted prose
+  streams to the reader regardless of the declared 150-word bound. Meanwhile README says all
+  three voice rules are enforced by voice.ts, and AC6 is a reader-observable outcome. The
+  exported function and its tests therefore create an appearance of runtime enforcement that the
+  answer path does not provide, which is over-built relative to R1-R7 unless a later story is
+  its named consumer.
+- **Alternative:** Either wire cadence into the same token stream by counting unquoted words
+  since the last frame and enforcing a defined boundary behavior, or narrow AC6 and README to
+  prompt-plus-manual/live verification and make checkCadence an explicitly named Story 5
+  diagnostic rather than present it as current enforcement. The choice should be recorded
+  because it changes reader-visible behaviour.
+- **Win:** Makes the shipped behaviour, documentation, and tests agree; either gives AC6 a real
+  gate or removes dead production surface and an unsupported enforcement claim.
+
+### Verified by running the claims, not by reading them
+
+A throwaway probe drove the real `screenedAnswer` and `verifyQuotations` (removed afterwards):
+
+| Claim | Result |
+|---|---|
+| A **single-quoted** fabrication bypasses the hold | **CONFIRMED.** `'a 13% rise in unsheltered homelessness'` — the specification's own invented statistic — **reached the reader**. No mark is recognised, so nothing is held or verified. The central guarantee of this story is bypassed by a punctuation choice. |
+| A faithful elision is accepted, contradicting AC3's approved oracle | **CONFIRMED.** The oracle ratified at the consult says a span elided with an ellipsis fails; the verifier splits on the ellipsis and passes it, and the story's own test asserts that it passes. Implementation and test agree with each other and disagree with the approved criterion. |
+| An elided span can stitch passages | **PARTLY.** Across two *documents* it is caught — the cited-document check rejects the half from the other document. Within one document's several passages it would pass, because each segment is checked against the whole pool independently. |
+| Bare numeric citation keys misattribute | **CONFIRMED in the corpus.** `EO 24-02` contains `Springfield/Lane County (110%)`; the key for Ballot Measure 110 is `110`. |
+| `checkCadence` has no production caller | **CONFIRMED.** Zero callers under `src/`. AC6 describes reader-observable behaviour, and the README says the rule is enforced; only the prompt enforces it. |
