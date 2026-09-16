@@ -325,8 +325,8 @@ are person-judged and owe none.
 - frame/9 — demonstrated red for all nine sized criteria against the ratified regressions (two sabotages were incomplete on the first attempt, reported as such and redone). Plus four defects the live runs found that the suite could not, each now covered by a red-able test.
 - review/6 — ran (codex on glm-latest, 3 findings) -> reviews/answer-voice-screen.approach.f8eda18.json
 - review/8 — n/a — the approach pass gated it: finding 1 (a BLOCKER) reshapes the quote layer both critics would read, so they run next round against the new grammar.
-- close/3b — not yet reached
-- close/4 — not yet reached
+- close/3b — no activation. No guard-hook block; the reviewer harness promoted the round's only pass on its first attempt; this repo ships no install.sh to drift.
+- close/4 — presented: re-review only. The approved set includes a BLOCKER that reshapes the quote layer (finding 1), so merge was not offered.
 
 ## Build note (2026-09-15)
 
