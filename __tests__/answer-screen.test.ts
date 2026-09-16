@@ -182,3 +182,32 @@ describe("AC9 — the reader-facing notices keep their load-bearing content", ()
     }
   });
 });
+
+describe("refusal is proportionate — fabrication stops an answer, a missed citation does not", () => {
+  it("releases a faithful quotation whose citation the matcher did not recognise", () => {
+    // Refusing these suppressed correct answers on the first live runs: the words
+    // ARE the record's, so no reader is misdirected to a document that lacks
+    // them — which is the harm the refusal exists to prevent.
+    return (async () => {
+      const events = await collect([
+        `${frame}, the record says. `,
+        'Somewhere in the papers: "',
+        "do hereby order that the State address",
+        '". That is it.',
+      ]);
+      const text = said(events);
+      expect(text).toContain("do hereby order that the State address");
+      expect(text).not.toContain(PROVENANCE_NOTICE);
+    })();
+  });
+
+  it("still refuses words that are in no passage at all", async () => {
+    const events = await collect([
+      `${frame}, the record says. `,
+      'Somewhere in the papers: "',
+      "a 13% rise in unsheltered homelessness",
+      '".',
+    ]);
+    expect(said(events)).toContain(PROVENANCE_NOTICE);
+  });
+});

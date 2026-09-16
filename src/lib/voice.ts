@@ -180,6 +180,27 @@ function shortTitle(documentTitle: string): string {
   return (documentTitle.split(":")[0] ?? documentTitle).trim();
 }
 
+/**
+ * The identifier inside a short title — `23-04` from "EO 23-04", `1537` from
+ * "SB 1537 (2024)".
+ *
+ * Needed because a model cites the document as a person would, not as the
+ * metadata spells it: the first live run produced "Executive Order 23-04" where
+ * the title reads "EO 23-04", so literal matching saw no citation at all and
+ * refused a correct answer. The number is what both spellings share.
+ */
+function citationKey(documentTitle: string): string | undefined {
+  return /\b\d+(?:-\d+)?\b/.exec(shortTitle(documentTitle))?.[0];
+}
+
+/** Does `window` cite `documentTitle`, in either the metadata's spelling or a
+ *  reader's? */
+function cites(window: string, documentTitle: string): boolean {
+  if (window.includes(shortTitle(documentTitle))) return true;
+  const key = citationKey(documentTitle);
+  return key !== undefined && window.includes(key);
+}
+
 /** How far before a quotation to look for its citation. */
 const CITATION_WINDOW = 180;
 
@@ -236,7 +257,7 @@ export function verifyQuotations(
     // Which document does the answer attribute this to? Look backwards from the
     // opening mark for any retrieved document's short title.
     const before = answer.slice(Math.max(0, span.start - CITATION_WINDOW), span.start);
-    const citedTitle = titles.find((t) => before.includes(shortTitle(t)));
+    const citedTitle = titles.find((t) => cites(before, t));
 
     // Segments: the quoting contract forbids elision, but a span that elides is
     // reported by the segment that fails rather than in full.

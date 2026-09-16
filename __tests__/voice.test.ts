@@ -260,3 +260,20 @@ describe("a document's own title is record text, not a fabrication", () => {
     expect(verifyQuotations(answer, PASSAGES)[0].reason).toBe("not-in-cited-document");
   });
 });
+
+describe("a citation is recognised however a reader would write it", () => {
+  it("accepts the metadata's spelling and a reader's", () => {
+    // The first live runs cited "Executive Order 23-04" where the title reads
+    // "EO 23-02"-style. Literal matching saw no citation and refused a correct
+    // answer; the number is what both spellings share.
+    for (const cite of ["EO 23-02", "Executive Order 23-02", "order 23-02"]) {
+      const answer = `Under ${cite}: "do hereby order that the State address".`;
+      expect(verifyQuotations(answer, PASSAGES), `citation form: ${cite}`).toEqual([]);
+    }
+  });
+
+  it("still catches a quotation attributed to the wrong number", () => {
+    const answer = `Under SB 1537: "do hereby order that the State address".`;
+    expect(verifyQuotations(answer, PASSAGES)[0].reason).toBe("not-in-cited-document");
+  });
+});

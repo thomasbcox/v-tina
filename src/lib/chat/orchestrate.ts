@@ -320,7 +320,17 @@ export async function* screenedAnswer(
   const quotationOk = (span: string): string | null => {
     const bad = verifyQuotations(emitted + span, chunks);
     const mine = bad.find((b) => span.includes(b.text.slice(0, 24)));
-    return mine ? `quotation ${mine.reason}: ${mine.text.slice(0, 60)}` : null;
+    if (!mine) return null;
+    // **Refuse on fabrication, not on a citation this code failed to recognise.**
+    // `no-citation` means the words ARE the record's but no document name was
+    // detected nearby — a reader is not misdirected to a specific document, which
+    // is the harm. Refusing it suppressed correct answers on the first live runs.
+    // It is still reported by the verifier; it just does not stop the answer.
+    if (mine.reason === "no-citation") {
+      log("quotation released without a detected citation", mine.text.slice(0, 60));
+      return null;
+    }
+    return `quotation ${mine.reason}: ${mine.text.slice(0, 60)}`;
   };
 
   /** Releases the held opening, repairing or refusing per the screen. */
