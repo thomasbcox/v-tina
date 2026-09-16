@@ -1289,3 +1289,15 @@ with its own quotation matching, independent of `voice.ts`. On the first pass tw
 provider failures — a classifier timeout that failed closed to the deferral, and an embeddings 503
 reported as the infrastructure notice. Both are the designed behaviour, and both questions answered on
 retry.
+
+## Decisions (2026-09-16, defects found while closing round b6039ac)
+
+Put to Thomas at the step-4 stop as decisions separate from the re-review, with both options' costs:
+fixing now puts more change in front of the reviewers; deferring ships a known way to refuse a correct
+answer.
+
+- **A. A straight apostrophe at the end of a token can get a correct answer refused:** **FIX NOW.**
+- **B. A document named inside a quotation is taken as the next quotation's citation (seen live):**
+  **FIX NOW** — citations are read from the avatar's own words only.
+
+Both are applied before the re-review, so the next review reads them.
