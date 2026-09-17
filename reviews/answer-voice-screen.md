@@ -330,7 +330,7 @@ are person-judged and owe none.
 - review/6 — ran (codex on glm-latest, 3 findings) -> reviews/answer-voice-screen.approach.8175a2d.json
 - review/8 — n/a — the approach pass gated it in all three rounds: round f8eda18 (a BLOCKER reshaping the quote layer), round b6039ac (a BLOCKER reshaping the streaming loop) and round 8175a2d (a BLOCKER changing the straight-single-quote rule). The line-level critics have not yet run on this story.
 - close/3b — no activation
-- close/4 — presented: re-review only. Round b6039ac's finding 1 reshaped the streaming loop, so merge was not offered. Two defects found during verification, outside the approved findings, were put to Thomas as separate decisions; he chose to fix both before the re-review.
+- close/4 — presented: re-review only. Round 8175a2d's finding 1 changed the grammar, so merge was not offered.
 
 ## Build note (2026-09-15)
 
@@ -1522,3 +1522,34 @@ membership**, and a new test requires both notices to open with the frame.
 
 "Three rules" became "These rules" in the README; "710 marks", "710 of them" and "286 of them" left the
 README, `voice.ts` and the test comments, which point to this story file for the measurements.
+
+## Post-fix verification (2026-09-16, round 8175a2d)
+
+### Demonstrate red
+
+Committed before any sabotage; same helper as the previous rounds.
+
+| # | Sabotage | Result |
+|---|---|---|
+| R1 | **The confirmed bypass** — an unclosed straight single-quoted span read as prose again | **RED** — grammar and stream, including the invented "13%" figure |
+| R2 | A straight mark at a word start never refused | **RED** |
+| R3 | Decided before the next character arrives | **RED** — the stream's output depends on where the tokens fell |
+| R4 | A continuation lexed without its look-behind, on the new rule | **RED** — the possessive split at its apostrophe |
+| F1 | A display frame declared apart from the screen's list, with extra words | **RED** — exact membership; the old containment test would have passed it |
+| F2 | A notice typed out again, drifting from the frame | **RED** |
+| P1 | The prompt's apostrophe instruction removed | **RED** |
+
+### Live, through the running endpoint
+
+Fresh production build, the same four questions over HTTP. **Three answered in bounds, streamed
+progressively (109–198 text events), with no refusals and no injections; 25 of 25 quotations verbatim in
+the corpus**, checked independently of `voice.ts`. The model wrote no word-initial straight apostrophe.
+
+**The fourth was declined by the classifier, not by the screen.** "What does the record say about
+addiction treatment and recovery services?" came back out of bounds in under a second, with nothing
+failing in the log. Re-checked directly: **7 of 8 classifications out of bounds**, the eighth a timeout —
+after three in-bounds verdicts earlier the same day. No classifier, routing or rewrite code changed on
+this branch. It is the only one of the four questions that does not name Oregon, and the classifier
+prompt says to prefer out of bounds when a question can be read more than one way, so it reads as a
+borderline question rather than a regression. It belongs to the router — story 2's scope, a non-goal
+here — and is recorded, not acted on.
