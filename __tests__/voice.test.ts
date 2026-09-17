@@ -63,9 +63,9 @@ describe("the one grammar", () => {
   });
 
   it("tracks curly nesting, so a quoted defined term does not end the quotation", () => {
-    // Bills in this corpus put curly marks around their own defined terms — 710 marks
-    // in all. A grammar that closed at the first inner mark would refuse a faithful
-    // quotation of exactly that text.
+    // Bills in this corpus put curly marks around their own defined terms. A grammar
+    // that closed at the first inner mark would refuse a faithful quotation of exactly
+    // that text.
     const { tokens } = lex(`It says ${q(`${q("Deflection program")} means a collaborative program`)}.`, true);
     const quotes = tokens.filter((t) => t.kind === "quotation");
     expect(quotes).toHaveLength(1);
@@ -77,10 +77,14 @@ describe("the one grammar", () => {
     expect(tokens.some((t) => t.kind === "violation" && t.reason === "straight-double-delimiter")).toBe(true);
   });
 
-  it("refuses a single-quoted span — the bypass that let a fabrication through", () => {
+  it("refuses a single-quoted span, closed or not — the bypasses that let a fabrication through", () => {
     for (const text of [
       "Under EO 23-02: 'a 13% rise in unsheltered homelessness'. Done.",
       "Under EO 23-02: ‘a 13% rise in unsheltered homelessness’. Done.",
+      // Never closed: once read as an apostrophe after all, and released as prose
+      // (approach review round 8175a2d).
+      "Under EO 23-02: 'a 13% rise in unsheltered homelessness",
+      "Under EO 23-02: 'a 13% rise in unsheltered homelessness. That is the position.",
     ]) {
       const { tokens } = lex(text, true);
       expect(
@@ -91,7 +95,7 @@ describe("the one grammar", () => {
   });
 
   it("keeps apostrophes as prose, straight or curly", () => {
-    // The corpus has 286 curly apostrophes and no opening single mark at all, so a
+    // The corpus uses ’ as an apostrophe and never opens a quotation with ‘, so a
     // single-quote delimiter is detected by its opener, never inferred from ’.
     for (const text of [
       "Oregon's order and the parents' rights.",
@@ -165,15 +169,14 @@ describe("the one grammar", () => {
     }
   });
 
-  it("a straight mark that is the last character received waits for the next one", () => {
-    // A token ending "Governor'" once closed the span "'til" opened, and a correct
-    // answer was refused before the "s" arrived.
-    const sofar = "It runs 'til the Governor'";
-    const held = lex(sofar, false);
-    expect(held.tokens.some((t) => t.kind === "violation"), "not decided before the next character").toBe(false);
-    expect(held.stable).toBeLessThan(sofar.length);
-    expect(lex(`${sofar}s plan is done. Then more.`, true).tokens.every((t) => t.kind === "prose")).toBe(true);
-    expect(lex(`${sofar} plan is done.`, true).tokens.some((t) => t.kind === "violation"), "a real closing mark still closes").toBe(true);
+  it("a straight mark at a word start is decided by the character after it, and nothing later", () => {
+    // No sentence-long wait for a closing mark: the next character settles it.
+    expect(lex("It runs '", false).stable, "held only until one more character arrives").toBe("It runs ".length);
+    expect(lex("It runs 't", false).tokens).toContainEqual({ kind: "violation", raw: "'", reason: "single-quote-delimiter" });
+    expect(lex("It runs '", true).tokens.every((t) => t.kind === "prose"), "nothing follows it, so nothing is quoted").toBe(true);
+    const midWord = lex("the Governor'", false);
+    expect(midWord.stable, "mid-word it is never held").toBe("the Governor'".length);
+    expect(midWord.tokens.every((t) => t.kind === "prose")).toBe(true);
   });
 
   it("without the look-behind, a word split across tokens would read as a quotation", () => {

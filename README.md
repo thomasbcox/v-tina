@@ -313,7 +313,7 @@ three of the five "lexical anchors" the product specification names — "True No
 ("deflection") appears only as a legal diversion programme. There is no speech or interview material
 here at all. Quoting the record needs no such evidence, and unlike a register it can be checked.
 
-Three rules. All of them derive from **one grammar** in `src/lib/voice.ts` — the streaming answer path
+These rules derive from **one grammar** in `src/lib/voice.ts` — the streaming answer path
 and every offline check call the same lexer, so they cannot disagree about what a quotation is.
 
 | Rule | What is enforced |
@@ -323,11 +323,15 @@ and every offline check call the same lexer, so they cannot disagree about what 
 | **Never write as her** | First person as the Governor is forbidden in the avatar's own prose, and **allowed inside a quotation**, because two corpus documents open "I, TINA KOTEK, Governor of the State of Oregon" and quoting them is correct. |
 
 **Why curly marks, and only curly marks.** They are the one delimiter that can be nested reliably:
-opening and closing are different characters. The corpus uses them inside its own text — 710 marks,
-mostly bills quoting defined terms — so a quotation of that text contains curly marks of its own, and
-the grammar tracks the nesting rather than closing at the first inner mark. A straight double quote
-cannot be nested that way, and **a single-quoted span is refused outright**: the first version did not
-recognise single marks, and a fabricated quotation in single quotes reached the reader unverified.
+opening and closing are different characters. The corpus uses them inside its own text, mostly bills
+quoting their defined terms (measured in `reviews/answer-voice-screen.md`), so a quotation of that text
+contains curly marks of its own, and the grammar tracks the nesting rather than closing at the first
+inner mark. A straight double quote cannot be nested that way, and **a single-quoted span is refused
+outright**, including a straight apostrophe that *begins* a word, which is refused as the opening of
+one. The first version did not recognise single marks at all; a later one guessed from whether a
+closing mark followed, and an unclosed single-quoted quotation reached the reader as ordinary prose.
+Both let a fabrication through. An apostrophe inside a word, `Oregon's`, is untouched, and the answering
+prompt tells the model never to begin a word with one.
 
 **How a citation is recognised.** Each document's kind is declared once — `EO` as "Executive Order",
 `SB` as "Senate Bill", `Ballot Measure` as "Measure" — and its number is never matched alone. The first

@@ -7,6 +7,7 @@ import {
 } from "../prompts";
 import {
   CITATION_WINDOW,
+  DISPLAY_FRAME,
   LOOK_BEHIND_CHARS,
   cadenceAfter,
   citationTextOf,
@@ -262,14 +263,6 @@ export async function* orchestrateChat(
 /** How much opening to hold before judging it: the earliest sentence end in the
  *  avatar's own prose that has something after it, or this many characters. */
 export const OPENING_HOLD_CHARS = 240;
-
-/**
- * The frame as a reader sees it, capitalised for the start of a sentence. Matches
- * `AVATAR_FRAME` case-insensitively — a test holds the two together, because a
- * display form the screen does not recognise would inject a frame the cadence
- * counter never sees, and inject it again.
- */
-export const DISPLAY_FRAME = "As a virtual avatar of the Governor";
 
 /** Sentence-starting words that read naturally lowercased after the frame. Any
  *  other first word — a proper noun, an acronym — keeps its capital. */

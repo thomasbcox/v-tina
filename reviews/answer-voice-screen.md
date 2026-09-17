@@ -1487,3 +1487,38 @@ grammar, so the correctness and hidden-failure passes do not run this round.
 
 **Correctness and hidden-failure: not run.** Finding 1 changes the grammar both critics would read — the
 third round running in which the approach pass has gated them.
+
+## Fixes (2026-09-16, approach round 3 — 8175a2d)
+
+Gate green at **357 tests**.
+
+### Finding 1 (BLOCKER) — the simple rule
+
+A straight `'` that begins a word — after a space, bracket, colon or dash, and before a letter — is now a
+`single-quote-delimiter` violation, exactly as `‘` already was. The **next character alone** decides it
+(`straightMarkBeginsWord` in `src/lib/voice.ts`); a mark mid-word (`Oregon's`) or before a digit
+(`'90s`) stays prose, and a mark with nothing after it at the end of the answer quotes nothing.
+
+**Deleted, as the decision expected:** `singleClosesAfter` — the scan for a closing mark before the
+sentence ended — together with the lexer's pending state for straight marks and the defect-A fix inside
+it. The resumable scan now serves open curly quotations only. The answering prompt gains one line —
+never begin a word with an apostrophe; spell such words out in full — and a test pins it, because that
+instruction is what keeps the accepted cost at zero.
+
+**Tests.** The unclosed forms the review confirmed — at the end of an answer, and before a later
+sentence — are refused in the grammar and in the stream, cut five ways each. The defect-A stream test
+is replaced by its opposite, the cost Thomas accepted stated as a test: `It runs 'til the plan is done.`
+stops at the mark, identically however the tokens fall. The held-text cost test keeps only the open
+quotation, the one held construct left.
+
+### Finding 2 (IMPORTANT) — one frame wording
+
+`DISPLAY_FRAME` moved to `voice.ts` and is declared once: `AVATAR_FRAME`'s first member is its lowercase,
+and its third is `speaking` plus that same value. The answer path imports it, and `GROUNDED_DEFERRAL` and
+`PROVENANCE_NOTICE` interpolate it rather than spell it out. The containment test became **exact
+membership**, and a new test requires both notices to open with the frame.
+
+### Finding 3 (NIT) — counts out of living text
+
+"Three rules" became "These rules" in the README; "710 marks", "710 of them" and "286 of them" left the
+README, `voice.ts` and the test comments, which point to this story file for the measurements.

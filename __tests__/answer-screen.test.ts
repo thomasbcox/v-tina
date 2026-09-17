@@ -1,14 +1,21 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { ChatStreamEvent, RetrievedPolicyChunk } from "../src/types";
-import { DISPLAY_FRAME, screenedAnswer } from "../src/lib/chat/orchestrate";
+import { screenedAnswer } from "../src/lib/chat/orchestrate";
 import {
+  ANSWER_SYSTEM_PROMPT,
   FAILURE_NOTICE,
   GROUNDED_DEFERRAL,
   OREGON_PORTAL_URL,
   PROVENANCE_NOTICE,
 } from "../src/lib/prompts";
-import { AVATAR_FRAME, CADENCE_TARGET_WORDS, IMPERSONATION_FORMS, checkCadence } from "../src/lib/voice";
+import {
+  AVATAR_FRAME,
+  CADENCE_TARGET_WORDS,
+  DISPLAY_FRAME,
+  IMPERSONATION_FORMS,
+  checkCadence,
+} from "../src/lib/voice";
 import captured from "./fixtures/answer-stream.json";
 
 const O = "“";
@@ -55,10 +62,14 @@ const said = (events: ChatStreamEvent[]) =>
 const frame = DISPLAY_FRAME;
 
 describe("the displayed frame is one the screen recognises", () => {
-  it("DISPLAY_FRAME matches a declared AVATAR_FRAME", () => {
+  it("DISPLAY_FRAME is exactly a declared AVATAR_FRAME, not merely one containing it", () => {
     // A display form the screen did not recognise would inject a frame the cadence
     // counter never sees — and then inject it again, forever.
-    expect(AVATAR_FRAME.some((f) => DISPLAY_FRAME.toLowerCase().includes(f))).toBe(true);
+    expect(AVATAR_FRAME).toContain(DISPLAY_FRAME.toLowerCase());
+  });
+
+  it("the notices that speak as the avatar open with that same frame", () => {
+    for (const notice of [GROUNDED_DEFERRAL, PROVENANCE_NOTICE]) expect(notice.startsWith(`${DISPLAY_FRAME}, `)).toBe(true);
   });
 });
 
@@ -76,10 +87,17 @@ describe("AC4 — an unverifiable quotation never reaches the reader", () => {
 
   it("withholds a SINGLE-QUOTED fabrication — the bypass the review confirmed", async () => {
     // The first version recognised no single marks, so this streamed to the reader
-    // unheld and unverified. It is the specification's own invented statistic.
-    for (const quoted of ["'a 13% rise in unsheltered homelessness'", "‘a 13% rise in unsheltered homelessness’"]) {
-      const text = said(await collect([`${frame}, the record is clear. `, `Under EO 23-02: ${quoted}. Done.`]));
-      expect(text, `must not reach the reader: ${quoted}`).not.toContain("13%");
+    // unheld and unverified. It is the specification's own invented statistic. The
+    // unclosed forms were the second bypass: read as an apostrophe after all, and
+    // released as prose (approach review round 8175a2d).
+    for (const tail of [
+      "'a 13% rise in unsheltered homelessness'. Done.",
+      "‘a 13% rise in unsheltered homelessness’. Done.",
+      "'a 13% rise in unsheltered homelessness",
+      "'a 13% rise in unsheltered homelessness. That is the position.",
+    ]) {
+      const text = await sameEveryWay(`${frame}, the record is clear. Under EO 23-02: ${tail}`);
+      expect(text, `must not reach the reader: ${tail}`).not.toContain("13%");
       expect(text).toContain(PROVENANCE_NOTICE);
     }
   });
@@ -260,20 +278,17 @@ describe("the stream's work grows with the answer, not with its square", () => {
     expect(large / small, `100 sentences: ${small.toFixed(1)} ms; 800 sentences: ${large.toFixed(1)} ms`).toBeLessThan(24);
   });
 
-  it("text held undecided costs about what the same text costs flowing", async () => {
-    // A quotation is held until it closes and a straight single mark until its
-    // sentence ends. Rescanning held text for every token measured 108 ms for a
-    // 2,000-word quotation against 3 ms for the same words flowing.
+  it("a quotation held open costs about what the same words cost flowing", async () => {
+    // A quotation is held until it closes. Rescanning held text for every token
+    // measured 108 ms for a 2,000-word quotation against 3 ms for the same words
+    // flowing.
     const words = Array.from({ length: 2000 }, (_, i) => `clause${i}`).join(" ");
     const chunks: RetrievedPolicyChunk[] = [{ ...PASSAGES[0], content: `${EO_TEXT} ${words}` }];
     const opening = `${frame}, here is the record.`;
     const flowing = asModelTokens(`${opening} It runs ${words}.`);
     await fastest(flowing, chunks);
     const base = await fastest(flowing, chunks);
-    for (const [name, text] of [
-      ["an open quotation", `${opening} Under EO 23-02: ${O}${words}${C}.`],
-      ["a single mark awaiting its sentence end", `${opening} It runs 'til ${words}.`],
-    ]) {
+    for (const [name, text] of [["an open quotation", `${opening} Under EO 23-02: ${O}${words}${C}.`]]) {
       const tokens = asModelTokens(text);
       expect(said(await collect(tokens, chunks)), name).not.toContain(PROVENANCE_NOTICE);
       const cost = await fastest(tokens, chunks);
@@ -296,11 +311,15 @@ describe("AC8 — clean answers pass unaltered, streaming, with honest refusals"
     expect(await sameEveryWay(answer)).toBe(answer);
   });
 
-  it("passes a word-initial apostrophe and a possessive in one sentence, however the tokens fall", async () => {
-    // Split after "Governor'", the mark once closed the span "'til" opened, and this
-    // correct answer was refused before the "s" arrived.
-    const answer = `${frame}, the record is clear. It runs 'til the Governor's plan is done. That is all.`;
-    expect(await sameEveryWay(answer)).toBe(answer);
+  it("stops at a straight apostrophe that begins a word, the same way however the tokens fall", async () => {
+    // The cost Thomas accepted for closing the unclosed single-quote bypass: nothing
+    // after the mark reaches the reader. The prompt tells the model never to write one.
+    const answer = `${frame}, the record is clear. It runs 'til the plan is done. That is all.`;
+    expect(await sameEveryWay(answer)).toBe(`${frame}, the record is clear. It runs ${PROVENANCE_NOTICE}`);
+  });
+
+  it("the answering prompt tells the model never to begin a word with an apostrophe", () => {
+    expect(ANSWER_SYSTEM_PROMPT).toContain("Never begin a word with an apostrophe");
   });
 
   it("releases a quotation cited in the avatar's words, whatever the quotation before it names", async () => {

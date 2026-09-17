@@ -20,6 +20,18 @@ import type { RetrievedPolicyChunk } from "../types";
  */
 
 /**
+ * The frame as a reader sees it: the one wording the answer path injects and every
+ * reader-facing notice opens with. `AVATAR_FRAME` derives from it, so the frame a
+ * reader is shown is exactly one the screen recognises — an unrecognised one would be
+ * injected, go uncounted, and be injected again. It was once typed out separately in
+ * the answer path and in two notices, held together only by a containment test
+ * (approach review round 8175a2d).
+ */
+export const DISPLAY_FRAME = "As a virtual avatar of the Governor";
+
+const CANONICAL_FRAME = DISPLAY_FRAME.toLowerCase();
+
+/**
  * How the avatar identifies itself. The **authority** for both the prompt (which
  * requires one of these) and the screen (which looks for one), so the two cannot
  * name different things — the pattern `SAFETY_CLASSIFICATIONS` already sets.
@@ -27,9 +39,9 @@ import type { RetrievedPolicyChunk } from "../types";
  * naming nobody would pass every derived check while telling a reader nothing.
  */
 export const AVATAR_FRAME = [
-  "as a virtual avatar of the governor",
+  CANONICAL_FRAME,
   "as a virtual avatar of governor kotek",
-  "speaking as a virtual avatar of the governor",
+  `speaking ${CANONICAL_FRAME}`,
 ] as const;
 
 /**
@@ -107,7 +119,8 @@ export type GrammarViolation =
   /** A straight double quote used as a delimiter. It cannot be one: it is not
    *  directional, and passages use it internally, so nesting would be ambiguous. */
   | "straight-double-delimiter"
-  /** A single-quoted span. This is the bypass that let a fabrication through. */
+  /** A single mark opening a quotation: `‘` anywhere, or a straight `'` that begins a
+   *  word. Single-quoted fabrications reached the reader twice before this was total. */
   | "single-quote-delimiter"
   /** A quotation that opened and never closed. */
   | "unterminated";
@@ -128,52 +141,31 @@ export interface LexResult {
 }
 
 /**
- * A scan to pick up where it stopped. A quotation stays undecided until nesting closes
- * and a straight single mark until its sentence ends, so either can be long; without
- * this the stream rescanned it from its opening character for every token, and a
- * 4,000-word quotation still open cost 444 ms.
+ * A scan to pick up where it stopped. A quotation stays undecided until its nesting
+ * closes, so it can be long; without this the stream rescanned it from its opening
+ * mark for every token, and a 4,000-word quotation still open cost 444 ms.
  */
 export interface LexResume {
-  /** The undecided construct's opening character. */
+  /** The open quotation's opening mark. */
   readonly at: number;
   /** The first character its scan has not settled. */
   readonly scanned: number;
-  /** Curly nesting depth before `scanned`; zero for a straight single mark. */
+  /** Curly nesting depth before `scanned`. */
   readonly depth: number;
 }
 
-/** A straight apostrophe that could be opening a single-quoted span: at a word
- *  start, followed by a letter. Mid-word (`Oregon's`) it is never a delimiter —
- *  which is why lexing a continuation needs the character before it. */
-function singleOpensAt(text: string, i: number, lookBehind: string): boolean {
-  if (text[i] !== "'") return false;
+/**
+ * Whether the straight mark at `i` begins a word — after a space, bracket, colon or
+ * dash, and before a letter — or `undefined` while the next character has not arrived.
+ * Mid-word (`Oregon's`) it never does, which is why lexing a continuation needs the
+ * character before it.
+ */
+function straightMarkBeginsWord(text: string, i: number, lookBehind: string, final: boolean): boolean | undefined {
   const before = i === 0 ? lookBehind : text[i - 1];
+  if (!/[\s(\[:—-]/.test(before)) return false;
   const after = text[i + 1];
-  return /[\s(\[:—-]/.test(before) && after !== undefined && /\p{L}/u.test(after);
-}
-
-/** Does a straight single mark close a span that `open` began, before the sentence
- *  ends? `undefined` means the text ran out before either happened. Scanning starts at
- *  `from`, where an earlier call on a shorter text stopped.
- *
- *  A mark is a closer only when no letter follows it, so a mark that is the last
- *  character received waits for the next one. It once counted "nothing yet" as "not a
- *  letter": a model token ending `Governor'` closed a span that `'til` had opened, and
- *  the answer was refused before the `s` arrived (found closing round b6039ac). */
-function singleClosesAfter(
-  text: string,
-  open: number,
-  from: number,
-  final: boolean,
-): number | null | undefined {
-  for (let j = Math.max(open + 1, from); j < text.length; j += 1) {
-    if (text[j] === "'" && /\p{L}|[.,;:!?]/u.test(text[j - 1] ?? "")) {
-      if (j + 1 === text.length && !final) return undefined;
-      if (!/\p{L}/u.test(text[j + 1] ?? " ")) return j;
-    }
-    if (/[.!?]/.test(text[j]) && /\s/.test(text[j + 1] ?? "")) return null;
-  }
-  return undefined;
+  if (after === undefined) return final ? false : undefined;
+  return /\p{L}/u.test(after);
 }
 
 /**
@@ -181,14 +173,19 @@ function singleClosesAfter(
  *
  * - A **quotation** opens with `“` and closes when curly nesting returns to depth
  *   zero. Curly marks are directional, so nesting is trackable — which matters,
- *   because the corpus uses curly marks inside its own text (710 of them, mostly
- *   bills quoting defined terms). A faithful quotation reproduces them, and a
- *   grammar that closed at the first inner `”` would refuse it.
+ *   because the corpus uses curly marks inside its own text, mostly bills quoting
+ *   their defined terms (measured in `reviews/answer-voice-screen.md`). A faithful
+ *   quotation reproduces them, and a grammar that closed at the first inner `”`
+ *   would refuse it.
  * - A **straight double quote** outside a quotation is a violation. Inside one it
  *   is content.
- * - A **single-quoted span** — `‘` anywhere, or a straight `'` at a word start that
- *   closes before the sentence ends — is a violation. `’` alone is always an
- *   apostrophe: the corpus has 286 of them and no opening `‘` at all.
+ * - A **single mark opening a quotation** is a violation: `‘` anywhere, and a
+ *   straight `'` that begins a word. The next character decides it. An earlier rule
+ *   also asked whether a closing mark followed before the sentence ended, and treated
+ *   the mark as an apostrophe when none did — so an unclosed single-quoted fabrication
+ *   reached the reader as prose (approach review round 8175a2d). `’`, and a straight
+ *   `'` inside a word, are always apostrophes: the corpus uses `’` that way and never
+ *   opens a quotation with `‘`.
  *
  * `final` says no more text is coming, which resolves anything still open.
  *
@@ -242,7 +239,9 @@ export function lex(text: string, final: boolean, lookBehind = " ", resume?: Lex
       continue;
     }
 
-    if (ch === '"' || ch === SINGLE_OPEN) {
+    const beginsWord = ch === "'" ? straightMarkBeginsWord(text, i, lookBehind, final) : false;
+    if (beginsWord === undefined) break; // the next character decides
+    if (ch === '"' || ch === SINGLE_OPEN || beginsWord) {
       flushProse();
       tokens.push({
         kind: "violation",
@@ -252,25 +251,6 @@ export function lex(text: string, final: boolean, lookBehind = " ", resume?: Lex
       i += 1;
       stable = i;
       continue;
-    }
-
-    if (ch === "'" && (i === text.length - 1 ? !final : singleOpensAt(text, i, lookBehind))) {
-      if (i === text.length - 1) break; // cannot yet tell what this is
-      const close = singleClosesAfter(text, i, resume?.at === i ? resume.scanned : i + 1, final);
-      if (close === undefined && !final) {
-        // Sentence not finished yet. The last character is judged again with the one
-        // after it, which a sentence end needs.
-        pending = { at: i, scanned: Math.max(i + 1, text.length - 1), depth: 0 };
-        break;
-      }
-      if (typeof close === "number") {
-        flushProse();
-        tokens.push({ kind: "violation", raw: text.slice(i, close + 1), reason: "single-quote-delimiter" });
-        i = close + 1;
-        stable = i;
-        continue;
-      }
-      // It was an apostrophe after all.
     }
 
     prose += ch;
