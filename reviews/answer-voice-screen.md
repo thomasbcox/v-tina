@@ -327,7 +327,7 @@ are person-judged and owe none.
 
 - frame/6 — ran twice. Round 1 (superseded design) -> reviews/answer-voice-screen.design.fdc04f4.json. Round 2, the binding pass, after Thomas inverted the design at the consult: codex on kimi-latest, 6 findings, 13 regressions -> reviews/answer-voice-screen.design.896817f.json
 - frame/9 — demonstrated red for all nine sized criteria against the ratified regressions (two sabotages were incomplete on the first attempt, reported as such and redone). Plus four defects the live runs found that the suite could not, each now covered by a red-able test.
-- review/6 — ran (codex on glm-latest, 2 findings) -> reviews/answer-voice-screen.approach.b6039ac.json
+- review/6 — ran (codex on glm-latest, 3 findings) -> reviews/answer-voice-screen.approach.8175a2d.json
 - review/8 — n/a — the approach pass gated it in both rounds: round f8eda18 (a BLOCKER reshaping the quote layer) and round b6039ac (a BLOCKER reshaping the streaming loop). The line-level critics have not yet run on this story.
 - close/3b — no activation
 - close/4 — presented: re-review only. Round b6039ac's finding 1 reshaped the streaming loop, so merge was not offered. Two defects found during verification, outside the approved findings, were put to Thomas as separate decisions; he chose to fix both before the re-review.
@@ -1373,3 +1373,87 @@ Only what moved.
 | 3, 4 | `verifyQuotedSpan` reads a per-answer `indexPassages` index; citations come only from the avatar's own words via `citationTextOf` (quoted text blanked, not removed) — `src/lib/voice.ts`, used by `verifyQuotations` and by `screenedAnswer` in `src/lib/chat/orchestrate.ts` |
 | 6 | One cadence rule in `voice.ts` — `isSentenceStart`, `scanCadence`, `checkCadence`, `cadenceAfter`, `CADENCE_TARGET_WORDS` as a target with no ceiling; the stream injects at `scanCadence`'s stop in `releaseProse`; AC6 and its oracle row amended; README cadence row pinned by `__tests__/voice.test.ts` |
 | 8 | `lex(text, final, lookBehind, resume)` — the stream lexes only unreleased text, resumes a held construct's scan, and discards released text past `LOOK_BEHIND_CHARS`; `singleClosesAfter` holds a trailing mark for the next character; tests replay `__tests__/fixtures/answer-stream.json` (real model tokens) and cut every answer five ways |
+
+## Codex (glm-latest) approach review — round 3 (2026-09-16, base b6039ac, HEAD 8175a2d)
+
+**Verdict.** Wed Sep 16 17:09:13 PDT 2026 — The macro shape is the one I would keep: one lexer
+shared by offline checks and the stream, one per-answer passage index, injectable orchestration,
+declared citation aliases, and no parser dependency. The redesigned cadence and linear streaming
+loop are sound and honestly document the no-ceiling limitation. I would not ship it as-is: the
+straight-single-quote grammar still has a fail-open final state that can release a fabricated
+quotation, and the load-bearing avatar frame is copied in display and notice text instead of derived
+from its declared source. A minor living-count cleanup also remains.
+
+### BLOCKER
+
+**The straight-single-quote grammar is fail-open where AC4 requires fail-closed** — reversibility: two-way · standing: kludgy · locus: `src/lib/voice.ts:155-177,257-274`
+
+- **Claim:** The grammar is total and fail-closed for curly quotation marks, but a word-initial
+  straight single mark becomes ordinary prose whenever `singleClosesAfter` cannot find a closer
+  before a sentence end. I drove the real `lex` with `final=true`: both `Under EO 23-02: 'a 13% rise
+  in unsheltered homelessness` and `It is 'quoted here.` return one prose token, not a violation. In
+  the stream, the opening mark is held while more text may arrive, then the final pass tokenizes the
+  unresolved construct as prose and `releaseProse` emits it. That lets a fabricated single-quoted
+  span reach the reader without verification, contradicts AC4 and R2, and contradicts the README's
+  claim that a single-quoted span is refused outright. The tests cover only a single-quoted span
+  that closes before later prose, not the unresolved or sentence-ended cases. The root shape problem
+  is that the grammar distinguishes a quotation from an apostrophe-initial word by hoping to find a
+  closer, rather than declaring which prose forms are legal.
+- **Alternative:** Make the straight-single-quote state total and fail-closed. The simplest rule is
+  to treat a word-initial straight `'` as a delimiter violation exactly as `‘` is, leave `’` as the
+  apostrophe, and require the prompt to use curly apostrophes for contractions; alternatively,
+  declare a narrow allowlist for legitimate apostrophe-initial words such as `'til`. Whatever rule
+  is chosen, an unresolved opener at `final` must produce a grammar violation, never prose.
+- **Win:** Closes the remaining single-quote fabrication bypass, makes the code match AC4 and the
+  README, and removes the asymmetric final-state special case that only this delimiter class has.
+
+### IMPORTANT
+
+**The canonical avatar frame is copied instead of derived** — reversibility: two-way · standing: nonstandard · locus: `src/lib/chat/orchestrate.ts:262-272; src/lib/voice.ts:29-33; src/lib/prompts.ts:79,162`
+
+- **Claim:** `AVATAR_FRAME` is declared as the authority for the prompt and the screen, but the
+  runtime injects a separately typed `DISPLAY_FRAME`, and `GROUNDED_DEFERRAL` and
+  `PROVENANCE_NOTICE` hard-code the same phrase again. The guard only checks that `DISPLAY_FRAME`
+  contains one member of `AVATAR_FRAME`, so a display phrase with extra words can pass while no
+  longer being exactly the frame the prompt offers. This is a second statement of a load-bearing
+  vocabulary with its own drift clock, contrary to AC10 and the builder protocol's single-source
+  discipline; a containment test is a detector, not a single source.
+- **Alternative:** Declare one canonical display-cased frame in `voice.ts`, or export a small
+  `displayFrame()` helper derived from `AVATAR_FRAME[0]`. Use that one value for injection and
+  interpolate it into the reader-facing notices. The lower-case screen vocabulary can derive from
+  the same canonical value.
+- **Win:** Removes several hand-maintained copies of the speaker-identification phrase, centralizes
+  the invariant, and guarantees that the injected frame is exactly the frame documented, prompted,
+  and recognised by the cadence rule.
+
+### NIT
+
+**Living text counts sets that are defined beside it** — reversibility: two-way · standing: nonstandard · locus: `README.md:316-329; src/lib/voice.ts:179-191`
+
+- **Claim:** The README says “Three rules” immediately above a table that is itself the list, so the
+  numeral is a copy of the table's size and will drift when a rule is added. The same living
+  documentation also carries corpus cardinalities such as “710 marks” and “286” apostrophes, while
+  code comments repeat them. Under the builder protocol's Counts are copies rule, those numbers
+  belong in a dated record, not living text.
+- **Alternative:** Delete the count and say “The voice rules below derive from one grammar” or
+  simply “These rules derive from one grammar.” For corpus measurements, name the kind or point to
+  the dated story record that measured them rather than restating the current total in README or
+  comments.
+- **Win:** Removes decay-prone copies without losing information, and keeps living documentation
+  from silently becoming false when the rule table or corpus grows.
+
+### Verified by running the claims
+
+A throwaway probe drove the real `lex` and `screenedAnswer` (removed afterwards).
+
+| Claim | Result |
+|---|---|
+| An unclosed straight single-quoted span becomes prose at the end of the answer | **CONFIRMED.** `lex("Under EO 23-02: 'a 13% rise in unsheltered homelessness", true)` and `lex("It is 'quoted here.", true)` both return one prose token. |
+| …and the stream releases it unverified | **CONFIRMED, in both forms.** The specification's invented "13%" figure reaches the reader when the span runs to the end of the answer, and when a later sentence follows it. The README says a single-quoted span "is refused outright"; it is not. |
+| Legitimate text needs word-initial straight apostrophes | **Not in any real output on record.** The avatar's own prose in the captured fixture and in four live HTTP answers has **zero** word-initial straight apostrophes (4 straight apostrophes in total, all mid-word, such as `Oregon's`). |
+| The frame phrase is copied | **CONFIRMED.** `DISPLAY_FRAME` in `orchestrate.ts`, and the literal phrase in `GROUNDED_DEFERRAL` and `PROVENANCE_NOTICE` in `prompts.ts`. |
+| Living text carries counts | **CONFIRMED.** "Three rules" above the rules table and "710 marks" in the README; "710" and "286" in `voice.ts` comments. |
+
+**Not a regression from this round's changes.** The fail-open predates round b6039ac: it is the grammar's
+"apostrophe after all" fallback from round f8eda18, which the round-2 approach review described without
+flagging. It is still the most serious finding, because it is the exact harm AC4 exists to prevent.
