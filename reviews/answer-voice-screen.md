@@ -1362,3 +1362,14 @@ this had to be shown indirectly.)
 The homelessness probe that first exposed defect B, re-run with the same instruction: **1,035 real
 tokens, 783 led by a space, none trailing; no refusals; the injection fired once, at 162 words; no
 sentence starts past the target unframed; identical output when fed as one chunk.**
+
+## Build note (2026-09-16, round 3)
+
+Re-review after the round-b6039ac redesign and the two defects fixed at its close. Base `b6039ac`.
+Only what moved.
+
+| AC | Where it is satisfied now |
+|---|---|
+| 3, 4 | `verifyQuotedSpan` reads a per-answer `indexPassages` index; citations come only from the avatar's own words via `citationTextOf` (quoted text blanked, not removed) — `src/lib/voice.ts`, used by `verifyQuotations` and by `screenedAnswer` in `src/lib/chat/orchestrate.ts` |
+| 6 | One cadence rule in `voice.ts` — `isSentenceStart`, `scanCadence`, `checkCadence`, `cadenceAfter`, `CADENCE_TARGET_WORDS` as a target with no ceiling; the stream injects at `scanCadence`'s stop in `releaseProse`; AC6 and its oracle row amended; README cadence row pinned by `__tests__/voice.test.ts` |
+| 8 | `lex(text, final, lookBehind, resume)` — the stream lexes only unreleased text, resumes a held construct's scan, and discards released text past `LOOK_BEHIND_CHARS`; `singleClosesAfter` holds a trailing mark for the next character; tests replay `__tests__/fixtures/answer-stream.json` (real model tokens) and cut every answer five ways |
