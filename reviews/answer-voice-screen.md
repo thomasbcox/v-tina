@@ -328,7 +328,7 @@ are person-judged and owe none.
 - frame/6 — ran twice. Round 1 (superseded design) -> reviews/answer-voice-screen.design.fdc04f4.json. Round 2, the binding pass, after Thomas inverted the design at the consult: codex on kimi-latest, 6 findings, 13 regressions -> reviews/answer-voice-screen.design.896817f.json
 - frame/9 — demonstrated red for all nine sized criteria against the ratified regressions (two sabotages were incomplete on the first attempt, reported as such and redone). Plus four defects the live runs found that the suite could not, each now covered by a red-able test.
 - review/6 — ran (codex on glm-latest, 3 findings) -> reviews/answer-voice-screen.approach.8175a2d.json
-- review/8 — n/a — the approach pass gated it in both rounds: round f8eda18 (a BLOCKER reshaping the quote layer) and round b6039ac (a BLOCKER reshaping the streaming loop). The line-level critics have not yet run on this story.
+- review/8 — n/a — the approach pass gated it in all three rounds: round f8eda18 (a BLOCKER reshaping the quote layer), round b6039ac (a BLOCKER reshaping the streaming loop) and round 8175a2d (a BLOCKER changing the straight-single-quote rule). The line-level critics have not yet run on this story.
 - close/3b — no activation
 - close/4 — presented: re-review only. Round b6039ac's finding 1 reshaped the streaming loop, so merge was not offered. Two defects found during verification, outside the approved findings, were put to Thomas as separate decisions; he chose to fix both before the re-review.
 
@@ -1457,3 +1457,33 @@ A throwaway probe drove the real `lex` and `screenedAnswer` (removed afterwards)
 **Not a regression from this round's changes.** The fail-open predates round b6039ac: it is the grammar's
 "apostrophe after all" fallback from round f8eda18, which the round-2 approach review described without
 flagging. It is still the most serious finding, because it is the exact harm AC4 exists to prevent.
+
+## Decisions (2026-09-16, approach round 3 — 8175a2d)
+
+Round `8175a2d`, base `b6039ac`. Three findings, all verified by running them. Finding 1 changes the
+grammar, so the correctness and hidden-failure passes do not run this round.
+
+**Approach (glm-latest)**
+
+- **The straight-single-quote grammar is fail-open where AC4 requires fail-closed** (BLOCKER, two-way,
+  kludgy): **FIX — the simple rule.** A word that begins with a straight apostrophe followed by a letter
+  is a grammar violation, exactly as an opening curly single mark already is; a mid-word apostrophe
+  (`Oregon's`, `don't`) stays prose. Verified: an unclosed `'a 13% rise in unsheltered homelessness`
+  reached the reader both at the end of an answer and before a later sentence. Thomas was told the
+  cost — an answer whose own prose writes `'til` or `'em` is refused — and that the recorded real output
+  (the captured fixture and four live answers) contains **zero** word-initial straight apostrophes. The
+  prompt will forbid them. Expected side effect, stated so the re-review can check it: the sentence-long
+  hold for a straight mark, its resumable scan, and the defect-A fix become unnecessary and are removed.
+  Alternatives offered and not chosen: an allowlist of apostrophe-initial words (a list to maintain, and
+  the hold stays), and deferring (leaves the bypass open).
+
+- **The canonical avatar frame is copied instead of derived** (IMPORTANT, two-way, nonstandard):
+  **ACCEPT — tidy.** The injected frame and both reader-facing notices take the phrase from the one
+  declared wording rather than spelling it out. AC10 asks for single declared vocabularies.
+
+- **Living text counts sets that are defined beside it** (NIT, two-way, nonstandard): **ACCEPT — tidy.**
+  "Three rules" and the corpus totals leave the README and code comments, which point to the dated
+  story record instead — Thomas's own *Counts are copies* rule (`workflow-protocol.md`).
+
+**Correctness and hidden-failure: not run.** Finding 1 changes the grammar both critics would read — the
+third round running in which the approach pass has gated them.
