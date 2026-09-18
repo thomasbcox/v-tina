@@ -327,7 +327,7 @@ are person-judged and owe none.
 
 - frame/6 — ran twice. Round 1 (superseded design) -> reviews/answer-voice-screen.design.fdc04f4.json. Round 2, the binding pass, after Thomas inverted the design at the consult: codex on kimi-latest, 6 findings, 13 regressions -> reviews/answer-voice-screen.design.896817f.json
 - frame/9 — demonstrated red for all nine sized criteria against the ratified regressions (two sabotages were incomplete on the first attempt, reported as such and redone). Plus four defects the live runs found that the suite could not, each now covered by a red-able test.
-- review/6 — ran (codex on glm-latest, 3 findings) -> reviews/answer-voice-screen.approach.8175a2d.json
+- review/6 — ran (codex on glm-latest, 3 findings) -> reviews/answer-voice-screen.approach.d42bbb0.json
 - review/8 — n/a — the approach pass gated it in all three rounds: round f8eda18 (a BLOCKER reshaping the quote layer), round b6039ac (a BLOCKER reshaping the streaming loop) and round 8175a2d (a BLOCKER changing the straight-single-quote rule). The line-level critics have not yet run on this story.
 - close/3b — no activation
 - close/4 — presented: re-review only. Round 8175a2d's finding 1 changed the grammar, so merge was not offered.
@@ -1563,3 +1563,89 @@ Re-review after the round-8175a2d redesign. Base `8175a2d`. Only what moved.
 | 1, 10 | `DISPLAY_FRAME` declared once in `src/lib/voice.ts`; `AVATAR_FRAME` derives its first and third members from it; `GROUNDED_DEFERRAL` and `PROVENANCE_NOTICE` in `src/lib/prompts.ts` interpolate it; the answer path imports it |
 | 4, 8 | `lex` in `voice.ts` refuses a straight `'` that begins a word, decided by the next character (`straightMarkBeginsWord`); `singleClosesAfter` and the pending state for straight marks are deleted; `ANSWER_SYSTEM_PROMPT` forbids beginning a word with an apostrophe |
 | 10 | README and code comments no longer carry "Three rules" or corpus totals; they point to this file |
+
+## Codex (glm-latest) approach review — round 4 (2026-09-18, base 8175a2d, HEAD d42bbb0)
+
+**Before it ran.** The first attempt stopped with codex exiting 1 on every routed model: codex's stored
+Fireworks key (written into `~/.codex/config.toml` by fireconnect) was rejected, 401. Thomas approved
+re-running `fireconnect codex on`, which rewrote it from his valid shell key; every route then answered.
+V-Tina's own key in `.env.local` is also rejected and is his to replace — reviews do not need it; the
+live checks at `/close` do.
+
+**Verdict.** Measured date: Fri Sep 18 10:46:13 PDT 2026. The macro shape is the one I would keep:
+one resumable grammar shared by offline checks and the stream, one per-answer passage index,
+injectable orchestration, and a single display-frame source. For this narrow, streaming quotation
+grammar I would not add a parser dependency. I would not ship it as-is, though: the grammar still
+fails open on closing-mark delimiters, and opening repair can advance past an unscreened successor
+sentence. Both let prohibited speech reach the reader, so they are shape defects in the enforcement
+model, not merely line bugs.
+
+### BLOCKER
+
+**Closing quotation marks still fail open** — reversibility: two-way · standing: kludgy · locus: `src/lib/voice.ts:104-108,157-169,242-254`
+
+- **Claim:** The new single-quote rule closes the straight-apostrophe bypass, but the grammar is
+  still not total over quotation marks. Outside an open curly quotation, `”` is silently treated as
+  prose, and `’` is always treated as prose. I drove the real `lex`: `Under EO 23-02: ”a 13% rise in
+  unsheltered homelessness”.` and `Under EO 23-02: ’a 13% rise in unsheltered homelessness’.` both
+  return one prose token, and `verifyQuotations` returns no findings for either. Those spans
+  therefore stream unverified, despite being visually presented as quotations and despite the prompt
+  saying that only curly double marks may quote. This violates AC4 and R2 through the same fail-open
+  shape the round-3 finding identified.
+- **Alternative:** Make the delimiter grammar declarative and total: outside an open quotation,
+  treat any non-opening double mark — straight `"` or closing `”` — as a delimiter violation; treat
+  a word-initial single mark before a letter — straight `'`, `‘`, or `’` — as a single-quote
+  violation; retain mid-word apostrophes as prose. This can be one small mark-classification table
+  feeding the existing lexer.
+- **Win:** Closes the remaining malformed-delimiter fabrication bypass, makes the grammar agree with
+  the prompt's stated only-curly-double rule, and removes glyph-specific special cases in favor of
+  one invariant.
+
+**Opening repair advances past unscreened text** — reversibility: two-way · standing: kludgy · locus: `src/lib/chat/orchestrate.ts:363-407,414-432,444-452`
+
+- **Claim:** Opening repair is a one-shot operation, not a loop over a safe candidate.
+  `openingSplit` holds only through the first prose sentence. If that sentence impersonates,
+  `releaseOpening` finds no later boundary inside it, drops it, and replaces it with
+  `DISPLAY_FRAME`; `advance` then sets `openingDone` and releases from the end of the dropped
+  sentence. The next sentence is emitted by `releaseProse` without another `screenOpening` check.
+  Thus `As your Governor, I want to be clear.` followed by `My administration set a target.` can
+  reach the reader as the injected frame plus the prohibited phrase `My administration`. This
+  violates AC2/AC7 and the approved design's requirement that what remains after stripping start
+  cleanly or be refused.
+- **Alternative:** Model opening repair as a pure function that repeatedly produces a candidate:
+  drop the offending sentence, keep its successor in the held opening, re-run `screenOpening`, and
+  only emit when the candidate verdict is `ok`; refuse when no clean candidate remains. Do not set
+  `openingDone` until that invariant holds.
+- **Win:** Closes the multi-sentence impersonation bypass and replaces fragile stateful surgery with
+  one reusable repair invariant.
+
+### NIT
+
+**Living text still carries copied counts** — reversibility: two-way · standing: nonstandard · locus: `README.md:310-314,321-323,366-367; src/lib/prompts.ts:87-93,125-134`
+
+- **Claim:** The accepted count cleanup removed the called-out numerals, but adjacent living text
+  still states sizes of sets defined elsewhere: “three of the five” lexical anchors, “two corpus
+  documents,” “two executive orders,” and “the three lists.” Those sets are enumerable in the
+  specification, corpus, and prompt-category declarations, and the dated story record already holds
+  the measured outcomes. Under the builder protocol's Counts are copies rule, these are decay-prone
+  second statements left in living text.
+- **Alternative:** Name the kind or point to the dated record: for example, say that the
+  specification's unsourced lexical anchors are recorded in the dated corpus check, that corpus
+  executive orders carry the Governor's operative first person, and that the prompt-category lists
+  partition every exported prompt. Remove the numerals from README and code comments.
+- **Win:** Removes remaining count copies without losing information and keeps living documentation
+  true when the corpus, specification, or prompt categories grow.
+
+### Verified by running the claims
+
+| Claim | Result |
+|---|---|
+| A closing curly double mark, or a word-initial curly apostrophe, opens an unverified quotation | **CONFIRMED.** `”a 13% rise in unsheltered homelessness”` and `’a 13% rise in unsheltered homelessness’` lex as prose, `verifyQuotations` reports nothing, and the stream releases the invented "13%". |
+| Real output needs those marks in the avatar's prose | **No.** Across 17 recorded answers (the captured fixture and every live HTTP answer), zero stray closing curly double marks and zero word-initial curly apostrophes in the avatar's own prose. |
+| Opening repair emits an impersonating second sentence | **CONFIRMED.** `As your Governor, I want to be clear. My administration set a target.` reaches the reader as `As a virtual avatar of the Governor, My administration set a target.` — whole, and as model-shaped tokens. The approved design (Open question 4) says to refuse rather than emit what does not start cleanly. |
+| Counts remain in living text | **CONFIRMED.** "three of the five" (README, `prompts.ts`), "Three lists" / "the three lists" (`prompts.ts`, README), "two executive orders" (`voice.ts`), and "two corpus documents" in the README's rules table. |
+
+**Neither blocker is a regression from round 8175a2d's changes.** The closing-mark gap predates the
+single-mark rule, which only covered the straight mark; the opening repair dates from round f8eda18.
+**The verdict keeps the macro shape**: "the one I would keep". Both blockers are enforcement gaps
+inside it.
