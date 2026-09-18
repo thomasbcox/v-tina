@@ -1553,3 +1553,13 @@ this branch. It is the only one of the four questions that does not name Oregon,
 prompt says to prefer out of bounds when a question can be read more than one way, so it reads as a
 borderline question rather than a regression. It belongs to the router — story 2's scope, a non-goal
 here — and is recorded, not acted on.
+
+## Build note (2026-09-18, round 4)
+
+Re-review after the round-8175a2d redesign. Base `8175a2d`. Only what moved.
+
+| AC | Where it is satisfied now |
+|---|---|
+| 1, 10 | `DISPLAY_FRAME` declared once in `src/lib/voice.ts`; `AVATAR_FRAME` derives its first and third members from it; `GROUNDED_DEFERRAL` and `PROVENANCE_NOTICE` in `src/lib/prompts.ts` interpolate it; the answer path imports it |
+| 4, 8 | `lex` in `voice.ts` refuses a straight `'` that begins a word, decided by the next character (`straightMarkBeginsWord`); `singleClosesAfter` and the pending state for straight marks are deleted; `ANSWER_SYSTEM_PROMPT` forbids beginning a word with an apostrophe |
+| 10 | README and code comments no longer carry "Three rules" or corpus totals; they point to this file |
