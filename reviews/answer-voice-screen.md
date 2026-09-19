@@ -1680,7 +1680,28 @@ checked. The re-review rule assumes earlier code was already reviewed line by li
 line-level critics have never run, so a base of `8175a2d` would show them only this round's small diff.
 The skill's first-review rule applies to them: base = the base branch.
 
-**Correctness and hidden-failure:** pending — recorded below when they return.
+**Correctness (deepseek-pro-latest)**
+
+- **Impersonation screen fires on the possessive "I am the Governor's"** (IMPORTANT): **REJECTED as a
+  fix.** Thomas: *"We never say 'I am the Governor's assistant' because it's untrue. We say 'I am a
+  virtual avatar of Gov Tina Kotek' and at first mention we can add 'designed to accurately answer
+  questions about the Governor's policies, accomplishments, and stated plans, based on public official
+  sources.'"* The false positive is on a phrasing the product does not use, so the screen refusing it is
+  acceptable and no boundary change is made. Recorded alongside it: the reviewer's suggested rule —
+  ignore a following apostrophe — would have cleared "my administration's budget" too, which is still the
+  Governor's first person.
+
+**Hidden-failure (kimi-latest)**
+
+- **Impersonation repair is never re-verified** (IMPORTANT): **FIX**, folded into the approved fix for
+  approach blocker 2: the repair re-screens its own result, cuts only at sentence ends in the avatar's
+  own words, and refuses when no clean opening remains.
+
+**Raised by his answer, not by a critic.** V-Tina's declared frames do not include the self-description
+he stated, so "I am a virtual avatar of Gov Tina Kotek…" is screened as `missing-frame` and the answer
+path prepends its own frame — a doubled introduction, verified by running it. Whether that phrasing and
+its first-mention clause join this story or become a backlog item is a separate decision, put to him at
+this stop.
 
 ## Codex correctness pass — round 4 (2026-09-18, base main, HEAD d42bbb0)
 
