@@ -1649,3 +1649,35 @@ model, not merely line bugs.
 single-mark rule, which only covered the straight mark; the opening repair dates from round f8eda18.
 **The verdict keeps the macro shape**: "the one I would keep". Both blockers are enforcement gaps
 inside it.
+
+## Decisions (2026-09-18, round 4 — d42bbb0)
+
+Round `d42bbb0`, base `8175a2d` for the approach pass. All three approach findings verified by running
+them.
+
+**Approach (glm-latest)**
+
+- **Closing quotation marks still fail open** (BLOCKER, two-way, kludgy): **FIX.** One table of which
+  marks are allowed where: outside an open quotation, any double mark that does not open one — straight
+  `"` or closing `”` — is a delimiter violation, and a single mark — `'`, `‘` or `’` — that begins a word
+  before a letter is a single-quote violation; a mid-word apostrophe stays prose. Thomas was told the
+  cost — an answer using such a mark in its own prose is refused — and that the 17 recorded real answers
+  contain none.
+- **Opening repair advances past unscreened text** (BLOCKER, two-way, kludgy): **FIX.** After an
+  impersonating sentence is dropped, the next sentence is held and screened in turn, until a clean
+  opening remains or nothing does, which refuses — what Open question 4's approved answer already
+  required.
+- **Living text still carries copied counts** (NIT, two-way, nonstandard): **ACCEPT — tidy**, as round
+  8175a2d's count finding was.
+
+**The round does not stop here — Thomas's call.** He was told the protocol stops a round only for a
+shape-changing fix, that the verdict keeps the macro shape ("the one I would keep") with both blockers
+as enforcement gaps inside it, and that the approach pass had gated all four rounds. He chose to treat
+both fixes as **contained** and run the correctness pass now; all fixes land together at `/close`.
+
+**The correctness pass's base is `main`, not `8175a2d`** — the builder's call, stated here so it can be
+checked. The re-review rule assumes earlier code was already reviewed line by line; on this story the
+line-level critics have never run, so a base of `8175a2d` would show them only this round's small diff.
+The skill's first-review rule applies to them: base = the base branch.
+
+**Correctness and hidden-failure:** pending — recorded below when they return.
