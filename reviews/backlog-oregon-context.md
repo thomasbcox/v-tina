@@ -46,6 +46,7 @@ exactly as now — a question read as Oregon's still gets the deferral when the 
 2. Add one open item, worded as in *The entry* below: the behaviour Thomas wants, why it is declined
    today, the shape to consider (explicitly not decided), what the implementing story owes, and the
    sequencing note — pointing to this file for the evidence rather than restating it.
+3. Add the second open item, worded as in *The entry — FEAT-2*, on the same terms.
 
 ## Non-goals
 
@@ -85,12 +86,45 @@ changed verdict within a day with no code change. Grounding and quotation checks
 Story 5's stress-test suite.
 ```
 
+## The entry — FEAT-2 (added 2026-09-18 by Thomas's direction)
+
+**Scope amendment, stated so it can be vetoed at merge review.** This story was approved on 2026-09-18
+to seed one item. At the round-4 review stop for `answer-voice-screen`, Thomas directed that his
+self-description wording be backlogged rather than folded into that story; it is added here as a second
+item rather than paying for a second records branch. Everything else about the story is unchanged.
+
+```markdown
+### FEAT-2 — V-Tina's own self-description, in her own words
+
+**Want (Thomas, 2026-09-18).** V-Tina says "I am a virtual avatar of Gov Tina Kotek", and at first
+mention may add a clause such as "designed to answer questions about the Governor's policies,
+accomplishments, and stated plans, based on public official sources". She never says "I am the
+Governor's assistant" — it is untrue.
+
+**Why it does not work today.** That wording is not one of the declared frames, so the screen reads it
+as missing its frame and prepends its own: the reader gets "As a virtual avatar of the Governor, I am a
+virtual avatar of Gov Tina Kotek…". Verified by running the screen (`reviews/answer-voice-screen.md` →
+round-4 decisions).
+
+**Shape to consider — not decided.** Add the declarative form to the declared frames so the screen
+recognises it, and teach the answering prompt when to use it and when to add the first-mention clause.
+The cadence counter reads the same declared list, so it follows automatically.
+
+**Owed by the story that builds it.** Settle the clause's wording first: "designed to **accurately**
+answer" promises accuracy nothing enforces. What the system does guarantee is that quotations are the
+record's own words and that anything it cannot match is refused; "based on public official sources" is
+accurate, since the corpus is Oregon executive orders and bills. Keep the claim to what holds.
+
+**Sequencing.** Touches `src/lib/voice.ts` and `src/lib/prompts.ts`, which `answer-voice-screen` also
+edits — start after that story merges.
+```
+
 ## Acceptance criteria
 
 Bookkeeping throughout, so plain numbered statements rather than Gherkin (`AGENTS.md`).
 
 1. `BACKLOG.md` exists at the repository root with an Open section and a Done section, and the Open
-   section carries exactly the item in *The entry*, as approved.
+   section carries exactly the items in *The entry* and *The entry — FEAT-2*, as approved.
 2. The item's wording keeps the rule to questions that name **no** jurisdiction, keeps every other
    out-of-bounds rule, marks its design as not decided, requires the measured question set with its
    must-decline controls, and points to this file for the evidence instead of restating it.
