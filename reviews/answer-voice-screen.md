@@ -328,7 +328,7 @@ are person-judged and owe none.
 - frame/6 — ran twice. Round 1 (superseded design) -> reviews/answer-voice-screen.design.fdc04f4.json. Round 2, the binding pass, after Thomas inverted the design at the consult: codex on kimi-latest, 6 findings, 13 regressions -> reviews/answer-voice-screen.design.896817f.json
 - frame/9 — demonstrated red for all nine sized criteria against the ratified regressions (two sabotages were incomplete on the first attempt, reported as such and redone). Plus four defects the live runs found that the suite could not, each now covered by a red-able test.
 - review/6 — ran (codex on glm-latest, 3 findings) -> reviews/answer-voice-screen.approach.d42bbb0.json
-- review/8 — n/a — the approach pass gated it in all three rounds: round f8eda18 (a BLOCKER reshaping the quote layer), round b6039ac (a BLOCKER reshaping the streaming loop) and round 8175a2d (a BLOCKER changing the straight-single-quote rule). The line-level critics have not yet run on this story.
+- review/8 — ran (codex: deepseek-pro-latest correctness / kimi-latest hidden-failure, 1 / 1 findings) -> reviews/answer-voice-screen.correctness.d42bbb0.json, reviews/answer-voice-screen.hidden-failure.d42bbb0.json
 - close/3b — no activation
 - close/4 — presented: re-review only. Round 8175a2d's finding 1 changed the grammar, so merge was not offered.
 
@@ -1681,3 +1681,60 @@ line-level critics have never run, so a base of `8175a2d` would show them only t
 The skill's first-review rule applies to them: base = the base branch.
 
 **Correctness and hidden-failure:** pending — recorded below when they return.
+
+## Codex correctness pass — round 4 (2026-09-18, base main, HEAD d42bbb0)
+
+The first line-level review of this story; base `main`, for the reason recorded in the round-4
+decisions. Two critics in parallel, different model families; neither reported a REACH line.
+
+### Correctness (deepseek-pro-latest)
+
+**IMPORTANT — Impersonation screen fires on the possessive 'I am the Governor's'** — `src/lib/voice.ts:298`
+
+- **Claim:** `IMPERSONATION_FORMS.find((f) => own.includes(f))` is a bare substring test with no
+  word or possessive boundary. The form "i am the governor" is therefore matched inside the
+  legitimate avatar self-description "I am the Governor's avatar/assistant/record", because "i am
+  the governor" is a prefix of "i am the governor's". An answer whose first sentence is that
+  phrasing is judged `impersonates`; `releaseOpening` then drops the whole sentence (replacing it
+  with the bare frame) or, for a single-sentence answer, refuses with PROVENANCE_NOTICE. A clean,
+  well-formed answer is mangled or refused, which is exactly what AC8 says must not happen, and the
+  suite has no case covering it.
+- **Suggestion:** Match each impersonal form as a whole phrase rather than a substring: require the
+  form to be followed by a non-letter and non-apostrophe character (and not be preceded by a
+  letter), e.g. use a compiled regex `(?<![a-z])${escape(form)}(?![a-z'])` per member, or add an
+  explicit boundary check that rejects a trailing apostrophe/letter. Add a test streaming an opening
+  such as 'As a virtual avatar of the Governor, I am the Governor's avatar and here is the record.'
+  and asserting it is not stripped or refused.
+
+### Hidden-failure (kimi-latest)
+
+**IMPORTANT — Impersonation repair is never re-verified — a failed repair silently ships** — `src/lib/chat/orchestrate.ts:368`
+
+- **Claim:** When screenOpening returns 'impersonates', the repair cuts only up to the FIRST
+  sentence boundary (`text.search(/(?<=[.!?])\s+(?=[A-Z\u201C])/)`) and keeps the remainder. But
+  screenOpening detected the impersonating form anywhere in the opening's prose —
+  IMPERSONATION_FORMS such as 'my administration' or an anchor-plus-pronoun match can sit in a later
+  sentence. In that case `kept` still contains the impersonation, it is wrapped in the frame by
+  `framed(kept)`, and emitted to the reader: the repair silently failed and nothing surfaces that.
+  Refusal fires only when `kept === ""` (impersonation in the first sentence with nothing after). A
+  safety repair whose success is never asserted is a silent fallback — the code continues in the
+  exact degraded state (the avatar speaking as the Governor) the check exists to prevent, with no
+  log and no refusal.
+- **Suggestion:** After computing the repaired text, re-run `screenOpening` on it (or check that the
+  detected form no longer appears in the kept prose) and refuse with the provenance notice when it
+  still impersonates — the refusal path already exists, it just only fires on the empty-remainder
+  case. Alternatively, cut through the sentence containing the detected form rather than
+  unconditionally the first sentence, and still re-screen before emitting.
+
+### Verified by running the claims
+
+| Claim | Result |
+|---|---|
+| A possessive self-description is read as impersonation | **CONFIRMED.** `screenOpening` returns `impersonates` ("i am the governor") for "…I am the Governor's assistant for the record." The sentence is dropped from a longer answer, and a one-sentence answer is refused with the provenance notice. |
+| The reviewer's suggested fix is safe as stated | **No, not for every form.** Ignoring a following apostrophe clears "I am the Governor's assistant", but would also clear "my administration's budget", which is still the Governor's first person. The boundary has to be decided per phrase. |
+| A repair can emit impersonation, unchecked | **CONFIRMED.** The repair cuts at the first sentence end *anywhere*, including inside a quotation: `As your Governor, I say “Look. Now.” and my administration acts. Then more follows.` reaches the reader as `As a virtual avatar of the Governor, Now.” and my administration acts.Then more follows.` — the impersonation, a broken quotation, and a lost space. |
+
+**Overlap with approach blocker 2, stated rather than merged.** That blocker is the sentence *after* a
+repaired opening going unscreened; this one is the repaired opening *itself* going unscreened. The approved
+repair loop closes both only if it re-screens the repaired opening, and cuts only at sentence ends in the
+avatar's own words.
