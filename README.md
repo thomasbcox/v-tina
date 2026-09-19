@@ -301,20 +301,70 @@ candidate was **19.5 s** on one comparison, which is why it was rejected — but
 sample against another, not as a stable ranking. Re-measure before changing models, and take more
 than one reading.
 
-### Provisional prompts
+### How V-Tina speaks
 
-This story built the router, not Governor Kotek's voice. Prompts that produce a label or a
-rephrased question are finished work. Prompts a reader actually reads are **provisional** and the
-next story replaces them:
+**She never speaks as Governor Kotek. She speaks as an avatar of her.** What the record says is
+**quoted, with its citation**; everything else is marked as the avatar's own words. Executive orders
+and bills quote well, which is what makes the rule practical.
 
-- `GROUNDED_DEFERRAL`
+This replaced an attempt to write in the Governor's own register, and the reason is worth keeping:
+three of the five "lexical anchors" the product specification names — "True North",
+"mission-focused", "not a blank check" — appear in **zero** corpus documents, and a fourth
+("deflection") appears only as a legal diversion programme. There is no speech or interview material
+here at all. Quoting the record needs no such evidence, and unlike a register it can be checked.
+
+These rules derive from **one grammar** in `src/lib/voice.ts` — the streaming answer path
+and every offline check call the same lexer, so they cannot disagree about what a quotation is.
+
+| Rule | What is enforced |
+|---|---|
+| **Say who is speaking** | The answer opens by identifying the avatar. After about **150** of its own words it identifies itself again — and if the model does not, the answer path **injects** the frame at the start of the next sentence. The frame never splits a sentence, so one long sentence can carry a stretch well past 150 before it lands: **there is no hard ceiling**, by choice, rather than interrupt a sentence mid-thought. Quoted text does not count: while the record is speaking, the frame is not what is at stake. |
+| **Quote faithfully** | A quotation goes in curly marks, `“like this”`, and must be verbatim — contiguous, unelided — in a passage **of the document it is cited to**. Membership over all passages is not enough: orders quote statutes and bills share boilerplate, so a span can be genuine and still cited to a document that does not contain it. |
+| **Never write as her** | First person as the Governor is forbidden in the avatar's own prose, and **allowed inside a quotation**, because two corpus documents open "I, TINA KOTEK, Governor of the State of Oregon" and quoting them is correct. |
+
+**Why curly marks, and only curly marks.** They are the one delimiter that can be nested reliably:
+opening and closing are different characters. The corpus uses them inside its own text, mostly bills
+quoting their defined terms (measured in `reviews/answer-voice-screen.md`), so a quotation of that text
+contains curly marks of its own, and the grammar tracks the nesting rather than closing at the first
+inner mark. A straight double quote cannot be nested that way, and **a single-quoted span is refused
+outright**, including a straight apostrophe that *begins* a word, which is refused as the opening of
+one. The first version did not recognise single marks at all; a later one guessed from whether a
+closing mark followed, and an unclosed single-quoted quotation reached the reader as ordinary prose.
+Both let a fabrication through. An apostrophe inside a word, `Oregon's`, is untouched, and the answering
+prompt tells the model never to begin a word with one.
+
+**How a citation is recognised.** Each document's kind is declared once — `EO` as "Executive Order",
+`SB` as "Senate Bill", `Ballot Measure` as "Measure" — and its number is never matched alone. The first
+version matched bare numbers, and `EO 24-02` contains "Springfield/Lane County (110%)", which made an
+unrelated statistic cite Ballot Measure 110. Matches are word-bounded, the citation nearest the
+quotation wins, and it is read **only from the avatar's own words**: a document named *inside* a
+quotation is the record talking, not the avatar citing, and reading it as a citation once refused a
+verbatim quotation of EO 24-02 because the passage quoted before it mentions EO 23-02.
+
+An unverifiable quotation, a quotation in the wrong marks, or an opening that speaks as the Governor
+and cannot be repaired stops the answer with a **provenance notice** — never the infrastructure
+failure notice. Telling a reader something went wrong when nothing broke is a false statement about
+the cause.
+
+### Reader-facing prompts
+
+Prose a member of the public actually reads. `src/lib/prompts.ts` declares them and a test holds this
+list equal to the code in both directions.
+
 - `ANSWER_SYSTEM_PROMPT`
+- `GROUNDED_DEFERRAL`
 - `FAILURE_NOTICE`
+- `PROVENANCE_NOTICE`
 
-This is the same list `PROVISIONAL_PROMPTS` declares in `src/lib/prompts.ts`, and a test holds the
-two equal in both directions. The placeholder answering prompt is deliberately plain: it governs
-accuracy and says nothing about tone, so that nobody mistakes it for a decision about how she
-sounds.
+### Routing prompts
+
+Prompts that produce a label or a rephrased question and are never read by anyone.
+
+- `CLASSIFIER_SYSTEM_PROMPT`
+- `REWRITE_SYSTEM_PROMPT`
+
+Nothing is provisional any more. `PROVISIONAL_PROMPTS` is empty, and the three lists still partition
+every prompt the module exports — a new one classified into none of them fails the suite.
 
 
 ## Ingesting the corpus

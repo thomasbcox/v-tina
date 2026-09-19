@@ -1,52 +1,124 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { readFileSync, readdirSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import * as prompts from "../src/lib/prompts";
-import { PROVISIONAL_PROMPTS, ROUTING_PROMPTS } from "../src/lib/prompts";
+import {
+  PROVISIONAL_PROMPTS,
+  READER_FACING_PROMPTS,
+  ROUTING_PROMPTS,
+} from "../src/lib/prompts";
 
 const README = readFileSync(resolve(__dirname, "../README.md"), "utf8");
 
-/** The provisional names the README itself lists, parsed from its own prose.
- *  Deliberately independent of the constant it is compared against: reading the
- *  constant to build the expectation would let the two drift together. */
-function documentedProvisional(): string[] {
-  const section = README.split("### Provisional prompts")[1] ?? "";
-  const body = section.split(/\n## /)[0];
+/** Names the README itself lists under a heading, parsed from its own prose —
+ *  deliberately independent of the constant it is compared against. */
+function documented(heading: string): string[] {
+  const section = README.split(heading)[1] ?? "";
+  const body = section.split(/\n#{2,3} /)[0];
   return [...body.matchAll(/^- `([A-Z0-9_]+)`$/gm)].map((m) => m[1]);
 }
 
-describe("AC11 — the provisional prompts are declared once and documented the same", () => {
-  it("the README lists exactly what the code declares, both directions", () => {
-    const documented = documentedProvisional();
-    expect(documented.length, "the README section parsed to nothing").toBeGreaterThan(0);
-    expect([...documented].sort()).toEqual([...PROVISIONAL_PROMPTS].sort());
-  });
+const exported = Object.entries(prompts)
+  .filter(([name, value]) => typeof value === "string" && /^[A-Z0-9_]+$/.test(name))
+  .map(([name]) => name)
+  .filter((name) => name !== "OREGON_PORTAL_URL"); // a link, not a prompt
 
-  it("every prompt this module ships is classified as provisional or routing", () => {
-    // An exhaustive partition, so a NEW voice-bearing prompt cannot ship unlisted:
-    // adding one to neither list fails here, which makes classifying it mandatory
-    // rather than a habit.
-    const exported = Object.entries(prompts)
-      .filter(([name, value]) => typeof value === "string" && /^[A-Z0-9_]+$/.test(name))
-      .map(([name]) => name)
-      // The portal URL is a link, not a prompt.
-      .filter((name) => name !== "OREGON_PORTAL_URL");
-
+describe("AC12 — every prompt is classified, and the buckets mean what they say", () => {
+  it("the three lists partition every prompt this module ships", () => {
+    // Exhaustive: a new prompt in none of the three fails here, so classifying it
+    // is mandatory rather than a habit.
     expect(exported.length).toBeGreaterThan(0);
     expect([...exported].sort()).toEqual(
-      [...PROVISIONAL_PROMPTS, ...ROUTING_PROMPTS].sort(),
+      [...PROVISIONAL_PROMPTS, ...ROUTING_PROMPTS, ...READER_FACING_PROMPTS].sort(),
     );
   });
 
-  it("the two lists do not overlap", () => {
-    const overlap = PROVISIONAL_PROMPTS.filter((n) =>
-      (ROUTING_PROMPTS as readonly string[]).includes(n),
+  it("no prompt appears in two lists", () => {
+    const all = [...PROVISIONAL_PROMPTS, ...ROUTING_PROMPTS, ...READER_FACING_PROMPTS];
+    expect(all.length, "a prompt in two buckets makes the partition meaningless").toBe(
+      new Set(all).size,
     );
-    expect(overlap).toEqual([]);
   });
 
-  it("the README says the next story replaces them", () => {
-    const section = README.split("### Provisional prompts")[1] ?? "";
-    expect(section.split(/\n## /)[0]).toMatch(/next story replaces them/i);
+  it("nothing is provisional any more — story 3 replaced all three", () => {
+    expect([...PROVISIONAL_PROMPTS]).toEqual([]);
+  });
+
+  it("the partition still has teeth over an empty provisional list", () => {
+    // Emptiness reached by deleting the list or the check would pass every
+    // assertion above and mean nothing. This proves the guard still bites: a
+    // prompt classified nowhere is not covered by the union.
+    const union = new Set<string>([
+      ...PROVISIONAL_PROMPTS,
+      ...ROUTING_PROMPTS,
+      ...READER_FACING_PROMPTS,
+    ]);
+    expect(union.has("A_PROMPT_NOBODY_CLASSIFIED")).toBe(false);
+    expect(union.size, "the union must not be empty, or coverage is vacuous").toBeGreaterThan(0);
+  });
+
+  it("the routing bucket holds only prompts a reader never sees", () => {
+    // The classification must be CORRECT, not merely present — a reader-facing
+    // prompt filed under 'carries no voice' passes a coverage check while being
+    // exactly wrong. (The builder did this once; see prompts.ts.)
+    for (const name of ROUTING_PROMPTS) {
+      const text = (prompts as Record<string, unknown>)[name] as string;
+      expect(text, `${name} should instruct a machine, not address a reader`).toMatch(
+        /reply with|rewrite the user's question/i,
+      );
+    }
+  });
+
+  it("every reader-facing prompt speaks as the avatar, never as the Governor", () => {
+    for (const name of READER_FACING_PROMPTS) {
+      const text = (prompts as Record<string, unknown>)[name] as string;
+      expect(typeof text).toBe("string");
+      expect(text.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("the README documents the same three lists, equal in both directions", () => {
+    for (const [heading, declared] of [
+      ["### Reader-facing prompts", READER_FACING_PROMPTS],
+      ["### Routing prompts", ROUTING_PROMPTS],
+    ] as const) {
+      const listed = documented(heading);
+      expect(listed.length, `the README section ${heading} parsed to nothing`).toBeGreaterThan(0);
+      expect([...listed].sort()).toEqual([...declared].sort());
+    }
+  });
+});
+
+describe("the partition's universe is every prompt, not one module", () => {
+  it("no other module under src/lib exports a reader-facing prompt", () => {
+    // Ratified regression against AC10/AC12: the partition covers prompts.ts, so
+    // a voice-bearing constant exported from a NEW module escapes both lists
+    // while every check stays green. The extent here comes from the filesystem.
+    const root = resolve(__dirname, "../src/lib");
+    const files: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (entry.name.endsWith(".ts")) files.push(full);
+      }
+    };
+    walk(root);
+    expect(files.length).toBeGreaterThan(5);
+
+    const offenders: string[] = [];
+    for (const file of files) {
+      if (file.endsWith("prompts.ts")) continue;
+      const source = readFileSync(file, "utf8");
+      // A prompt looks like an exported ALL-CAPS constant holding a template
+      // literal that runs to more than one line.
+      for (const m of source.matchAll(/export const ([A-Z][A-Z0-9_]+)\s*=\s*`([^`]*)`/g)) {
+        if (m[2].includes("\n")) offenders.push(`${file}: ${m[1]}`);
+      }
+    }
+    expect(
+      offenders,
+      "a reader-facing prompt outside prompts.ts escapes the partition entirely",
+    ).toEqual([]);
   });
 });

@@ -1,0 +1,36 @@
+{
+  "verdict": "Wed Sep 16 17:09:13 PDT 2026 — The macro shape is the one I would keep: one lexer shared by offline checks and the stream, one per-answer passage index, injectable orchestration, declared citation aliases, and no parser dependency. The redesigned cadence and linear streaming loop are sound and honestly document the no-ceiling limitation. I would not ship it as-is: the straight-single-quote grammar still has a fail-open final state that can release a fabricated quotation, and the load-bearing avatar frame is copied in display and notice text instead of derived from its declared source. A minor living-count cleanup also remains.",
+  "regressions": [],
+  "findings": [
+    {
+      "severity": "BLOCKER",
+      "reversibility": "two-way",
+      "standing": "kludgy",
+      "title": "The straight-single-quote grammar is fail-open where AC4 requires fail-closed",
+      "locus": "src/lib/voice.ts:155-177,257-274",
+      "claim": "The grammar is total and fail-closed for curly quotation marks, but a word-initial straight single mark becomes ordinary prose whenever `singleClosesAfter` cannot find a closer before a sentence end. I drove the real `lex` with `final=true`: both `Under EO 23-02: 'a 13% rise in unsheltered homelessness` and `It is 'quoted here.` return one prose token, not a violation. In the stream, the opening mark is held while more text may arrive, then the final pass tokenizes the unresolved construct as prose and `releaseProse` emits it. That lets a fabricated single-quoted span reach the reader without verification, contradicts AC4 and R2, and contradicts the README's claim that a single-quoted span is refused outright. The tests cover only a single-quoted span that closes before later prose, not the unresolved or sentence-ended cases. The root shape problem is that the grammar distinguishes a quotation from an apostrophe-initial word by hoping to find a closer, rather than declaring which prose forms are legal.",
+      "alternative": "Make the straight-single-quote state total and fail-closed. The simplest rule is to treat a word-initial straight `'` as a delimiter violation exactly as `‘` is, leave `’` as the apostrophe, and require the prompt to use curly apostrophes for contractions; alternatively, declare a narrow allowlist for legitimate apostrophe-initial words such as `'til`. Whatever rule is chosen, an unresolved opener at `final` must produce a grammar violation, never prose.",
+      "win": "Closes the remaining single-quote fabrication bypass, makes the code match AC4 and the README, and removes the asymmetric final-state special case that only this delimiter class has."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The canonical avatar frame is copied instead of derived",
+      "locus": "src/lib/chat/orchestrate.ts:262-272; src/lib/voice.ts:29-33; src/lib/prompts.ts:79,162",
+      "claim": "`AVATAR_FRAME` is declared as the authority for the prompt and the screen, but the runtime injects a separately typed `DISPLAY_FRAME`, and `GROUNDED_DEFERRAL` and `PROVENANCE_NOTICE` hard-code the same phrase again. The guard only checks that `DISPLAY_FRAME` contains one member of `AVATAR_FRAME`, so a display phrase with extra words can pass while no longer being exactly the frame the prompt offers. This is a second statement of a load-bearing vocabulary with its own drift clock, contrary to AC10 and the builder protocol's single-source discipline; a containment test is a detector, not a single source.",
+      "alternative": "Declare one canonical display-cased frame in `voice.ts`, or export a small `displayFrame()` helper derived from `AVATAR_FRAME[0]`. Use that one value for injection and interpolate it into the reader-facing notices. The lower-case screen vocabulary can derive from the same canonical value.",
+      "win": "Removes several hand-maintained copies of the speaker-identification phrase, centralizes the invariant, and guarantees that the injected frame is exactly the frame documented, prompted, and recognised by the cadence rule."
+    },
+    {
+      "severity": "NIT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "Living text counts sets that are defined beside it",
+      "locus": "README.md:316-329; src/lib/voice.ts:179-191",
+      "claim": "The README says “Three rules” immediately above a table that is itself the list, so the numeral is a copy of the table's size and will drift when a rule is added. The same living documentation also carries corpus cardinalities such as “710 marks” and “286” apostrophes, while code comments repeat them. Under the builder protocol's Counts are copies rule, those numbers belong in a dated record, not living text.",
+      "alternative": "Delete the count and say “The voice rules below derive from one grammar” or simply “These rules derive from one grammar.” For corpus measurements, name the kind or point to the dated story record that measured them rather than restating the current total in README or comments.",
+      "win": "Removes decay-prone copies without losing information, and keeps living documentation from silently becoming false when the rule table or corpus grows."
+    }
+  ]
+}
