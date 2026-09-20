@@ -328,7 +328,7 @@ are person-judged and owe none.
 - frame/6 — ran twice. Round 1 (superseded design) -> reviews/answer-voice-screen.design.fdc04f4.json. Round 2, the binding pass, after Thomas inverted the design at the consult: codex on kimi-latest, 6 findings, 13 regressions -> reviews/answer-voice-screen.design.896817f.json
 - frame/9 — demonstrated red for all nine sized criteria against the ratified regressions (two sabotages were incomplete on the first attempt, reported as such and redone). Plus four defects the live runs found that the suite could not, each now covered by a red-able test.
 - review/6 — ran (codex on glm-latest, 3 findings) -> reviews/answer-voice-screen.approach.0e685ed.json
-- review/8 — ran (codex: deepseek-pro-latest correctness / kimi-latest hidden-failure, 1 / 1 findings) -> reviews/answer-voice-screen.correctness.d42bbb0.json, reviews/answer-voice-screen.hidden-failure.d42bbb0.json
+- review/8 — n/a — round 0e685ed stopped at the approach gate: Thomas approved a BLOCKER fix and chose to treat it as a redesign, so the correctness, hidden-failure and doc-drift (shadow) passes did not run. They last ran in round d42bbb0.
 - close/3b — activation, nothing citable — the reviewer harness refused to promote the round's approach pass (codex exited 1 on every routed model: the stored Fireworks key was rejected, 401). `--probe-codex-routes` named the class immediately and `fireconnect codex on` fixed it. No proposal: novelty could not be **cited** — this repo ships no install.sh to drift, this branch has no BACKLOG.md (it is on the unmerged records branch) and no .aar/rejected-lessons.md, and the workflow repo's own register is out of scope from here.
 - close/4 — presented: re-review or merge (Thomas had classed the round's fixes contained, so merge was on the table); he chose a **full re-review**. At the same stop he approved fixing the live SB 755 refusal, which was applied this round.
 
@@ -1962,3 +1962,36 @@ citation policy beside the live one.
 
 **Not a regression from round 4.** The unrecognised glyphs were prose before that round too; round 4
 closed `”` and `’` specifically. This is the same class, which is the reviewer's point.
+
+## Decisions (2026-09-19, approach round 5 — 0e685ed)
+
+Round `0e685ed`, base `d42bbb0`. Three findings, all verified by running them. **The round stops here —
+Thomas's call**: he treated the BLOCKER fix as a redesign, so the correctness, hidden-failure and
+doc-drift (shadow) passes did not run this round.
+
+**Approach (glm-latest)**
+
+- **The delimiter table is not total: other quotation glyphs still fail open** (BLOCKER, one-way,
+  kludgy): **FIX — as a declared list.** One list of quote-like marks: `“` is the only opener, every
+  other listed mark outside a quotation is a violation, and all of them are content inside one. Tests
+  iterate the list rather than naming glyphs one at a time, and the answering prompt forbids them
+  alongside the word-initial apostrophe rule. Verified: `«…»`, `` `…` ``, `‹…›` and `❝…❞` all carry the
+  specification's invented figure to the reader today; and across 24 recorded real answers the avatar's
+  own prose contains none of those marks, backticks included, so the cost is nothing on record.
+
+- **A dead nearest-only citation policy survives beside the live same-sentence policy** (IMPORTANT,
+  two-way, kludgy): **ACCEPT — tidy, and widen it.** Thomas: *"tidy and also do a full doc sweep to look
+  for drift, errors, old references, and incoherence."* So `/close` deletes `citedDocument` and
+  `nearestCitation`, rewrites their tests against the live verifier, **and sweeps the repository's living
+  text** — README, code comments, docstrings, configuration prose — for stale references, claims that no
+  longer match the code, and incoherence, fixing what it finds and reporting the sweep.
+
+- **Living README text still hard-codes sizes of sets defined elsewhere** (NIT, two-way, nonstandard):
+  **FIX**, and Thomas asked why these keep recurring. Recorded answer, because it is the same pattern the
+  BLOCKER describes: **each round fixed the instances the reviewer named rather than the class.** Round
+  8175a2d fixed "Three rules" and the corpus totals; round d42bbb0 fixed "three of the five", "the three
+  lists" and "two executive orders"; this round names three more, all in README sections earlier rounds
+  never read. Two things kept it alive: the fixes were scoped to the cited lines, and **nothing
+  mechanical checks the rule** — it is doctrine (`workflow-protocol.md` → *Counts are copies*) enforced
+  only by a reviewer happening to read that paragraph. The widened sweep above is the class fix; whether
+  a mechanical guard is worth building is a separate question, not decided here.
