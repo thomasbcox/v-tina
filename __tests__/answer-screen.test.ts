@@ -322,6 +322,12 @@ describe("AC8 — clean answers pass unaltered, streaming, with honest refusals"
     expect(ANSWER_SYSTEM_PROMPT).toContain("Never begin a word with an apostrophe");
   });
 
+  it("the answering prompt rules out the other quotation-like marks the screen refuses", () => {
+    // The screen refuses them; without this line the model is never told, and the first
+    // answer using one is stopped for a rule it was not given.
+    expect(ANSWER_SYSTEM_PROMPT).toContain("Use no other quotation-like mark");
+  });
+
   it("releases a quotation cited in the avatar's words, whatever the quotation before it names", async () => {
     // Both live refusals, replayed on the real corpus text.
     const at = (title: string, file: string, n: number): RetrievedPolicyChunk => ({
