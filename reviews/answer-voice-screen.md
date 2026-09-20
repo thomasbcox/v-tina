@@ -330,7 +330,7 @@ are person-judged and owe none.
 - review/6 — ran (codex on glm-latest, 3 findings) -> reviews/answer-voice-screen.approach.d42bbb0.json
 - review/8 — ran (codex: deepseek-pro-latest correctness / kimi-latest hidden-failure, 1 / 1 findings) -> reviews/answer-voice-screen.correctness.d42bbb0.json, reviews/answer-voice-screen.hidden-failure.d42bbb0.json
 - close/3b — activation, nothing citable — the reviewer harness refused to promote the round's approach pass (codex exited 1 on every routed model: the stored Fireworks key was rejected, 401). `--probe-codex-routes` named the class immediately and `fireconnect codex on` fixed it. No proposal: novelty could not be **cited** — this repo ships no install.sh to drift, this branch has no BACKLOG.md (it is on the unmerged records branch) and no .aar/rejected-lessons.md, and the workflow repo's own register is out of scope from here.
-- close/4 — presented: re-review only. Round 8175a2d's finding 1 changed the grammar, so merge was not offered.
+- close/4 — presented: re-review or merge (Thomas had classed the round's fixes contained, so merge was on the table); he chose a **full re-review**. At the same stop he approved fixing the live SB 755 refusal, which was applied this round.
 
 ## Build note (2026-09-15)
 
@@ -1860,3 +1860,17 @@ document.
 grepped as SB-755-only. It is in Measure 110 too, wrapped across lines, which `grep` cannot see and the
 verifier's whitespace normalisation can. The test failed, the code was right, and the phrase was
 replaced with one the index itself confirms is in SB 755 alone.
+
+### Live again, after the citation fix
+
+Three questions, including the one that was refused. **All in bounds, all streamed (108–125 text
+events), 21 of 21 released quotations verbatim.** The SB 755 sentence that had been refused now
+answers.
+
+**One refusal remains, and it is the screen working.** The addiction answer stopped at a quotation
+reported "not in any passage". Run down rather than assumed: the phrase's first 60 characters are in
+Measure 110, and that document's chunk **is** among the passages this question retrieves — so the
+model's span diverges from the record somewhere past the characters the log keeps. A span that is not
+verbatim in a passage is exactly what AC4 refuses. **Operability limit, met twice now:** the provenance
+log keeps only a quotation's first 60 characters, and the refused text never reaches the reader, so the
+divergence point cannot be recovered from a live run.
