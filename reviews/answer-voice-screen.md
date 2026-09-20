@@ -329,7 +329,7 @@ are person-judged and owe none.
 - frame/9 — demonstrated red for all nine sized criteria against the ratified regressions (two sabotages were incomplete on the first attempt, reported as such and redone). Plus four defects the live runs found that the suite could not, each now covered by a red-able test.
 - review/6 — ran (codex on glm-latest, 3 findings) -> reviews/answer-voice-screen.approach.d42bbb0.json
 - review/8 — ran (codex: deepseek-pro-latest correctness / kimi-latest hidden-failure, 1 / 1 findings) -> reviews/answer-voice-screen.correctness.d42bbb0.json, reviews/answer-voice-screen.hidden-failure.d42bbb0.json
-- close/3b — no activation
+- close/3b — activation, nothing citable — the reviewer harness refused to promote the round's approach pass (codex exited 1 on every routed model: the stored Fireworks key was rejected, 401). `--probe-codex-routes` named the class immediately and `fireconnect codex on` fixed it. No proposal: novelty could not be **cited** — this repo ships no install.sh to drift, this branch has no BACKLOG.md (it is on the unmerged records branch) and no .aar/rejected-lessons.md, and the workflow repo's own register is out of scope from here.
 - close/4 — presented: re-review only. Round 8175a2d's finding 1 changed the grammar, so merge was not offered.
 
 ## Build note (2026-09-15)
@@ -1804,3 +1804,40 @@ this file.
 
 The possessive false positive (`I am the Governor's …`) is untouched, per Thomas's decision that the
 product never uses that phrasing.
+
+## Post-fix verification (2026-09-19, round 4)
+
+### Demonstrate red
+
+Committed before any sabotage; the helper refuses a dirty tree and restores exact bytes.
+
+| # | Sabotage | Result |
+|---|---|---|
+| M1 | **A confirmed bypass** — a closing `”` is prose again | **RED** |
+| M2 | **A confirmed bypass** — a curly `’` starting a word is prose again | **RED** — the mark table and the apostrophe test |
+| M3 | `‘` is prose again | **RED** — including the round-8175a2d single-quote test |
+| R1 | The sentence after a dropped opening is released unscreened again | **RED** — both repair tests |
+| R2 | Repair cuts inside a quotation again and never re-screens | **RED** |
+| R3 | An all-impersonating answer is released instead of refused | **RED** — including story 2's own refusal test |
+
+### Live, through the running endpoint
+
+**The app's own key is rejected** (`.env.local`, 401), so the server was started with the valid key
+already in the environment; nothing was written to disk. Replacing that key is Thomas's to do.
+
+Four questions over HTTP against a fresh build. All in bounds, all streamed progressively (119–214 text
+events), **27 of 27 released quotations verbatim in the corpus**, checked independently of `voice.ts`.
+No answer was mangled and no impersonation appeared.
+
+**One answer was stopped, and it should not have been — a limit this story already recorded, biting a
+real answer.** The addiction-treatment answer ended at a **verbatim SB 755 quotation**. Its sentence
+read "SB 755 (2021) addresses funding for these services, stating that moneys transferred to the Drug
+Treatment and Recovery Services Fund and distributed under **Ballot Measure 110** …", so the *nearest*
+document named in the avatar's own words was Ballot Measure 110, the quotation is not in that document,
+and the screen refused. Citation logic was not touched this round; this is the stated limit recorded in
+the round-b6039ac fixes — "the nearest document the avatar names still wins" — now shown to refuse a
+correct answer rather than merely leave one uncited. It is **not fixed here**: it is outside the
+approved findings, and is put to Thomas at the fork.
+
+A fifth, earlier probe answer was also refused, at a quotation reported "not in any passage"; that
+answer's text was not captured, so whether the model misquoted cannot be shown either way.
