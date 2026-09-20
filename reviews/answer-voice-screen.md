@@ -327,7 +327,7 @@ are person-judged and owe none.
 
 - frame/6 — ran twice. Round 1 (superseded design) -> reviews/answer-voice-screen.design.fdc04f4.json. Round 2, the binding pass, after Thomas inverted the design at the consult: codex on kimi-latest, 6 findings, 13 regressions -> reviews/answer-voice-screen.design.896817f.json
 - frame/9 — demonstrated red for all nine sized criteria against the ratified regressions (two sabotages were incomplete on the first attempt, reported as such and redone). Plus four defects the live runs found that the suite could not, each now covered by a red-able test.
-- review/6 — ran (codex on glm-latest, 3 findings) -> reviews/answer-voice-screen.approach.d42bbb0.json
+- review/6 — ran (codex on glm-latest, 3 findings) -> reviews/answer-voice-screen.approach.0e685ed.json
 - review/8 — ran (codex: deepseek-pro-latest correctness / kimi-latest hidden-failure, 1 / 1 findings) -> reviews/answer-voice-screen.correctness.d42bbb0.json, reviews/answer-voice-screen.hidden-failure.d42bbb0.json
 - close/3b — activation, nothing citable — the reviewer harness refused to promote the round's approach pass (codex exited 1 on every routed model: the stored Fireworks key was rejected, 401). `--probe-codex-routes` named the class immediately and `fireconnect codex on` fixed it. No proposal: novelty could not be **cited** — this repo ships no install.sh to drift, this branch has no BACKLOG.md (it is on the unmerged records branch) and no .aar/rejected-lessons.md, and the workflow repo's own register is out of scope from here.
 - close/4 — presented: re-review or merge (Thomas had classed the round's fixes contained, so merge was on the table); he chose a **full re-review**. At the same stop he approved fixing the live SB 755 refusal, which was applied this round.
@@ -1889,3 +1889,76 @@ correctness alone. Base `d42bbb0`. Only what moved.
 | 3, 4 | The mark table in `lex` (`src/lib/voice.ts`): outside a quotation, `“` opens, `"`/`”` and `‘` are violations, `'`/`’` are violations where a word starts and prose inside one. `citationsIn` + the same-sentence rule in `verifyQuotedSpan`: when one sentence names several documents, the one holding the words is the citation |
 | 2, 7, 8 | The opening repair loop in `advance` (`src/lib/chat/orchestrate.ts`): each candidate sentence is screened before release, an impersonating one is dropped and the next screened in turn, and nothing clean left refuses. `releaseOpening` now takes an already-screened verdict; the error path screens what it holds |
 | 10 | "three of the five", "the three lists" and "two executive orders" out of README, `prompts.ts` and `voice.ts` |
+
+## Codex (glm-latest) approach review — round 5 (2026-09-19, base d42bbb0, HEAD 0e685ed)
+
+**Verdict.** 2026-09-19 18:05:11 PDT — The macro shape is the one I would keep: a single lexer
+shared by streaming and offline verification, a sentence-by-sentence opening repair loop, and an
+indexed passage verifier. No parser dependency is warranted. The safety grammar is not yet
+shippable, however, because the implemented mark table is still a hand-picked subset rather than the
+total quotation-mark grammar it claims to be; the citation module also now retains a dead, older
+citation policy beside the live one.
+
+### BLOCKER
+
+**The delimiter table is not total: other quotation glyphs still fail open** — reversibility: one-way · standing: kludgy · locus: `src/lib/voice.ts:104-110,250-263`
+
+- **Claim:** Outside an open quotation, the scanner recognises only straight double quotes, closing
+  curly double quotes, curly opening singles, and word-initial apostrophes. Other reader-visible
+  quotation delimiters fall through as prose: I ran the lexer and both `«a fabricated record claim»`
+  and `` `a fabricated record claim` `` tokenize entirely as prose, so `verifyQuotations` reports
+  nothing and the streaming path would release the span. The screen exists precisely because the
+  prompt cannot be trusted, so an unrecognised quotation glyph is another fail-open bypass in the
+  same class the last three rounds patched one glyph at a time.
+- **Alternative:** Replace the bespoke branch cases with one declarative delimiter table: define the
+  quote-like glyph set explicitly or from Unicode initial/final punctuation categories, plus
+  backticks and ASCII marks; make `“` the only permitted opener; treat every other table member
+  outside an open quotation as a grammar violation; treat all members as content inside one.
+  Generate the refusal tests by iterating that table rather than adding another hand-written glyph
+  case.
+- **Win:** Closes the whole class of delimiter bypasses instead of the next example, centralises the
+  grammar invariant in one table, and removes the repeated review-and-patch cycle without adding a
+  dependency.
+
+### IMPORTANT
+
+**A dead nearest-only citation policy survives beside the live same-sentence policy** — reversibility: two-way · standing: kludgy · locus: `src/lib/voice.ts:391-426`
+
+- **Claim:** `nearestCitation` and the exported `citedDocument` still implement the older nearest-
+  name-wins policy, but no production code calls them after the same-sentence fix; the live path and
+  `verifyQuotedSpan` use `citationsIn` plus `sentenceStartIn`. The only remaining callers are tests,
+  so those tests can continue to pass against a helper whose semantics no longer describe the
+  product, creating exactly the drift the module’s single-source comments say it exists to prevent.
+- **Alternative:** Delete `nearestCitation` and `citedDocument`, and rewrite their tests against
+  `verifyQuotedSpan` or `verifyQuotations`. If a small public helper is still useful, expose the
+  actual candidate-resolution rule and make both runtime and tests call it.
+- **Win:** Leaves one citation semantics in the module, removes dead exported API, and makes the
+  tests exercise the code that decides what a reader receives.
+
+### NIT
+
+**Living README text still hard-codes sizes of sets defined elsewhere** — reversibility: two-way · standing: nonstandard · locus: `README.md:89-96,118-125,254-255`
+
+- **Claim:** The README still writes copied counts: “three checks” for the gate’s `CHECKS` array,
+  “three stated priorities” for `POLICY_PILLARS`, and “three declared labels” for
+  `SAFETY_CLASSIFICATIONS`. Each set is enumerable in code or in the adjacent list, so under the
+  builder protocol’s Counts are copies rule these numerals are decay-prone second statements in
+  living text.
+- **Alternative:** Name the kind or point to the authoritative list: say the gate runs every check
+  in `scripts/gate.mjs`, that the policy pillars are the list declared in
+  `src/lib/ingest/pillars.ts`, and that a verdict must be exactly one of the declared labels in
+  `src/lib/safety.ts`; remove the numerals.
+- **Win:** Removes count copies that will silently become false when a check, pillar, or
+  classification is added, without losing information.
+
+### Verified by running the claims
+
+| Claim | Result |
+|---|---|
+| Other quotation glyphs fall through as prose | **CONFIRMED.** `«a 13% rise…»`, `` `a 13% rise…` ``, `‹a 13% rise›` and `❝a 13% rise❞` all lex as prose, and the streamed answer carries the invented figure to the reader. `„a 13% rise“` reaches the reader too, its `“` opening a quotation that never closes. |
+| Refusing them would cost real answers | **Nothing on record.** Across 24 recorded answers — the captured fixture and every live HTTP answer — the avatar's own prose contains **no** guillemet, low quote, decorative mark or backtick. |
+| The nearest-only citation policy is dead code | **CONFIRMED.** `nearestCitation` is called only by `citedDocument`, and `citedDocument` only by `__tests__/voice.test.ts`. No production path reaches either since the same-sentence rule landed. |
+| The README still copies counts | **CONFIRMED.** "three checks" (the gate), "three stated priorities" (`POLICY_PILLARS`), "three declared labels" (`SAFETY_CLASSIFICATIONS`) — all outside the sections this story has been editing. |
+
+**Not a regression from round 4.** The unrecognised glyphs were prose before that round too; round 4
+closed `”` and `’` specifically. This is the same class, which is the reviewer's point.

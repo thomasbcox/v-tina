@@ -1,0 +1,36 @@
+{
+  "verdict": "2026-09-19 18:05:11 PDT — The macro shape is the one I would keep: a single lexer shared by streaming and offline verification, a sentence-by-sentence opening repair loop, and an indexed passage verifier. No parser dependency is warranted. The safety grammar is not yet shippable, however, because the implemented mark table is still a hand-picked subset rather than the total quotation-mark grammar it claims to be; the citation module also now retains a dead, older citation policy beside the live one.",
+  "regressions": [],
+  "findings": [
+    {
+      "severity": "BLOCKER",
+      "reversibility": "one-way",
+      "standing": "kludgy",
+      "title": "The delimiter table is not total: other quotation glyphs still fail open",
+      "locus": "src/lib/voice.ts:104-110,250-263",
+      "claim": "Outside an open quotation, the scanner recognises only straight double quotes, closing curly double quotes, curly opening singles, and word-initial apostrophes. Other reader-visible quotation delimiters fall through as prose: I ran the lexer and both `«a fabricated record claim»` and `` `a fabricated record claim` `` tokenize entirely as prose, so `verifyQuotations` reports nothing and the streaming path would release the span. The screen exists precisely because the prompt cannot be trusted, so an unrecognised quotation glyph is another fail-open bypass in the same class the last three rounds patched one glyph at a time.",
+      "alternative": "Replace the bespoke branch cases with one declarative delimiter table: define the quote-like glyph set explicitly or from Unicode initial/final punctuation categories, plus backticks and ASCII marks; make `“` the only permitted opener; treat every other table member outside an open quotation as a grammar violation; treat all members as content inside one. Generate the refusal tests by iterating that table rather than adding another hand-written glyph case.",
+      "win": "Closes the whole class of delimiter bypasses instead of the next example, centralises the grammar invariant in one table, and removes the repeated review-and-patch cycle without adding a dependency."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "kludgy",
+      "title": "A dead nearest-only citation policy survives beside the live same-sentence policy",
+      "locus": "src/lib/voice.ts:391-426",
+      "claim": "`nearestCitation` and the exported `citedDocument` still implement the older nearest-name-wins policy, but no production code calls them after the same-sentence fix; the live path and `verifyQuotedSpan` use `citationsIn` plus `sentenceStartIn`. The only remaining callers are tests, so those tests can continue to pass against a helper whose semantics no longer describe the product, creating exactly the drift the module’s single-source comments say it exists to prevent.",
+      "alternative": "Delete `nearestCitation` and `citedDocument`, and rewrite their tests against `verifyQuotedSpan` or `verifyQuotations`. If a small public helper is still useful, expose the actual candidate-resolution rule and make both runtime and tests call it.",
+      "win": "Leaves one citation semantics in the module, removes dead exported API, and makes the tests exercise the code that decides what a reader receives."
+    },
+    {
+      "severity": "NIT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "Living README text still hard-codes sizes of sets defined elsewhere",
+      "locus": "README.md:89-96,118-125,254-255",
+      "claim": "The README still writes copied counts: “three checks” for the gate’s `CHECKS` array, “three stated priorities” for `POLICY_PILLARS`, and “three declared labels” for `SAFETY_CLASSIFICATIONS`. Each set is enumerable in code or in the adjacent list, so under the builder protocol’s Counts are copies rule these numerals are decay-prone second statements in living text.",
+      "alternative": "Name the kind or point to the authoritative list: say the gate runs every check in `scripts/gate.mjs`, that the policy pillars are the list declared in `src/lib/ingest/pillars.ts`, and that a verdict must be exactly one of the declared labels in `src/lib/safety.ts`; remove the numerals.",
+      "win": "Removes count copies that will silently become false when a check, pillar, or classification is added, without losing information."
+    }
+  ]
+}
