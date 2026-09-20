@@ -328,7 +328,7 @@ are person-judged and owe none.
 - frame/6 — ran twice. Round 1 (superseded design) -> reviews/answer-voice-screen.design.fdc04f4.json. Round 2, the binding pass, after Thomas inverted the design at the consult: codex on kimi-latest, 6 findings, 13 regressions -> reviews/answer-voice-screen.design.896817f.json
 - frame/9 — demonstrated red for all nine sized criteria against the ratified regressions (two sabotages were incomplete on the first attempt, reported as such and redone). Plus four defects the live runs found that the suite could not, each now covered by a red-able test.
 - review/6 — ran (codex on glm-latest, 3 findings) -> reviews/answer-voice-screen.approach.3b101a0.json
-- review/8 — n/a — round 0e685ed stopped at the approach gate: Thomas approved a BLOCKER fix and chose to treat it as a redesign, so the correctness, hidden-failure and doc-drift (shadow) passes did not run. They last ran in round d42bbb0.
+- review/8 — ran (codex: deepseek-pro-latest correctness / kimi-latest hidden-failure, 0 / 0 findings; doc-drift shadow: glm-latest, 10 findings) -> reviews/answer-voice-screen.correctness.3b101a0.json, reviews/answer-voice-screen.hidden-failure.3b101a0.json, reviews/answer-voice-screen.doc-drift.3b101a0.json. Base for both correctness critics was `d42bbb0`, the last SHA they actually read, not round 5's `0e685ed` — otherwise round 5's fixes would never have been read line by line. The shadow pass used `main`, as it always does.
 - close/3b — no activation this round — `./install.sh --check` n/a (this repo ships none); no guard-hook block observed this session; the reviewer harness promoted every pass it ran this round (approach 0e685ed). The harness refusal earlier in this session — codex's rejected key — was dispositioned at round d42bbb0's close.
 - close/4 — presented: re-review only. Round 0e685ed's approved set includes the mark-list BLOCKER, which Thomas treated as a redesign when he stopped that round before the correctness pass, so merge was not offered.
 
@@ -2151,3 +2151,56 @@ count copies. Those should be corrected before the correctness pass.
   cardinalities only in dated story records, where they describe what was true then.
 - **Win:** Removes numbers that become silently false when a pillar, prompt bucket, user story or
   field is added, without losing information.
+
+## Codex correctness pass — round 6 (2026-09-20, base d42bbb0, HEAD 1ab191a)
+
+Both critics returned **empty findings arrays**. Base `d42bbb0` rather than round 5's `0e685ed`:
+`d42bbb0` is the last HEAD these two actually read (round 4), so this is the first line-by-line
+reading of the round-5 fixes as well as the round-6 ones.
+
+**Correctness (deepseek-pro-latest, 17 commands, 0 findings).** "Correctness pass: the diff does
+what the spec says. I traced the new streaming opening loop in `src/lib/chat/orchestrate.ts`
+(sentence-by-sentence rescreen with drops, final-call and catch-block paths)…"
+
+**Hidden failure (kimi-latest, 6 commands, 0 findings).** "The change is failure-transparent
+throughout. Its two headline fixes are themselves hidden-failure repairs from round `d42bbb0` — the
+impersonation repair that was never re-verified and the sentence-bou…"
+
+REACH lines were reported by all three passes and are the over-inclusive kind the check is designed
+to emit: two `sed` address ranges and a backtick the resolver could not enumerate, none of them a
+path outside the review worktree.
+
+## Decisions (2026-09-20, round 6 — 3b101a0)
+
+### Approach pass
+
+**BLOCKER — the quote-mark redesign is still parallel copies.** *Fix narrowly.* Thomas took the
+narrow fix over the reviewer's full alternative: export the list, have the tests iterate the exported
+constant instead of their own hand-typed copy, and leave the prompt and README as prose pinned by the
+existing instruction test. The reasoning put to him and accepted: the only copy that can fail
+*silently* is the test copy, because a mark added with no test is a mark nobody checks; the prompt and
+README are read by a model and by a person, and generating either from a thirty-glyph list makes both
+worse instruction. The reviewer's **one-way** tag was contested at the consult and not accepted —
+exporting a constant later is an ordinary refactor and locks nothing in. Because the narrow fix is a
+tidy and not a redesign, the shape was blessed and the correctness pass ran in the same round.
+
+**IMPORTANT — the accepted sweep missed the most visible stale claims.** *Fix.* Both passages —
+the README *Status* section and the `prompts.ts` module header — are rewritten to the current state.
+The historical placeholder decision stays where it already is, in this dated record.
+
+**IMPORTANT — living count copies survived the count sweep.** *Fix the three in scope, file the
+fourth.* `README.md`'s "five user stories" and "all five fields" and the test name saying "the three
+lists" are fixed here. The `src/lib/ingest/pillars.ts` comment is **filed as a backlog item instead**:
+that file is outside AC13's declared five paths, and Thomas chose to keep the scope criterion he set
+at the start of the story rather than amend it to accommodate a comment.
+
+**The recurrence, third round running.** *File the mechanical check.* A gate check that flags a
+number-word standing next to an enumerable set is filed as a backlog item. It touches
+`scripts/gate.mjs`, outside this branch's scope, so it is a later story. The honest cause: last round
+I called the sweep a class fix, and it was a README-body fix — code comments, test names and the
+README's own opening were never looked at. Nothing mechanical checks the rule, so each round finds
+what the previous round's manual pass did not think to read.
+
+### Correctness pass
+
+No findings from either critic. No decisions to take.
