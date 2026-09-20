@@ -329,7 +329,7 @@ are person-judged and owe none.
 - frame/9 — demonstrated red for all nine sized criteria against the ratified regressions (two sabotages were incomplete on the first attempt, reported as such and redone). Plus four defects the live runs found that the suite could not, each now covered by a red-able test.
 - review/6 — ran (codex on glm-latest, 3 findings) -> reviews/answer-voice-screen.approach.0e685ed.json
 - review/8 — n/a — round 0e685ed stopped at the approach gate: Thomas approved a BLOCKER fix and chose to treat it as a redesign, so the correctness, hidden-failure and doc-drift (shadow) passes did not run. They last ran in round d42bbb0.
-- close/3b — activation, nothing citable — the reviewer harness refused to promote the round's approach pass (codex exited 1 on every routed model: the stored Fireworks key was rejected, 401). `--probe-codex-routes` named the class immediately and `fireconnect codex on` fixed it. No proposal: novelty could not be **cited** — this repo ships no install.sh to drift, this branch has no BACKLOG.md (it is on the unmerged records branch) and no .aar/rejected-lessons.md, and the workflow repo's own register is out of scope from here.
+- close/3b — no activation this round — `./install.sh --check` n/a (this repo ships none); no guard-hook block observed this session; the reviewer harness promoted every pass it ran this round (approach 0e685ed). The harness refusal earlier in this session — codex's rejected key — was dispositioned at round d42bbb0's close.
 - close/4 — presented: re-review or merge (Thomas had classed the round's fixes contained, so merge was on the table); he chose a **full re-review**. At the same stop he approved fixing the live SB 755 refusal, which was applied this round.
 
 ## Build note (2026-09-15)
@@ -2048,3 +2048,34 @@ about acceptance-criteria form, the second a dated provenance record.
 Fixed, in the table above. The recurrence is recorded with the decisions: each round fixed the
 instances the reviewer named rather than sweeping the class, and nothing mechanical checks the rule.
 This round's sweep is the class fix.
+
+## Post-fix verification (2026-09-19, round 5)
+
+### Demonstrate red
+
+Committed before any sabotage.
+
+| # | Sabotage | Result |
+|---|---|---|
+| L1 | The list shrinks to the named marks only, so category members fall through | **RED** |
+| L2 | The named marks drop out, leaving only the categories | **RED** |
+| L3 | A curly open mark no longer opens a quotation | **RED** — 28 tests, including nesting and the captured real answer |
+| P1 | The prompt's other-marks instruction removed | **GREEN on the first run — nothing pinned that instruction.** A test was added (`45c4a79`); **RED** on re-run |
+
+*(L3's first attempt was **vacuous** and reported as such rather than counted: it added a condition
+after the branch that already consumes `“`, so nothing reachable changed. Rewritten to stop `“`
+opening a quotation at all.)*
+
+### Live, through the running endpoint
+
+Four questions over HTTP against a fresh build.
+
+- **Three answered in bounds and streamed** (94–101 text events), **20 of 20 released quotations
+  verbatim** in the corpus, checked independently of `voice.ts`. No answer was mangled by the new mark
+  list, and the model used none of the listed marks in its own prose.
+- **One was stopped on provenance**, the same quotation as the round-4 re-check — "Centers shall provide
+  this service twenty-four hours a day…" — whose prefix matches the record and whose divergence lies
+  past the 60 characters the log keeps. That gap is filed as FEAT-3.
+- **One question hit an infrastructure failure**, not a screen decision: the embeddings call exceeded
+  the 10-second retrieval deadline, and the reader received the infrastructure notice rather than a
+  deferral or a half answer. That is the designed behaviour for a provider timeout (AC9's second half).
