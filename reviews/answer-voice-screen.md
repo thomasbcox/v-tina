@@ -2079,3 +2079,15 @@ Four questions over HTTP against a fresh build.
 - **One question hit an infrastructure failure**, not a screen decision: the embeddings call exceeded
   the 10-second retrieval deadline, and the reader received the infrastructure notice rather than a
   deferral or a half answer. That is the designed behaviour for a provider timeout (AC9's second half).
+
+## Build note (2026-09-20, round 6)
+
+Full review: round 5 ended in an accepted redesign, so the approach pass runs again on the new shape
+before any correctness pass. Base `0e685ed`. Only what moved.
+
+| AC | Where it is satisfied now |
+|---|---|
+| 3, 4 | One declared list of quotation marks in `src/lib/voice.ts` — `NAMED_QUOTE_MARKS` plus the Unicode initial/final-punctuation categories — replaces the per-mark branches. `“` alone opens a quotation; every other listed mark is a single violation, `quote-mark-delimiter`, and the `double-quote-delimiter`/`single-quote-delimiter` reasons are gone. Apostrophes keep their own rule: a violation only where a word begins, prose inside a word |
+| 3 | `citedDocument` and `nearestCitation` deleted from `src/lib/voice.ts`: dead once the same-sentence rule in `verifyQuotedSpan` became the citation rule. Their tests now exercise `verifyQuotations` |
+| 10, 11 | `ANSWER_SYSTEM_PROMPT` (`src/lib/prompts.ts`) carries the reader-facing form of the same list — no other quotation-like mark anywhere — so prompt and screen state one rule, and `README.md` documents the list rather than enumerating cases |
+| 10 | `README.md` documentation sweep: the repository map gains `src/lib/voice.ts`, drops "provisional" for the voice prompts, corrects the fixtures and the Fireworks client, and the marks and citation paragraphs are rewritten to the rules now in force. Remaining counts replaced by pointers to the lists themselves |
