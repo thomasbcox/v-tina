@@ -1759,3 +1759,48 @@ decisions. Two critics in parallel, different model families; neither reported a
 repaired opening going unscreened; this one is the repaired opening *itself* going unscreened. The approved
 repair loop closes both only if it re-screens the repaired opening, and cuts only at sentence ends in the
 avatar's own words.
+
+## Fixes (2026-09-19, round 4 — d42bbb0)
+
+Gate green at **360 tests**.
+
+### Approach blocker 1 — the mark table
+
+The grammar is now total over quotation marks. Outside an open quotation: `“` opens one; a straight
+`"` or a closing `”` is a `double-quote-delimiter` violation; `‘` is a `single-quote-delimiter`
+violation anywhere, because it can only ever open; `'` and `’` are violations where a word starts and
+prose inside a word, decided by the next character. Inside a quotation all of them stay content. The
+violation reason `straight-double-delimiter` became `double-quote-delimiter`, since it now covers a
+closing mark too.
+
+`‘` stays a violation everywhere rather than only at a word start, which is stricter than the
+reviewer's alternative: it is directional, so it has no second reading the way `'` and `’` do.
+
+**Tests.** Every mark that could pass for a delimiter is refused — the straight `"`, the two unclosed
+spans the review confirmed (`”…”` and `’…’`), `‘`, and `'` — while `Oregon’s`, `agencies’`, `Oregon's`
+and `the ’90s` stay prose and `’til`/`'til` are refused.
+
+### Approach blocker 2 + hidden-failure — the opening repair loop
+
+`advance` now screens the opening one sentence at a time until one comes back clean, and
+`releaseOpening` only ever receives a candidate that already has. An impersonating candidate is
+dropped and the **next** sentence is screened in its turn; when nothing clean remains and no more text
+is coming, the answer is refused. The intra-candidate `cut` regex is deleted, so a repair can no longer
+invent a boundary inside a quotation, and the sentence after a dropped one can no longer stream
+unscreened. The error path screens what it holds before releasing it, and refuses if that impersonates.
+
+**Tests.** Two impersonating sentences in a row leave only the clean third; the wrecked case from the
+hidden-failure finding — a cut inside `“Look. Now.”` — now yields `As a virtual avatar of the Governor,
+Then more follows.` with no broken quotation and no `my administration`; and an answer whose every
+sentence impersonates is refused.
+
+### Approach NIT — the last counts
+
+"three of the five" (README, `prompts.ts`), "Three lists" / "the three lists" (`prompts.ts`, README),
+"two executive orders" (`voice.ts`) and "two corpus documents" (README) now name the kind or point to
+this file.
+
+### Rejected, and left alone
+
+The possessive false positive (`I am the Governor's …`) is untouched, per Thomas's decision that the
+product never uses that phrasing.

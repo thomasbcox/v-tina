@@ -46,7 +46,7 @@ export const AVATAR_FRAME = [
 
 /**
  * First person **as the Governor**, as exact phrases. These appear in the corpus as
- * operative text — two executive orders open "I, TINA KOTEK, Governor of the State
+ * operative text — corpus executive orders open "I, TINA KOTEK, Governor of the State
  * of Oregon" — so they are matched only in the avatar's own prose, never inside a
  * quotation, and quoting them is correct.
  */
@@ -104,8 +104,10 @@ export const CITATION_WINDOW = 240;
 /** Opening and closing curly double marks — the ONLY quotation delimiters. */
 const OPEN = "“";
 const CLOSE = "”";
-/** An opening curly single mark. The corpus contains none, so it is never prose. */
+/** An opening curly single mark. It can only ever open, so it is never prose. */
 const SINGLE_OPEN = "‘";
+/** The single marks that double as apostrophes: a delimiter only where a word starts. */
+const APOSTROPHES = "'’";
 
 export type Token =
   /** The avatar's own words. */
@@ -116,11 +118,12 @@ export type Token =
   | { readonly kind: "violation"; readonly raw: string; readonly reason: GrammarViolation };
 
 export type GrammarViolation =
-  /** A straight double quote used as a delimiter. It cannot be one: it is not
-   *  directional, and passages use it internally, so nesting would be ambiguous. */
-  | "straight-double-delimiter"
-  /** A single mark opening a quotation: `‘` anywhere, or a straight `'` that begins a
-   *  word. Single-quoted fabrications reached the reader twice before this was total. */
+  /** A double mark that does not open a quotation: a straight `"`, which cannot be a
+   *  delimiter (it is not directional, and passages use it internally, so nesting would
+   *  be ambiguous), or a closing `”` with nothing open. */
+  | "double-quote-delimiter"
+  /** A single mark opening a quotation: `‘` anywhere, or `'`/`’` beginning a word.
+   *  Single-quoted fabrications reached the reader three times before this was total. */
   | "single-quote-delimiter"
   /** A quotation that opened and never closed. */
   | "unterminated";
@@ -155,12 +158,12 @@ export interface LexResume {
 }
 
 /**
- * Whether the straight mark at `i` begins a word — after a space, bracket, colon or
- * dash, and before a letter — or `undefined` while the next character has not arrived.
- * Mid-word (`Oregon's`) it never does, which is why lexing a continuation needs the
- * character before it.
+ * Whether the apostrophe-shaped mark at `i` begins a word — after a space, bracket,
+ * colon or dash, and before a letter — or `undefined` while the next character has not
+ * arrived. Mid-word (`Oregon's`, `Oregon’s`) it never does, which is why lexing a
+ * continuation needs the character before it.
  */
-function straightMarkBeginsWord(text: string, i: number, lookBehind: string, final: boolean): boolean | undefined {
+function markBeginsWord(text: string, i: number, lookBehind: string, final: boolean): boolean | undefined {
   const before = i === 0 ? lookBehind : text[i - 1];
   if (!/[\s(\[:—-]/.test(before)) return false;
   const after = text[i + 1];
@@ -177,15 +180,20 @@ function straightMarkBeginsWord(text: string, i: number, lookBehind: string, fin
  *   their defined terms (measured in `reviews/answer-voice-screen.md`). A faithful
  *   quotation reproduces them, and a grammar that closed at the first inner `”`
  *   would refuse it.
- * - A **straight double quote** outside a quotation is a violation. Inside one it
- *   is content.
- * - A **single mark opening a quotation** is a violation: `‘` anywhere, and a
- *   straight `'` that begins a word. The next character decides it. An earlier rule
- *   also asked whether a closing mark followed before the sentence ended, and treated
- *   the mark as an apostrophe when none did — so an unclosed single-quoted fabrication
- *   reached the reader as prose (approach review round 8175a2d). `’`, and a straight
- *   `'` inside a word, are always apostrophes: the corpus uses `’` that way and never
- *   opens a quotation with `‘`.
+ * - Every other mark that could pass for a delimiter is a **violation**, so the
+ *   grammar is total over quotation marks rather than letting an unrecognised one
+ *   through as prose: a straight `"` anywhere outside a quotation (it is not
+ *   directional, so it cannot nest), a closing `”` with nothing open, `‘` anywhere
+ *   (it can only open), and `'` or `’` where a word starts. Inside a quotation all of
+ *   them are content.
+ * - An **apostrophe inside a word** — `Oregon's`, `Oregon’s` — is prose. That is the
+ *   only reading `'` and `’` keep, and the next character decides which it is.
+ *
+ * **Each of these was a bypass first.** Single marks went unrecognised entirely (round
+ * f8eda18); a straight `'` was read as an apostrophe when no closing mark followed
+ * before the sentence ended, so an unclosed single-quoted fabrication streamed as prose
+ * (round 8175a2d); and `”` and `’` were still prose, so a span opened with either
+ * reached the reader unverified (round d42bbb0).
  *
  * `final` says no more text is coming, which resolves anything still open.
  *
@@ -239,14 +247,19 @@ export function lex(text: string, final: boolean, lookBehind = " ", resume?: Lex
       continue;
     }
 
-    const beginsWord = ch === "'" ? straightMarkBeginsWord(text, i, lookBehind, final) : false;
+    // The mark table, outside an open quotation. `“` opened one above; everything else
+    // that could pass for a delimiter is refused here, and only an apostrophe inside a
+    // word is prose. A closing `”` and a curly `’` were read as prose until round
+    // d42bbb0, and each opened an unverified quotation the reader saw.
+    const beginsWord = APOSTROPHES.includes(ch) ? markBeginsWord(text, i, lookBehind, final) : false;
     if (beginsWord === undefined) break; // the next character decides
-    if (ch === '"' || ch === SINGLE_OPEN || beginsWord) {
+    const doubleMark = ch === '"' || ch === CLOSE;
+    if (doubleMark || ch === SINGLE_OPEN || beginsWord) {
       flushProse();
       tokens.push({
         kind: "violation",
         raw: ch,
-        reason: ch === '"' ? "straight-double-delimiter" : "single-quote-delimiter",
+        reason: doubleMark ? "double-quote-delimiter" : "single-quote-delimiter",
       });
       i += 1;
       stable = i;

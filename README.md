@@ -308,9 +308,10 @@ than one reading.
 and bills quote well, which is what makes the rule practical.
 
 This replaced an attempt to write in the Governor's own register, and the reason is worth keeping:
-three of the five "lexical anchors" the product specification names — "True North",
-"mission-focused", "not a blank check" — appear in **zero** corpus documents, and a fourth
-("deflection") appears only as a legal diversion programme. There is no speech or interview material
+several of the "lexical anchors" the product specification names — "True North",
+"mission-focused", "not a blank check" — appear in **no** corpus document, and another
+("deflection") appears only as a legal diversion programme. The dated check is in
+`reviews/answer-voice-screen.md`. There is no speech or interview material
 here at all. Quoting the record needs no such evidence, and unlike a register it can be checked.
 
 These rules derive from **one grammar** in `src/lib/voice.ts` — the streaming answer path
@@ -320,7 +321,7 @@ and every offline check call the same lexer, so they cannot disagree about what 
 |---|---|
 | **Say who is speaking** | The answer opens by identifying the avatar. After about **150** of its own words it identifies itself again — and if the model does not, the answer path **injects** the frame at the start of the next sentence. The frame never splits a sentence, so one long sentence can carry a stretch well past 150 before it lands: **there is no hard ceiling**, by choice, rather than interrupt a sentence mid-thought. Quoted text does not count: while the record is speaking, the frame is not what is at stake. |
 | **Quote faithfully** | A quotation goes in curly marks, `“like this”`, and must be verbatim — contiguous, unelided — in a passage **of the document it is cited to**. Membership over all passages is not enough: orders quote statutes and bills share boilerplate, so a span can be genuine and still cited to a document that does not contain it. |
-| **Never write as her** | First person as the Governor is forbidden in the avatar's own prose, and **allowed inside a quotation**, because two corpus documents open "I, TINA KOTEK, Governor of the State of Oregon" and quoting them is correct. |
+| **Never write as her** | First person as the Governor is forbidden in the avatar's own prose, and **allowed inside a quotation**, because corpus executive orders open "I, TINA KOTEK, Governor of the State of Oregon" and quoting them is correct. |
 
 **Why curly marks, and only curly marks.** They are the one delimiter that can be nested reliably:
 opening and closing are different characters. The corpus uses them inside its own text, mostly bills
@@ -363,7 +364,7 @@ Prompts that produce a label or a rephrased question and are never read by anyon
 - `CLASSIFIER_SYSTEM_PROMPT`
 - `REWRITE_SYSTEM_PROMPT`
 
-Nothing is provisional any more. `PROVISIONAL_PROMPTS` is empty, and the three lists still partition
+Nothing is provisional any more. `PROVISIONAL_PROMPTS` is empty, and the declared lists still partition
 every prompt the module exports — a new one classified into none of them fails the suite.
 
 

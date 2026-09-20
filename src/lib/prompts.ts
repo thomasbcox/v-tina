@@ -88,9 +88,9 @@ For anything else about Oregon state government, the official state portal is th
  * What the record says is quoted with its citation; everything else is marked as
  * the avatar's own words. Thomas set that direction at this story's consult, and
  * it replaced an attempt to write in her register — which could not have been
- * honest: three of the five "lexical anchors" the product specification names
- * appear in **zero** corpus documents, and there is no speech material here at
- * all. Quoting the record needs no such evidence, and it is checkable.
+ * honest: several of the "lexical anchors" the product specification names appear
+ * in **no** corpus document (the dated check is in `reviews/answer-voice-screen.md`),
+ * and there is no speech material here at all. Quoting the record needs no such evidence, and it is checkable.
  *
  * The vocabularies are interpolated from `voice.ts` rather than typed out, so the
  * prompt requires exactly the frame the screen looks for and forbids exactly the
@@ -198,7 +198,7 @@ export type RoutingPrompt = (typeof ROUTING_PROMPTS)[number];
  * check pass while putting reader-facing prose in the bucket that says nobody
  * reads it. That is precisely the failure the round-2 design review predicted of
  * this partition: it proves every prompt is *classified*, never that it is
- * classified *correctly*. Three lists, each meaning what its name says, is the
+ * classified *correctly*. Lists that each mean what their name says are the
  * answer; a partition whose buckets are honest is the only kind worth checking.
  */
 export const READER_FACING_PROMPTS = [

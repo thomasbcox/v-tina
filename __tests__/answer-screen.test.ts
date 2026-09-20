@@ -378,6 +378,30 @@ describe("AC8 — clean answers pass unaltered, streaming, with honest refusals"
     expect(text).toContain("statewide emergency");
   });
 
+  it("screens the sentence it falls back to, however many it has to drop", async () => {
+    // The sentence after a dropped one was released unscreened, so a second
+    // impersonation walked straight out behind the injected frame (approach round
+    // d42bbb0). Each candidate opening is screened in turn.
+    const text = await sameEveryWay(
+      `As your Governor, I want to be clear. My administration set a target. The order sets a statewide emergency.`,
+    );
+    expect(text.toLowerCase(), "the second impersonation must not reach the reader").not.toContain("my administration");
+    expect(text).toBe(`${frame}, the order sets a statewide emergency.`);
+  });
+
+  it("never cuts an opening inside a quotation, and refuses when nothing clean remains", async () => {
+    // The repair cut at the first sentence end anywhere — including inside a quotation —
+    // and never re-screened what it kept, emitting impersonation and a broken quotation
+    // (hidden-failure, round d42bbb0).
+    const wrecked = `As your Governor, I say ${O}Look. Now.${C} and my administration acts. Then more follows.`;
+    const text = await sameEveryWay(wrecked);
+    expect(text).not.toContain("Now.”");
+    expect(text.toLowerCase()).not.toContain("my administration");
+    expect(text).toBe(`${frame}, Then more follows.`); // "Then" is no function word, so it keeps its capital
+    expect(said(await collect(["As your Governor, I want to be clear. My administration acts."])), "nothing clean left")
+      .toContain(PROVENANCE_NOTICE);
+  });
+
   it("refuses when an impersonating answer has nothing else", async () => {
     expect(said(await collect(["As your Governor, I want to be clear"]))).toContain(PROVENANCE_NOTICE);
   });

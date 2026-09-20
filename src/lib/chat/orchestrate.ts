@@ -19,6 +19,7 @@ import {
   verifyQuotations,
   verifyQuotedSpan,
   type CadenceState,
+  type OpeningVerdict,
   type LexResult,
   type LexResume,
 } from "../voice";
@@ -360,25 +361,11 @@ export async function* screenedAnswer(
     yield { type: "streamed_tokens", text: PROVENANCE_NOTICE };
   }
 
-  function* releaseOpening(opening: string, hasMore: boolean): Generator<ChatStreamEvent, boolean> {
-    let text = opening;
-    const verdict = screenOpening(text);
-    if (verdict.kind === "impersonates") {
-      const cut = text.search(/(?<=[.!?])\s+(?=[A-Z\u201C])/);
-      const kept = cut === -1 ? "" : text.slice(cut).trim();
-      if (kept === "") {
-        if (!hasMore) {
-          yield* refuse(`opening impersonated ("${verdict.form}") and could not be repaired`);
-          return false;
-        }
-        log("impersonating opening dropped", verdict.form);
-        text = `${DISPLAY_FRAME}, `;
-      } else {
-        text = framed(kept);
-      }
-    } else if (verdict.kind === "missing-frame") {
-      text = framed(text);
-    }
+  /** Releases an opening that has ALREADY screened clean — `ok`, or `missing-frame`,
+   *  which is repaired by prefixing the frame. An impersonating one never reaches here:
+   *  the loop in `advance` drops it and screens the next sentence instead. */
+  function* releaseOpening(opening: string, verdict: OpeningVerdict): Generator<ChatStreamEvent, boolean> {
+    const text = verdict.kind === "missing-frame" ? framed(opening) : opening;
     const bad = verifyQuotations(text, passages).filter((b) => b.reason !== "no-citation");
     if (bad.length > 0) {
       yield* refuse(`quotation ${bad[0].reason}: ${bad[0].text.slice(0, 60)}`);
@@ -442,12 +429,34 @@ export async function* screenedAnswer(
   }
 
   function* advance(final: boolean): Generator<ChatStreamEvent> {
-    if (!openingDone) {
-      const split = openingSplit(buf.slice(0, lexFrom(0, final).stable), final);
-      if (split <= 0) return;
-      const ok = yield* releaseOpening(buf.slice(0, split), !final || split < buf.length);
+    /**
+     * The opening, one sentence at a time, until one screens clean.
+     *
+     * **Every released opening has been screened, and repair never invents a boundary.**
+     * The first version cut the held text at the first sentence end it could find —
+     * including one inside a quotation — kept the remainder unscreened, and marked the
+     * opening done, so the sentence after a dropped one was never screened either. Both
+     * let "my administration" reach the reader (approach and hidden-failure, round
+     * d42bbb0). Each candidate here is what `openingSplit` calls a sentence, which it
+     * takes only from the avatar's own prose.
+     */
+    while (!openingDone) {
+      const split = openingSplit(buf.slice(released, released + lexFrom(released, final).stable), final);
+      if (split <= 0) return; // hold: no sentence has finished yet
+      const candidate = buf.slice(released, released + split);
+      const verdict = screenOpening(candidate);
+      if (verdict.kind === "impersonates") {
+        if (final && released + split >= buf.length) {
+          yield* refuse(`opening impersonated ("${verdict.form}") and could not be repaired`);
+          return;
+        }
+        log("impersonating opening dropped", verdict.form);
+        released += split; // screen the next sentence as the opening instead
+        continue;
+      }
+      const ok = yield* releaseOpening(candidate, verdict);
       openingDone = true;
-      released = split;
+      released += split;
       if (!ok) return;
     }
     // Only what is unreleased, with the one character of look-behind the grammar reads.
@@ -497,8 +506,16 @@ export async function* screenedAnswer(
     // SCREENED, never raw — before the failure propagates: `FAILURE_NOTICE`
     // promises nothing above it is affected (found by story 2's own suite).
     if (!openingDone && !refused) {
-      const { stable } = lex(buf, false);
-      if (stable > 0) yield* releaseOpening(buf.slice(0, stable), false);
+      const { stable } = lexFrom(released, false);
+      const candidate = buf.slice(released, released + stable);
+      const verdict = candidate === "" ? undefined : screenOpening(candidate);
+      if (verdict === undefined) {
+        // Nothing screened clean before the failure; the notice stands alone.
+      } else if (verdict.kind === "impersonates") {
+        yield* refuse(`opening impersonated ("${verdict.form}") when generation failed`);
+      } else {
+        yield* releaseOpening(candidate, verdict);
+      }
     }
     throw error;
   }

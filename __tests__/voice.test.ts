@@ -72,9 +72,20 @@ describe("the one grammar", () => {
     expect(quotes[0]).toMatchObject({ text: `${q("Deflection program")} means a collaborative program` });
   });
 
-  it("refuses a straight double quote used as a delimiter", () => {
-    const { tokens } = lex('It says "some words" here.', true);
-    expect(tokens.some((t) => t.kind === "violation" && t.reason === "straight-double-delimiter")).toBe(true);
+  it("refuses every mark that could pass for a delimiter but does not open a quotation", () => {
+    // The grammar is total over quotation marks: an unrecognised one is refused, never
+    // let through as prose. `”` and `’` were prose until round d42bbb0, and a span
+    // opened with either reached the reader unverified.
+    for (const [text, reason] of [
+      ['It says "some words" here.', "double-quote-delimiter"],
+      ["Under EO 23-02: ”a 13% rise in unsheltered homelessness”.", "double-quote-delimiter"],
+      ["Under EO 23-02: ’a 13% rise in unsheltered homelessness’.", "single-quote-delimiter"],
+      ["Under EO 23-02: ‘a 13% rise’.", "single-quote-delimiter"],
+      ["Under EO 23-02: 'a 13% rise'.", "single-quote-delimiter"],
+    ] as const) {
+      const { tokens } = lex(text, true);
+      expect(tokens.some((t) => t.kind === "violation" && t.reason === reason), `must refuse: ${text}`).toBe(true);
+    }
   });
 
   it("refuses a single-quoted span, closed or not — the bypasses that let a fabrication through", () => {
@@ -91,6 +102,15 @@ describe("the one grammar", () => {
         tokens.some((t) => t.kind === "violation" && t.reason === "single-quote-delimiter"),
         `must refuse: ${text}`,
       ).toBe(true);
+    }
+  });
+
+  it("keeps an apostrophe inside a word as prose, and refuses one that starts a word, either glyph", () => {
+    for (const text of ["It runs ’til the plan is done.", "It runs 'til the plan is done."]) {
+      expect(lex(text, true).tokens.some((t) => t.kind === "violation" && t.reason === "single-quote-delimiter"), text).toBe(true);
+    }
+    for (const text of ["Oregon’s order and the agencies’ work.", "Oregon's order and the agencies' work.", "It is the ’90s policy."]) {
+      expect(lex(text, true).tokens.every((t) => t.kind === "prose"), text).toBe(true);
     }
   });
 
@@ -329,7 +349,7 @@ describe("AC3 — a quotation must be verbatim in the document it cites", () => 
 
   it("refuses any quotation not in curly marks", () => {
     expect(verifyQuotations(`Under ${EO}: "do hereby order that the State address".`, PASSAGES)[0].reason)
-      .toBe("straight-double-delimiter");
+      .toBe("double-quote-delimiter");
     expect(verifyQuotations(`Under ${EO}: 'a 13% rise in unsheltered homelessness'. Done.`, PASSAGES)[0].reason)
       .toBe("single-quote-delimiter");
   });
