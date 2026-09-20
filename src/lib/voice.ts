@@ -104,10 +104,29 @@ export const CITATION_WINDOW = 240;
 /** Opening and closing curly double marks — the ONLY quotation delimiters. */
 const OPEN = "“";
 const CLOSE = "”";
-/** An opening curly single mark. It can only ever open, so it is never prose. */
-const SINGLE_OPEN = "‘";
 /** The single marks that double as apostrophes: a delimiter only where a word starts. */
 const APOSTROPHES = "'’";
+
+/**
+ * Marks a reader could take for a quotation delimiter, **as a list rather than as cases**.
+ *
+ * `“` opens the one kind of quotation this grammar accepts. Every member here is refused
+ * outside a quotation and is ordinary content inside one, so an unfamiliar mark cannot
+ * open an unverified span. `'` and `’` are the exception the list cannot state: they are
+ * also apostrophes, so they are refused only where a word starts.
+ *
+ * **Why a list.** Three rounds closed one glyph at a time — single marks, then an unclosed
+ * straight `'`, then `”` and `’` — and each time the next unlisted mark still reached the
+ * reader: `«…»`, `` `…` ``, `‹…›` and `❝…❞` all streamed a fabricated figure (approach
+ * review round 0e685ed). The directional classes are matched by Unicode category so the
+ * set closes over marks nobody listed; the rest are named because their categories are not
+ * quotation-specific.
+ */
+const NAMED_QUOTE_MARKS = `"'\`«»‹›„‚‟❛❜❝❞〝〞〟「」『』《》〈〉＂＇`;
+const QUOTE_LIKE = new RegExp(
+  `[\\p{Pi}\\p{Pf}${NAMED_QUOTE_MARKS.replace(/[\\^\]-]/g, (c) => `\\${c}`)}]`,
+  "u",
+);
 
 export type Token =
   /** The avatar's own words. */
@@ -118,13 +137,12 @@ export type Token =
   | { readonly kind: "violation"; readonly raw: string; readonly reason: GrammarViolation };
 
 export type GrammarViolation =
-  /** A double mark that does not open a quotation: a straight `"`, which cannot be a
-   *  delimiter (it is not directional, and passages use it internally, so nesting would
-   *  be ambiguous), or a closing `”` with nothing open. */
-  | "double-quote-delimiter"
-  /** A single mark opening a quotation: `‘` anywhere, or `'`/`’` beginning a word.
-   *  Single-quoted fabrications reached the reader three times before this was total. */
-  | "single-quote-delimiter"
+  /** A quotation mark outside a quotation, which cannot be opening the one kind this
+   *  grammar accepts: any member of the mark list, and `'`/`’` where a word starts.
+   *  Fabrications reached the reader through four of these before the list replaced the
+   *  case-by-case rules; the two earlier reasons, `double-quote-delimiter` and
+   *  `single-quote-delimiter`, are this one. */
+  | "quote-mark-delimiter"
   /** A quotation that opened and never closed. */
   | "unterminated";
 
@@ -247,20 +265,15 @@ export function lex(text: string, final: boolean, lookBehind = " ", resume?: Lex
       continue;
     }
 
-    // The mark table, outside an open quotation. `“` opened one above; everything else
-    // that could pass for a delimiter is refused here, and only an apostrophe inside a
-    // word is prose. A closing `”` and a curly `’` were read as prose until round
-    // d42bbb0, and each opened an unverified quotation the reader saw.
-    const beginsWord = APOSTROPHES.includes(ch) ? markBeginsWord(text, i, lookBehind, final) : false;
+    // The mark list, outside an open quotation. `“` opened one above; every other mark a
+    // reader could take for a delimiter is refused here, and only an apostrophe inside a
+    // word is prose.
+    const apostrophe = APOSTROPHES.includes(ch);
+    const beginsWord = apostrophe ? markBeginsWord(text, i, lookBehind, final) : false;
     if (beginsWord === undefined) break; // the next character decides
-    const doubleMark = ch === '"' || ch === CLOSE;
-    if (doubleMark || ch === SINGLE_OPEN || beginsWord) {
+    if (apostrophe ? beginsWord : QUOTE_LIKE.test(ch)) {
       flushProse();
-      tokens.push({
-        kind: "violation",
-        raw: ch,
-        reason: doubleMark ? "double-quote-delimiter" : "single-quote-delimiter",
-      });
+      tokens.push({ kind: "violation", raw: ch, reason: "quote-mark-delimiter" });
       i += 1;
       stable = i;
       continue;
@@ -388,10 +401,6 @@ function sentenceStartIn(window: string): number {
   return at;
 }
 
-function nearestCitation(context: string, citations: readonly CitationPattern[]): string | undefined {
-  return citationsIn(context, citations)[0]?.title;
-}
-
 /**
  * What a token contributes to the text a later quotation's citation is read from: the
  * avatar's own words, and anything quoted **blanked to spaces of the same length**.
@@ -412,18 +421,6 @@ export function citationTextOf(token: Token): string {
   return token.kind === "prose" ? token.text : " ".repeat(token.raw.length);
 }
 
-/**
- * The document `context` cites **nearest to its end** — that is, nearest to the
- * quotation that follows it. Word-bounded, so `Measure 110` never matches inside
- * `110%`, and the closest citation wins rather than whichever document happened to
- * be retrieved first. `context` is built with `citationTextOf`.
- */
-export function citedDocument(
-  context: string,
-  documentTitles: readonly string[],
-): string | undefined {
-  return nearestCitation(context, citationPatterns(documentTitles));
-}
 
 // ---------------------------------------------------------------------------
 // Verification

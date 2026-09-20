@@ -9,7 +9,6 @@ import {
   LOOK_BEHIND_CHARS,
   checkCadence,
   citationAliases,
-  citedDocument,
   isSentenceStart,
   lex,
   proseOf,
@@ -76,16 +75,28 @@ describe("the one grammar", () => {
     // The grammar is total over quotation marks: an unrecognised one is refused, never
     // let through as prose. `”` and `’` were prose until round d42bbb0, and a span
     // opened with either reached the reader unverified.
-    for (const [text, reason] of [
-      ['It says "some words" here.', "double-quote-delimiter"],
-      ["Under EO 23-02: ”a 13% rise in unsheltered homelessness”.", "double-quote-delimiter"],
-      ["Under EO 23-02: ’a 13% rise in unsheltered homelessness’.", "single-quote-delimiter"],
-      ["Under EO 23-02: ‘a 13% rise’.", "single-quote-delimiter"],
-      ["Under EO 23-02: 'a 13% rise'.", "single-quote-delimiter"],
-    ] as const) {
+    // Iterated over the marks themselves, so a mark added to the list is covered without
+    // another hand-written case — the pattern that let `«…»`, backticks, `‹…›` and `❝…❞`
+    // through after three rounds of one-glyph fixes (approach round 0e685ed).
+    const openers = [...`"‘’'«‹„‚‟❛❝〝「『《〈＂＇`, "`"];
+    for (const mark of openers) {
+      const text = `Under EO 23-02: ${mark}a 13% rise in unsheltered homelessness.`;
       const { tokens } = lex(text, true);
-      expect(tokens.some((t) => t.kind === "violation" && t.reason === reason), `must refuse: ${text}`).toBe(true);
+      expect(
+        tokens.some((t) => t.kind === "violation" && t.reason === "quote-mark-delimiter"),
+        `must refuse a span opened with ${mark}`,
+      ).toBe(true);
     }
+    // And the closing halves, which cannot be opening anything either.
+    for (const mark of [...`”»›❜❞〞〟」』》〉`]) {
+      expect(
+        lex(`It ends ${mark} here.`, true).tokens.some((t) => t.kind === "violation"),
+        `must refuse a stray ${mark}`,
+      ).toBe(true);
+    }
+    // Inside a quotation every one of them is the record's own content.
+    expect(lex(`It says ${O}the «term», ‘so called’, and \`code\` here${C}.`, true).tokens.map((t) => t.kind))
+      .toEqual(["prose", "quotation", "prose"]);
   });
 
   it("refuses a single-quoted span, closed or not — the bypasses that let a fabrication through", () => {
@@ -99,7 +110,7 @@ describe("the one grammar", () => {
     ]) {
       const { tokens } = lex(text, true);
       expect(
-        tokens.some((t) => t.kind === "violation" && t.reason === "single-quote-delimiter"),
+        tokens.some((t) => t.kind === "violation" && t.reason === "quote-mark-delimiter"),
         `must refuse: ${text}`,
       ).toBe(true);
     }
@@ -107,7 +118,7 @@ describe("the one grammar", () => {
 
   it("keeps an apostrophe inside a word as prose, and refuses one that starts a word, either glyph", () => {
     for (const text of ["It runs ’til the plan is done.", "It runs 'til the plan is done."]) {
-      expect(lex(text, true).tokens.some((t) => t.kind === "violation" && t.reason === "single-quote-delimiter"), text).toBe(true);
+      expect(lex(text, true).tokens.some((t) => t.kind === "violation" && t.reason === "quote-mark-delimiter"), text).toBe(true);
     }
     for (const text of ["Oregon’s order and the agencies’ work.", "Oregon's order and the agencies' work.", "It is the ’90s policy."]) {
       expect(lex(text, true).tokens.every((t) => t.kind === "prose"), text).toBe(true);
@@ -192,7 +203,7 @@ describe("the one grammar", () => {
   it("a straight mark at a word start is decided by the character after it, and nothing later", () => {
     // No sentence-long wait for a closing mark: the next character settles it.
     expect(lex("It runs '", false).stable, "held only until one more character arrives").toBe("It runs ".length);
-    expect(lex("It runs 't", false).tokens).toContainEqual({ kind: "violation", raw: "'", reason: "single-quote-delimiter" });
+    expect(lex("It runs 't", false).tokens).toContainEqual({ kind: "violation", raw: "'", reason: "quote-mark-delimiter" });
     expect(lex("It runs '", true).tokens.every((t) => t.kind === "prose"), "nothing follows it, so nothing is quoted").toBe(true);
     const midWord = lex("the Governor'", false);
     expect(midWord.stable, "mid-word it is never held").toBe("the Governor'".length);
@@ -289,21 +300,33 @@ describe("citations are declared per kind, word-bounded, nearest wins", () => {
     for (const kind of Object.keys(CITATION_KINDS)) expect(CITATION_KINDS[kind].length).toBeGreaterThan(0);
   });
 
+  // These read the live verifier rather than a helper of their own: the nearest-name
+  // helper they used to call had no production caller left after the same-sentence rule,
+  // so it could have drifted from what a reader actually gets (approach round 0e685ed).
+  const EO_SPAN = "do hereby order that the State address";
+
   it("never lets a bare number cite a document", () => {
     // EO 24-02 contains "Springfield/Lane County (110%)". Matching Ballot Measure
     // 110's bare number made that statistic cite the wrong document.
-    expect(citedDocument("Springfield/Lane County (110%) saw growth: ", [EO, SB, BM])).toBeUndefined();
-    expect(citedDocument("In 2024 the state acted: ", [EO, SB, BM])).toBeUndefined();
+    expect(verifyQuotations(`Springfield/Lane County (110%) saw growth: ${q(EO_SPAN)}.`, PASSAGES).map((b) => b.reason))
+      .toEqual(["no-citation"]);
+    expect(verifyQuotations(`In 2024 the state acted: ${q(EO_SPAN)}.`, PASSAGES).map((b) => b.reason))
+      .toEqual(["no-citation"]);
   });
 
   it("recognises a reader's spelling as well as the metadata's", () => {
     for (const ctx of ["Under EO 23-02: ", "Executive Order 23-02 states: ", "Order 23-02 says: "]) {
-      expect(citedDocument(ctx, [EO, SB, BM]), ctx).toBe(EO);
+      expect(verifyQuotations(`${ctx}${q(EO_SPAN)}.`, PASSAGES), ctx).toEqual([]);
     }
   });
 
-  it("picks the citation nearest the quotation, not the first retrieved", () => {
-    expect(citedDocument("Unlike EO 23-02, Senate Bill 1537 provides: ", [EO, SB, BM])).toBe(SB);
+  it("reads the citation from the quotation's own sentence, not from whichever document was retrieved first", () => {
+    // Both named in one sentence: the one holding the words is the citation.
+    expect(verifyQuotations(`Unlike EO 23-02, Senate Bill 1537 provides: ${q(EO_SPAN)}.`, PASSAGES)).toEqual([]);
+    // Named in an earlier sentence instead: this sentence cites SB 1537, which does not
+    // hold the words, so it is a misattribution rather than an uncited quotation.
+    expect(verifyQuotations(`EO 23-02 declared it. Senate Bill 1537 provides: ${q(EO_SPAN)}.`, PASSAGES).map((b) => b.reason))
+      .toEqual(["not-in-cited-document"]);
   });
 });
 
@@ -349,9 +372,9 @@ describe("AC3 — a quotation must be verbatim in the document it cites", () => 
 
   it("refuses any quotation not in curly marks", () => {
     expect(verifyQuotations(`Under ${EO}: "do hereby order that the State address".`, PASSAGES)[0].reason)
-      .toBe("double-quote-delimiter");
+      .toBe("quote-mark-delimiter");
     expect(verifyQuotations(`Under ${EO}: 'a 13% rise in unsheltered homelessness'. Done.`, PASSAGES)[0].reason)
-      .toBe("single-quote-delimiter");
+      .toBe("quote-mark-delimiter");
   });
 
   it("reads the citation from the avatar's own words, never from inside a quotation", () => {

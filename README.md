@@ -49,9 +49,10 @@ test suite.
 | `src/lib/supabase.ts` | Retrieval (`queryPolicyChunks`) and the Supabase-backed chunk store |
 | `src/app/api/chat/route.ts` | The public chat endpoint: Node runtime, request-path environment contract |
 | `src/lib/chat/` | The routing decision, the request contract, and the stream framing |
-| `src/lib/fireworks.ts` | The chat-completions client; `src/lib/retry.ts` is the shared transient-failure policy |
-| `src/lib/prompts.ts` | The classifier and rewrite prompts, and the **provisional** voice-bearing ones |
-| `__tests__/fixtures/` | Synthetic source documents for the unit suite — **not** the corpus |
+| `src/lib/fireworks.ts` | The chat client, completions and streaming; `src/lib/retry.ts` is the shared transient-failure policy |
+| `src/lib/voice.ts` | The one quotation grammar, the opening screen, quote verification and the frame cadence |
+| `src/lib/prompts.ts` | The classifier and rewrite prompts, and the reader-facing ones — nothing is provisional now |
+| `__tests__/fixtures/` | Synthetic source documents for the unit suite — **not** the corpus — plus one real answer captured token by token from the live model |
 | `AGENTS.md` | Repo-local reviewer guidance |
 | `reviews/` | Story specifications and review artifacts |
 | `.claude/workflow.json` | Configuration for the review workflow |
@@ -86,14 +87,14 @@ the one place a change is needed.
 
 ## The gate
 
-`npm run gate` runs three checks and reports **all** of them before exiting:
+`npm run gate` runs every check declared in `scripts/gate.mjs` and reports **all** of them before exiting:
 
 - `typecheck` — `tsc --noEmit`
 - `lint` — `eslint`
 - `test` — `vitest run`
 
 It deliberately does not chain them with `&&`: a failing first check would otherwise hide the
-state of the other two. CI runs this same script rather than restating the checks, so the local
+state of the rest. CI runs this same script rather than restating the checks, so the local
 gate and the CI check cannot become different things.
 
 ## Source documents
@@ -115,8 +116,8 @@ list in the code when the corpus needs another official domain, and this section
 
 ### Policy pillars
 
-Every document belongs to exactly one pillar, and retrieval can filter by it. These are Governor
-Kotek's three stated priorities. This is the same list the code declares (`POLICY_PILLARS` in
+Every document belongs to exactly one pillar, and retrieval can filter by it. These are the priorities the
+specification names. This is the same list the code declares (`POLICY_PILLARS` in
 `src/lib/ingest/pillars.ts`) and a test holds the two equal, so this section cannot drift from what
 ingestion accepts. Adding a pillar means editing the constant and this section together.
 
@@ -252,7 +253,7 @@ settled as a detail inside this one. It is reported rather than omitted so the a
 ### Failing closed
 
 A verdict that does not arrive inside the deadline, does not parse, or is not exactly one of the
-three declared labels is treated as **out of bounds**. A flaky classifier makes this service
+labels declared in `src/lib/safety.ts` is treated as **out of bounds**. A flaky classifier makes this service
 useless rather than wrong, which is the right way round for a service that speaks in a sitting
 governor's name. The parse is an exact match after trimming: a lenient parse is how a hedged reply
 becomes a confident label.
@@ -327,20 +328,25 @@ and every offline check call the same lexer, so they cannot disagree about what 
 opening and closing are different characters. The corpus uses them inside its own text, mostly bills
 quoting their defined terms (measured in `reviews/answer-voice-screen.md`), so a quotation of that text
 contains curly marks of its own, and the grammar tracks the nesting rather than closing at the first
-inner mark. A straight double quote cannot be nested that way, and **a single-quoted span is refused
-outright**, including a straight apostrophe that *begins* a word, which is refused as the opening of
-one. The first version did not recognise single marks at all; a later one guessed from whether a
-closing mark followed, and an unclosed single-quoted quotation reached the reader as ordinary prose.
-Both let a fabrication through. An apostrophe inside a word, `Oregon's`, is untouched, and the answering
-prompt tells the model never to begin a word with one.
+inner mark. No other mark may open one. The grammar carries a **declared list of marks a reader could take for a
+delimiter** — straight quotes, the other curly marks, guillemets, low quotes, backticks, corner and
+decorative marks — and refuses every one of them outside a quotation, while treating all of them as
+ordinary content inside one. An apostrophe inside a word, `Oregon's`, is untouched; `'` and `’` are
+refused only where a word starts, and the answering prompt tells the model to avoid all of these marks.
+**The list replaced four rounds of single fixes.** Single marks went unrecognised entirely; then an
+unclosed `'` was read as an apostrophe; then `”` and `’` were still prose; and each time the next
+unlisted mark — `«…»`, a backtick, `‹…›`, `❝…❞` — carried a fabricated figure to the reader.
 
 **How a citation is recognised.** Each document's kind is declared once — `EO` as "Executive Order",
 `SB` as "Senate Bill", `Ballot Measure` as "Measure" — and its number is never matched alone. The first
 version matched bare numbers, and `EO 24-02` contains "Springfield/Lane County (110%)", which made an
-unrelated statistic cite Ballot Measure 110. Matches are word-bounded, the citation nearest the
-quotation wins, and it is read **only from the avatar's own words**: a document named *inside* a
+unrelated statistic cite Ballot Measure 110. Matches are word-bounded and read **only from the avatar's own words**: a document named *inside* a
 quotation is the record talking, not the avatar citing, and reading it as a citation once refused a
-verbatim quotation of EO 24-02 because the passage quoted before it mentions EO 23-02.
+verbatim quotation of EO 24-02 because the passage quoted before it mentions EO 23-02. **When one
+sentence names several documents, the one that holds the quoted words is the citation** — a sentence
+ending "…distributed under Ballot Measure 110" had refused a verbatim SB 755 quotation. Across
+sentences the nearest name still wins on its own, so a quotation cannot borrow attribution from a
+document named in an earlier sentence.
 
 An unverifiable quotation, a quotation in the wrong marks, or an opening that speaks as the Governor
 and cannot be repaired stops the answer with a **provenance notice** — never the infrastructure

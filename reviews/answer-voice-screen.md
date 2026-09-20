@@ -1995,3 +1995,56 @@ doc-drift (shadow) passes did not run this round.
   mechanical checks the rule** — it is doctrine (`workflow-protocol.md` → *Counts are copies*) enforced
   only by a reviewer happening to read that paragraph. The widened sweep above is the class fix; whether
   a mechanical guard is worth building is a separate question, not decided here.
+
+## Fixes (2026-09-19, approach round 5 — 0e685ed)
+
+Gate green at **361 tests**.
+
+### Blocker — the marks as a declared list
+
+`lex` no longer names delimiters case by case. One list holds every mark a reader could take for a
+quotation delimiter — the directional classes by Unicode category (`\p{Pi}`, `\p{Pf}`), plus the marks
+whose categories are not quotation-specific: `"`, `` ` ``, `«»`, `‹›`, `„‚‟`, `❛❜❝❞`, `〝〞〟`, corner and
+angle brackets, and the fullwidth pair. `“` opens the one kind of quotation the grammar accepts; every
+other member is a violation outside a quotation and ordinary content inside one; `'` and `’` keep the
+apostrophe exception and are refused only where a word starts.
+
+The two violation reasons collapsed into one, `quote-mark-delimiter` — with the list there is no
+straight/curly distinction left to carry, and the old names said less than the rule does.
+
+The answering prompt gains the matching instruction: no guillemets, low quotes, backticks, corner or
+decorative marks anywhere in an answer.
+
+**Tests iterate the list** rather than naming glyphs: every opener is refused, every closing half is
+refused as a stray, and all of them are content inside a quotation. Verified before and after: `«…»`,
+`` `…` ``, `‹…›`, `❝…❞` and `„…“` each carried the invented "13%" figure to the reader before this, and
+none does now, while a real quotation, marks *inside* one, and `Oregon’s`/`don't` are unchanged.
+
+### Important — the dead citation policy, and the documentation sweep
+
+`citedDocument` and `nearestCitation` are deleted. Their tests now read `verifyQuotations`, so what they
+pin is what a reader actually receives. One of them had been asserting the **pre-fix** rule — "the
+citation nearest the quotation wins" — and passed only because the helper it called still implemented
+it; rewritten against the live verifier it says the current rule: in one sentence, the document holding
+the words is the citation, and across sentences the nearest name still wins on its own.
+
+**The sweep Thomas asked for**, across the repository's living text — README, `AGENTS.md`, `CORPUS.md`,
+code comments and prompts:
+
+| Found | Fixed to |
+|---|---|
+| The repository map called `src/lib/prompts.ts`'s voice-bearing prompts **provisional**; `PROVISIONAL_PROMPTS` has been empty since this story | "the reader-facing ones — nothing is provisional now" |
+| The map had **no row for `src/lib/voice.ts`**, this story's central module | A row naming the grammar, the opening screen, verification and the cadence |
+| The map called `__tests__/fixtures/` synthetic; it now also holds a real captured answer | Says both |
+| `src/lib/fireworks.ts` described as "the chat-completions client"; it also carries the streaming client | "the chat client, completions and streaming" |
+| The marks and citation paragraphs described the pre-fix rules | Rewritten for the mark list and the same-sentence citation rule |
+| Counts: "three checks", "the other two", "three stated priorities", "three declared labels" | Point at `scripts/gate.mjs`, `POLICY_PILLARS`, `src/lib/safety.ts`; "the rest" |
+
+`AGENTS.md` and `CORPUS.md` were read and needed nothing: the first is repo-local reviewer guidance
+about acceptance-criteria form, the second a dated provenance record.
+
+### Nit — the counts, and why they kept recurring
+
+Fixed, in the table above. The recurrence is recorded with the decisions: each round fixed the
+instances the reviewer named rather than sweeping the class, and nothing mechanical checks the rule.
+This round's sweep is the class fix.

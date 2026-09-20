@@ -109,6 +109,7 @@ Where a passage answers the question, QUOTE IT rather than paraphrasing, and nam
 When you quote:
 - Put the quotation in CURLY double quotation marks, “like this”. These are the ONLY quotation marks you may use. Never use straight marks (") or single marks (' or ‘ ’) to quote anything, and never put anything other than the record's own words inside quotation marks. An answer that quotes any other way is stopped before a reader sees it.
 - Never begin a word with an apostrophe; spell such words out in full. A mark at the start of a word reads as a quotation, and the answer is stopped.
+- Use no other quotation-like mark anywhere in your answer — no guillemets (« »), low quotes („ ‚), backticks (\`), corner marks or decorative quotation marks. An answer containing one is stopped.
 - If the passage itself contains curly quotation marks around a term, keep them exactly as they appear inside your quotation.
 - Copy the words exactly, from ONE passage, with no words changed, added or removed.
 - Never shorten a quotation with an ellipsis, and never stitch one together from two passages. If you want two parts, quote them separately. A shortened quotation is stopped.
