@@ -330,7 +330,7 @@ are person-judged and owe none.
 - review/6 — ran (codex on glm-latest, 3 findings) -> reviews/answer-voice-screen.approach.0e685ed.json
 - review/8 — n/a — round 0e685ed stopped at the approach gate: Thomas approved a BLOCKER fix and chose to treat it as a redesign, so the correctness, hidden-failure and doc-drift (shadow) passes did not run. They last ran in round d42bbb0.
 - close/3b — no activation this round — `./install.sh --check` n/a (this repo ships none); no guard-hook block observed this session; the reviewer harness promoted every pass it ran this round (approach 0e685ed). The harness refusal earlier in this session — codex's rejected key — was dispositioned at round d42bbb0's close.
-- close/4 — presented: re-review or merge (Thomas had classed the round's fixes contained, so merge was on the table); he chose a **full re-review**. At the same stop he approved fixing the live SB 755 refusal, which was applied this round.
+- close/4 — presented: re-review only. Round 0e685ed's approved set includes the mark-list BLOCKER, which Thomas treated as a redesign when he stopped that round before the correctness pass, so merge was not offered.
 
 ## Build note (2026-09-15)
 
