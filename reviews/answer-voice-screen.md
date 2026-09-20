@@ -327,7 +327,7 @@ are person-judged and owe none.
 
 - frame/6 — ran twice. Round 1 (superseded design) -> reviews/answer-voice-screen.design.fdc04f4.json. Round 2, the binding pass, after Thomas inverted the design at the consult: codex on kimi-latest, 6 findings, 13 regressions -> reviews/answer-voice-screen.design.896817f.json
 - frame/9 — demonstrated red for all nine sized criteria against the ratified regressions (two sabotages were incomplete on the first attempt, reported as such and redone). Plus four defects the live runs found that the suite could not, each now covered by a red-able test.
-- review/6 — ran (codex on glm-latest, 3 findings) -> reviews/answer-voice-screen.approach.0e685ed.json
+- review/6 — ran (codex on glm-latest, 3 findings) -> reviews/answer-voice-screen.approach.3b101a0.json
 - review/8 — n/a — round 0e685ed stopped at the approach gate: Thomas approved a BLOCKER fix and chose to treat it as a redesign, so the correctness, hidden-failure and doc-drift (shadow) passes did not run. They last ran in round d42bbb0.
 - close/3b — no activation this round — `./install.sh --check` n/a (this repo ships none); no guard-hook block observed this session; the reviewer harness promoted every pass it ran this round (approach 0e685ed). The harness refusal earlier in this session — codex's rejected key — was dispositioned at round d42bbb0's close.
 - close/4 — presented: re-review only. Round 0e685ed's approved set includes the mark-list BLOCKER, which Thomas treated as a redesign when he stopped that round before the correctness pass, so merge was not offered.
@@ -2091,3 +2091,63 @@ before any correctness pass. Base `0e685ed`. Only what moved.
 | 3 | `citedDocument` and `nearestCitation` deleted from `src/lib/voice.ts`: dead once the same-sentence rule in `verifyQuotedSpan` became the citation rule. Their tests now exercise `verifyQuotations` |
 | 10, 11 | `ANSWER_SYSTEM_PROMPT` (`src/lib/prompts.ts`) carries the reader-facing form of the same list — no other quotation-like mark anywhere — so prompt and screen state one rule, and `README.md` documents the list rather than enumerating cases |
 | 10 | `README.md` documentation sweep: the repository map gains `src/lib/voice.ts`, drops "provisional" for the voice prompts, corrects the fixtures and the Fireworks client, and the marks and citation paragraphs are rewritten to the rules now in force. Remaining counts replaced by pointers to the lists themselves |
+
+## Codex (glm-latest) approach review — round 6 (2026-09-20, base 0e685ed, HEAD 3b101a0)
+
+**Verdict.** 2026-09-20 13:42:36 PDT — The central shape is sound: one streaming lexer shared with
+offline verification, a prepared passage index, explicit provenance refusals, and no need for a
+parsing dependency. I would keep that architecture. But the accepted redesign is only behaviorally
+present, not structurally complete: the quotation-mark rule is still represented by parallel
+hand-written copies, and the approved repository-wide sweep left prominent stale claims and living
+count copies. Those should be corrected before the correctness pass.
+
+### BLOCKER
+
+**The quote-mark redesign is still parallel copies, not one declared source** — reversibility: one-way · standing: kludgy · locus: `src/lib/voice.ts:110-129`; `src/lib/prompts.ts:109-113`; `__tests__/voice.test.ts:74-99`; `__tests__/answer-screen.test.ts:321-329`; `README.md:327-335`
+
+- **Claim:** The accepted round-5 redesign called for one declared list of quote-like marks, with
+  tests iterating that list and the answering prompt forbidding the same set. The implementation
+  instead keeps a private `NAMED_QUOTE_MARKS` plus Unicode categories in `voice.ts`, a separately
+  hand-written prose paraphrase in `ANSWER_SYSTEM_PROMPT`, separately hand-typed glyph strings in
+  `voice.test.ts`, a substring-only prompt pin in `answer-screen.test.ts`, and another prose
+  restatement in `README.md`. Adding a mark to the production list changes none of the other
+  representations, recreating the one-glyph drift mechanism this redesign was supposed to remove.
+- **Alternative:** Export one structured `QUOTE_MARK_RULE` containing the opening and closing marks,
+  apostrophe exceptions, named marks, Unicode category classes, and the reader-facing prohibition.
+  Compile `QUOTE_LIKE` from that rule, interpolate the rule's prompt fragment into
+  `ANSWER_SYSTEM_PROMPT`, have tests iterate the same exported named marks and a declared category
+  sample, and make the README point to the rule rather than restate its members.
+- **Win:** Adding or removing a mark becomes one edit shared by the screen, prompt, tests and
+  documentation; this removes at least three hand-copied representations and prevents the next mark
+  from being refused without being announced to the model or covered by a test.
+
+### IMPORTANT
+
+**The accepted repository-wide sweep missed the most visible stale claims** — reversibility: two-way · standing: kludgy · locus: `README.md:17-20`; `src/lib/prompts.ts:19-29`
+
+- **Claim:** Thomas accepted a full sweep for stale references, errors and incoherence. The README
+  *Status* section nevertheless still says the answering prompt is a plain placeholder and that the
+  voice work is the next story, while the later *How V-Tina speaks* section documents the shipped
+  avatar voice. The `prompts.ts` module header likewise still says the reader-facing prompts are
+  PROVISIONAL and describes `PROVISIONAL_PROMPTS` as the machine-readable warning, although that
+  list is empty and the answering prompt is classified as reader-facing. The top-level living
+  documentation therefore contradicts the code and the rest of the same README.
+- **Alternative:** Rewrite the Status paragraph to describe the current endpoint and remaining UI
+  work, and rewrite the `prompts.ts` header to describe the current prompt partition. Move the
+  historical placeholder decision to the dated story record, which is already its authoritative home.
+- **Win:** Removes contradictory guidance from the first paragraphs a maintainer reads and makes the
+  accepted sweep actually complete, without changing product behaviour.
+
+**Living count copies survived the count sweep** — reversibility: two-way · standing: nonstandard · locus: `src/lib/ingest/pillars.ts:4`; `__tests__/readme-prompts.test.ts:27-29,80`; `README.md:24,130`
+
+- **Claim:** The accepted count fix was supposed to address the class, but living text still
+  hard-codes sizes of sets defined beside or elsewhere: `pillars.ts` says "three stated priorities"
+  next to a growable `POLICY_PILLARS` array; `readme-prompts.test.ts` says "the three lists" beside
+  the prompt-classification constants; and the README says "five user stories" and "all five fields"
+  where those sets are enumerable in the specification and the adjacent table. Under the builder
+  protocol's *counts are copies* rule these are decay-prone second statements, not dated records.
+- **Alternative:** Say "the declared policy pillars", "the prompt-classification lists", "the user
+  stories in `v-tina-user-stories.md`", and "every frontmatter field" in the table. Leave
+  cardinalities only in dated story records, where they describe what was true then.
+- **Win:** Removes numbers that become silently false when a pillar, prompt bucket, user story or
+  field is added, without losing information.
