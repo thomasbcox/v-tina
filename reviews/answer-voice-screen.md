@@ -1878,3 +1878,14 @@ model's span diverges from the record somewhere past the characters the log keep
 verbatim in a passage is exactly what AC4 refuses. **Operability limit, met twice now:** the provenance
 log keeps only a quotation's first 60 characters, and the refused text never reaches the reader, so the
 divergence point cannot be recovered from a live run.
+
+## Build note (2026-09-19, round 5)
+
+Full review at Thomas's choice — the default for a round that only verifies approved fixes would be
+correctness alone. Base `d42bbb0`. Only what moved.
+
+| AC | Where it is satisfied now |
+|---|---|
+| 3, 4 | The mark table in `lex` (`src/lib/voice.ts`): outside a quotation, `“` opens, `"`/`”` and `‘` are violations, `'`/`’` are violations where a word starts and prose inside one. `citationsIn` + the same-sentence rule in `verifyQuotedSpan`: when one sentence names several documents, the one holding the words is the citation |
+| 2, 7, 8 | The opening repair loop in `advance` (`src/lib/chat/orchestrate.ts`): each candidate sentence is screened before release, an impersonating one is dropped and the next screened in turn, and nothing clean left refuses. `releaseOpening` now takes an already-screened verdict; the error path screens what it holds |
+| 10 | "three of the five", "the three lists" and "two executive orders" out of README, `prompts.ts` and `voice.ts` |
