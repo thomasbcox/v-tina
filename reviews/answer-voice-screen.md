@@ -1841,3 +1841,22 @@ approved findings, and is put to Thomas at the fork.
 
 A fifth, earlier probe answer was also refused, at a quotation reported "not in any passage"; that
 answer's text was not captured, so whether the model misquoted cannot be shown either way.
+
+### The live refusal, fixed the same round (approved at the fork)
+
+Thomas approved fixing the SB 755 refusal rather than filing it. **When one sentence names several
+documents, the one that holds the words is the citation**; refusal stands only when none of them does.
+Across sentences nothing changed — the nearest name still wins on its own, so a document named in an
+earlier sentence cannot be borrowed to verify a quotation, which is R2's harm. That narrower rule was
+chosen over "any document named within the window", which would have let a quotation be attributed to a
+document named a sentence or two earlier.
+
+**Tests** on the real corpus files: the live sentence — "SB 755 (2021) … distributed under Ballot
+Measure 110 … shall be spent “to the maximum extent consistent with law”" — verifies; the same
+quotation, with SB 755 named only in an **earlier** sentence, is still refused as not in the cited
+document.
+
+**A mistake of mine, and how it showed:** the first version of that second test used a phrase I had
+grepped as SB-755-only. It is in Measure 110 too, wrapped across lines, which `grep` cannot see and the
+verifier's whitespace normalisation can. The test failed, the code was right, and the phrase was
+replaced with one the index itself confirms is in SB 755 alone.

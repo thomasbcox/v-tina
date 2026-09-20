@@ -366,16 +366,30 @@ function citationPatterns(documentTitles: readonly string[]): CitationPattern[] 
   );
 }
 
-function nearestCitation(context: string, citations: readonly CitationPattern[]): string | undefined {
+/** Every document named in the window, nearest the quotation first, each with where its
+ *  name ends. */
+function citationsIn(context: string, citations: readonly CitationPattern[]): Array<{ title: string; end: number }> {
   const window = context.slice(-CITATION_WINDOW);
-  let best: { title: string; end: number } | undefined;
+  const nearest = new Map<string, number>();
   for (const { title, pattern } of citations) {
     for (const m of window.matchAll(pattern)) {
       const end = (m.index ?? 0) + m[0].length;
-      if (!best || end > best.end) best = { title, end };
+      if (end > (nearest.get(title) ?? -1)) nearest.set(title, end);
     }
   }
-  return best?.title;
+  return [...nearest].map(([title, end]) => ({ title, end })).sort((x, y) => y.end - x.end);
+}
+
+/** Where the avatar's current sentence begins in the window — the documents it names
+ *  there are the ones this quotation can be read as attributed to. */
+function sentenceStartIn(window: string): number {
+  let at = 0;
+  for (const m of window.matchAll(/[.!?][)\]\u201D\u2019"']*\s+/g)) at = (m.index ?? 0) + m[0].length;
+  return at;
+}
+
+function nearestCitation(context: string, citations: readonly CitationPattern[]): string | undefined {
+  return citationsIn(context, citations)[0]?.title;
 }
 
 /**
@@ -477,14 +491,24 @@ export function verifyQuotedSpan(
   const inSome = (pool: readonly string[]) => pool.some((p) => p.includes(text));
   const inAny = () => [...passages.byTitle.values()].some(inSome);
 
-  const cited = nearestCitation(context, passages.citations);
-  if (cited === undefined) {
+  const named = citationsIn(context, passages.citations);
+  if (named.length === 0) {
     return inAny() ? { text, reason: "no-citation" } : { text, reason: "not-in-any-passage" };
   }
-  if (inSome(passages.byTitle.get(cited) ?? [])) return null;
+  /**
+   * **When one sentence names several documents, the one that holds the words is the
+   * citation.** Nearest-name-wins alone refused a verbatim SB 755 quotation live, because
+   * the same sentence ended "…distributed under Ballot Measure 110" (round-4 live
+   * verification). Across sentences the nearest name still wins on its own: a document
+   * named in an earlier sentence is not what this quotation cites, and accepting it there
+   * would let a span be attributed to a document that does not contain it — R2's harm.
+   */
+  const inSentence = named.filter((c) => c.end > sentenceStartIn(context.slice(-CITATION_WINDOW)));
+  const candidates = inSentence.length > 0 ? inSentence : named.slice(0, 1);
+  if (candidates.some((c) => inSome(passages.byTitle.get(c.title) ?? []))) return null;
   return {
     text,
-    citedAs: cited,
+    citedAs: named[0].title,
     reason: inAny() ? "not-in-cited-document" : "not-in-any-passage",
   };
 }

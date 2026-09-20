@@ -370,6 +370,28 @@ describe("AC3 — a quotation must be verbatim in the document it cites", () => 
     expect(verifyQuotations(answer, passages)).toEqual([]);
   });
 
+  it("when one sentence names two documents, the one holding the words is the citation", () => {
+    // The live refusal: a verbatim SB 755 quotation, in a sentence that ended
+    // "…distributed under Ballot Measure 110" (round-4 live verification).
+    const sb755 = "SB 755 (2021): An Act relating to substance use (Oregon Laws 2021, chapter 591)";
+    const m110 = "Ballot Measure 110 (2020): Drug Addiction Treatment and Recovery Act (Oregon Laws 2021, chapter 2)";
+    const passages = [
+      chunk(sb755, readFileSync("corpus/sb-755.md", "utf8")),
+      chunk(m110, readFileSync("corpus/measure-110.md", "utf8"), 1),
+    ];
+    // Verbatim in SB 755 and in no other corpus document.
+    const quoted = "to the maximum extent consistent with law";
+    const sameSentence =
+      `SB 755 (2021) addresses funding for these services, stating that moneys distributed under Ballot Measure 110 ` +
+      `shall be spent ${q(quoted)}`;
+    expect(verifyQuotations(sameSentence, passages), "the sentence names the document that holds the words").toEqual([]);
+
+    // Across sentences the nearest name still wins on its own: a document named in an
+    // earlier sentence is not what this quotation cites.
+    const earlierSentence = `SB 755 (2021) governs the fund. Ballot Measure 110 (2020) states: ${q(quoted)}`;
+    expect(verifyQuotations(earlierSentence, passages).map((b) => b.reason)).toEqual(["not-in-cited-document"]);
+  });
+
   it("a long quotation still keeps an earlier citation out of reach, as it always did", () => {
     // Removing quoted text from the context, the first attempt at the fix above, let
     // "SB 1537 provides:" reach past a 355-character quotation and cite the next one —
