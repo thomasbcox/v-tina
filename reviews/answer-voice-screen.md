@@ -1572,6 +1572,8 @@ re-running `fireconnect codex on`, which rewrote it from his valid shell key; ev
 V-Tina's own key in `.env.local` is also rejected and is his to replace — reviews do not need it; the
 live checks at `/close` do.
 
+**Correction, 2026-09-19.** The sentence above is wrong. `.env.local` carries only this project's Supabase settings; the Fireworks key comes from the shell environment (`export FIREWORKS_API_KEY` in `~/.zshrc`) and is valid. The 401 was the builder testing an **empty string**: the grep for a `FIREWORKS_API_KEY=` line in `.env.local` matched nothing, and an empty result was read as a stale key rather than as an absent one. The live runs recorded here were made the way this app always runs, and nothing in its configuration needs replacing. The one stale key was codex's, and it is recorded with the round-4 approach review.
+
 **Verdict.** Measured date: Fri Sep 18 10:46:13 PDT 2026. The macro shape is the one I would keep:
 one resumable grammar shared by offline checks and the stream, one per-answer passage index,
 injectable orchestration, and a single display-frame source. For this narrow, streaming quotation
@@ -1824,6 +1826,8 @@ Committed before any sabotage; the helper refuses a dirty tree and restores exac
 
 **The app's own key is rejected** (`.env.local`, 401), so the server was started with the valid key
 already in the environment; nothing was written to disk. Replacing that key is Thomas's to do.
+
+**Correction, 2026-09-19.** The sentence above is wrong. `.env.local` carries only this project's Supabase settings; the Fireworks key comes from the shell environment (`export FIREWORKS_API_KEY` in `~/.zshrc`) and is valid. The 401 was the builder testing an **empty string**: the grep for a `FIREWORKS_API_KEY=` line in `.env.local` matched nothing, and an empty result was read as a stale key rather than as an absent one. The live runs recorded here were made the way this app always runs, and nothing in its configuration needs replacing. The one stale key was codex's, and it is recorded with the round-4 approach review.
 
 Four questions over HTTP against a fresh build. All in bounds, all streamed progressively (119–214 text
 events), **27 of 27 released quotations verbatim in the corpus**, checked independently of `voice.ts`.
