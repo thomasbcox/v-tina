@@ -47,6 +47,7 @@ exactly as now — a question read as Oregon's still gets the deferral when the 
    today, the shape to consider (explicitly not decided), what the implementing story owes, and the
    sequencing note — pointing to this file for the evidence rather than restating it.
 3. Add the second open item, worded as in *The entry — FEAT-2*, on the same terms.
+4. Add the third open item, worded as in *The entry — FEAT-3*, on the same terms.
 
 ## Non-goals
 
@@ -119,12 +120,43 @@ accurate, since the corpus is Oregon executive orders and bills. Keep the claim 
 edits — start after that story merges.
 ```
 
+## The entry — FEAT-3 (added 2026-09-19 by Thomas's direction)
+
+**Second scope amendment, stated so it can be vetoed at merge review.** At the round-4 close of
+`answer-voice-screen`, the refusal log's 60-character limit blocked two diagnoses; Thomas directed that
+it be filed. Added here rather than on a third records branch.
+
+```markdown
+### FEAT-3 — Keep enough of a refused quotation to diagnose it
+
+**Want (Thomas, 2026-09-19).** When the screen refuses a quotation, what it records is enough to tell
+what was wrong with it.
+
+**Why it does not work today.** The refusal log keeps only a quotation's first 60 characters, and the
+refused text never reaches the reader by design — so when the visible prefix matches the record, the
+divergence lies past the cut and the refusal cannot be diagnosed from a live run. It cost two
+diagnoses during round-4 live verification of `answer-voice-screen`; both had to be reasoned out
+indirectly, by re-running retrieval and searching the corpus.
+
+**Shape to consider — not decided.** Record the whole quoted span, which check failed, and which
+document was taken as the citation. Server-side only; nothing reader-facing changes.
+
+**Owed by the story that builds it.** Decide what a server log may hold before widening it. The
+quotation is model output about public records, but the reader's question sits beside it in the same
+log, and whether the public's questions are stored at all is deliberately unresolved
+(`reviews/answer-voice-screen.md` → Non-goals, the audit-log stub). Keep those two decisions apart.
+
+**Sequencing.** Independent of FEAT-1 and FEAT-2. Touches `src/lib/chat/orchestrate.ts`, which
+`answer-voice-screen` also edits — start after that story merges.
+```
+
 ## Acceptance criteria
 
 Bookkeeping throughout, so plain numbered statements rather than Gherkin (`AGENTS.md`).
 
 1. `BACKLOG.md` exists at the repository root with an Open section and a Done section, and the Open
-   section carries exactly the items in *The entry* and *The entry — FEAT-2*, as approved.
+   section carries exactly the items in *The entry*, *The entry — FEAT-2* and *The entry — FEAT-3*, as
+   approved.
 2. The item's wording keeps the rule to questions that name **no** jurisdiction, keeps every other
    out-of-bounds rule, marks its design as not decided, requires the measured question set with its
    must-decline controls, and points to this file for the evidence instead of restating it.
