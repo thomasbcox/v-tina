@@ -2278,3 +2278,43 @@ refuses; merging now ships a known, improbable way through under a comment that 
   question 2.
 
 The fork itself: **re-review**, chosen with the gap fix, so the next review reads it.
+
+## Fixes (2026-09-21, found while closing round 3b101a0)
+
+| Decision | What changed |
+|---|---|
+| Close the gap | `QUOTE_LIKE` in `src/lib/voice.ts` now also matches Unicode's own `Quotation_Mark` property, and `NAMED_QUOTE_MARKS` gains `❟` and `❠` beside the ornaments already listed. The comment above the list no longer claims the set closes over marks nobody listed: it says where the marks come from — the two Unicode categories, the Unicode property, the named lookalikes — and states the two-unit limit and what catches an attempt to list such a mark. The test's independent Unicode scan now includes the property. `README.md`'s marks paragraph names the property and states the same limit. The answering prompt is unchanged: it already tells the model to avoid corner and decorative marks |
+| Fix the provisional-list comment | The `PROVISIONAL_PROMPTS` docstring no longer claims a README pairing, and "a prompt in neither list" — written when there were two — reads "a prompt in none of the lists" |
+| Prefixes | Resolved on `claude/backlog-oregon-context` as its Open question 2 |
+
+## Post-fix verification (2026-09-21, the gap)
+
+**Nothing recorded changes.** None of the newly refused characters — `⹂`, `﹁﹂﹃﹄`, `｢｣`, `❟`, `❠` —
+appears in any corpus document or in the captured real answer the suite replays.
+
+### Demonstrate red
+
+Committed first (`351b464`); each sabotage applied to `src/lib/voice.ts` alone, exact bytes restored
+after, tree confirmed clean. The round-6 battery was re-run as well, because both the list and the
+matcher changed under it.
+
+| # | Sabotage | Result |
+|---|---|---|
+| Q1 | The screen drops Unicode's `Quotation_Mark` property | **RED** — the iteration test |
+| Q2 | The screen drops the two quotation categories, keeping the property | **RED** — the iteration test: the editorial brackets `⸂…⸡` are in the categories and not the property |
+| Q3 | An astral quotation ornament, `🙶`, is added to the list | **RED** — the iteration test. The comment's claim, demonstrated: listing such a mark cannot pass silently |
+| S2 | The declared list is emptied | **RED** — the named-marks floor |
+| S3 | A mark (`〘`) is declared while the screen reads a copy without it | **RED** — the iteration test. The previous run used `⹂`, which the property now covers, so it would have been vacuous |
+| S5 | A listed mark inside a quotation ends it | **RED** — the iteration test's inside-a-quotation loop, plus the nesting and defined-term tests |
+
+**A boundary, stated so the reviewer can judge it.** A mark that is named only in the list — outside
+both Unicode sources and outside the floor, such as `❛❜❟❠` or `《》〈〉` — is covered against being
+*added* untested, not against being *removed*: the iteration test follows the list, and the floor
+holds only the marks with a history. A removal is a deliberate, visible edit to one line; making the
+floor cover every named mark would turn it back into the copy the round-6 BLOCKER removed.
+
+### Live verification
+
+**Not run.** The refused set grows only by characters absent from the corpus and the recorded answer,
+and which an English answer does not contain; the prompt is byte-identical. The gate's replay of the
+captured real answer passes.
