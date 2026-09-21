@@ -48,6 +48,8 @@ exactly as now — a question read as Oregon's still gets the deferral when the 
    sequencing note — pointing to this file for the evidence rather than restating it.
 3. Add the second open item, worded as in *The entry — FEAT-2*, on the same terms.
 4. Add the third open item, worded as in *The entry — FEAT-3*, on the same terms.
+5. Add the fourth and fifth open items, worded as in *The entries — OPS-1 and OPS-2*, on the same
+   terms.
 
 ## Non-goals
 
@@ -150,13 +152,67 @@ log, and whether the public's questions are stored at all is deliberately unreso
 `answer-voice-screen` also edits — start after that story merges.
 ```
 
+## The entries — OPS-1 and OPS-2 (added 2026-09-20 by Thomas's direction)
+
+**Third scope amendment, stated so it can be vetoed at merge review.** At the round-6 review stop for
+`answer-voice-screen` (round 3b101a0), Thomas chose to file one count copy that lies outside that
+story's declared files rather than widen its scope, and to file a mechanical check for the rule, since
+the same class of finding had recurred round after round. Added here rather than on a new records
+branch, so that story's scope-containment criterion still holds.
+
+**Prefix — an assumption, open until merge.** These are the repository's first items that change
+tooling and hygiene rather than what the product does, so `FEAT-` does not fit. `OPS-` is the
+workflow's existing prefix for that kind of work, and the counts rule itself was filed under it in
+the workflow's own backlog. See Open question 2.
+
+```markdown
+### OPS-1 — The policy-pillars comment still counts the pillars
+
+**What is wrong (found 2026-09-20).** The comment above `POLICY_PILLARS` in
+`src/lib/ingest/pillars.ts` calls them "Governor Kotek's three stated priorities", while the same
+comment says pillars are "an open classification expected to grow with the corpus". The number is a
+second statement of the list's length, and it goes false the day a pillar is added
+(`workflow-protocol.md` → *Counts are copies*).
+
+**The fix.** Name the kind — "Governor Kotek's stated priorities" — and leave the list as the only
+statement of how many there are.
+
+**Why it is filed rather than fixed.** The approach review of `answer-voice-screen` (round 3b101a0)
+reported it, and that story's declared file scope does not include this file; Thomas kept the scope
+rather than widen it for a comment.
+
+**Sequencing.** Independent. If OPS-2 lands first, its check flags this line and the fix rides there.
+
+### OPS-2 — Catch counts in living text mechanically
+
+**Want (Thomas, 2026-09-20).** A number in living text that restates the size of a set defined
+elsewhere is caught when the gate runs, not by a reviewer a round later.
+
+**Why it recurs today.** The rule is read, never run. Successive review rounds of
+`answer-voice-screen` each found counts that had survived the previous round's fix, because each fix
+covered the instances named or the sections swept, and nothing checked the rest. Instances and dates:
+`reviews/answer-voice-screen.md` → round-6 decisions.
+
+**Shape to consider — not decided.** A check that flags a number word standing next to a noun that
+names a declared list ("three lists", "five fields"), either as a test in the existing suite or as a
+separate gate check. The hard part is the boundary: dated records — story files, review artifacts,
+Done rows — may carry counts by design, and a parameter such as a threshold or a limit is not a count
+at all.
+
+**Owed by the story that builds it.** Measure false positives on this repository before adopting it,
+and state how a flagged number that is genuinely a rule or a parameter is exempted, so the exemption
+is visible rather than a silent allowlist.
+
+**Sequencing.** Independent of the FEAT items. Its first run should flag OPS-1's line.
+```
+
 ## Acceptance criteria
 
 Bookkeeping throughout, so plain numbered statements rather than Gherkin (`AGENTS.md`).
 
 1. `BACKLOG.md` exists at the repository root with an Open section and a Done section, and the Open
-   section carries exactly the items in *The entry*, *The entry — FEAT-2* and *The entry — FEAT-3*, as
-   approved.
+   section carries exactly the items in *The entry*, *The entry — FEAT-2*, *The entry — FEAT-3* and
+   *The entries — OPS-1 and OPS-2*, as approved.
 2. The item's wording keeps the rule to questions that name **no** jurisdiction, keeps every other
    out-of-bounds rule, marks its design as not decided, requires the measured question set with its
    must-decline controls, and points to this file for the evidence instead of restating it.
@@ -201,6 +257,14 @@ criterion names a size (`workflow-protocol.md` → *Change classes*).
    change in what the product does.
    **Resolved 2026-09-18: `FEAT-`** (Thomas). `STORY-` was declined as colliding with the product
    spec's user-story numbering, and `IDEA-` as misleading once an item is built.
+2. **The prefix for tooling and hygiene items — a one-way door once merged.** `OPS-1` and `OPS-2` are
+   the first such items here, so later ones copy the prefix. Assumed: **`OPS-`**, the workflow's
+   existing prefix for this kind of work. The cost: the deployed workflow documents cite items in the
+   *workflow's* backlog as "`BACKLOG.md` OPS-NN", and a reader in this repository could look them up
+   here instead; the numbers cited there are far above this repository's for now, so the collision is
+   latent rather than live. The alternative is a prefix of this repository's own, which avoids that
+   ambiguity at the price of a second vocabulary. Put to Thomas at the `answer-voice-screen` round-6
+   fork (2026-09-20).
 
 
 ## Approval (2026-09-18)

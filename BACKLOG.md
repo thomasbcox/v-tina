@@ -75,4 +75,43 @@ log, and whether the public's questions are stored at all is deliberately unreso
 **Sequencing.** Independent of FEAT-1 and FEAT-2. Touches `src/lib/chat/orchestrate.ts`, which
 `answer-voice-screen` also edits — start after that story merges.
 
+### OPS-1 — The policy-pillars comment still counts the pillars
+
+**What is wrong (found 2026-09-20).** The comment above `POLICY_PILLARS` in
+`src/lib/ingest/pillars.ts` calls them "Governor Kotek's three stated priorities", while the same
+comment says pillars are "an open classification expected to grow with the corpus". The number is a
+second statement of the list's length, and it goes false the day a pillar is added
+(`workflow-protocol.md` → *Counts are copies*).
+
+**The fix.** Name the kind — "Governor Kotek's stated priorities" — and leave the list as the only
+statement of how many there are.
+
+**Why it is filed rather than fixed.** The approach review of `answer-voice-screen` (round 3b101a0)
+reported it, and that story's declared file scope does not include this file; Thomas kept the scope
+rather than widen it for a comment.
+
+**Sequencing.** Independent. If OPS-2 lands first, its check flags this line and the fix rides there.
+
+### OPS-2 — Catch counts in living text mechanically
+
+**Want (Thomas, 2026-09-20).** A number in living text that restates the size of a set defined
+elsewhere is caught when the gate runs, not by a reviewer a round later.
+
+**Why it recurs today.** The rule is read, never run. Successive review rounds of
+`answer-voice-screen` each found counts that had survived the previous round's fix, because each fix
+covered the instances named or the sections swept, and nothing checked the rest. Instances and dates:
+`reviews/answer-voice-screen.md` → round-6 decisions.
+
+**Shape to consider — not decided.** A check that flags a number word standing next to a noun that
+names a declared list ("three lists", "five fields"), either as a test in the existing suite or as a
+separate gate check. The hard part is the boundary: dated records — story files, review artifacts,
+Done rows — may carry counts by design, and a parameter such as a threshold or a limit is not a count
+at all.
+
+**Owed by the story that builds it.** Measure false positives on this repository before adopting it,
+and state how a flagged number that is genuinely a rule or a parameter is exempted, so the exemption
+is visible rather than a silent allowlist.
+
+**Sequencing.** Independent of the FEAT items. Its first run should flag OPS-1's line.
+
 ## Done
