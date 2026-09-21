@@ -167,8 +167,8 @@ export const PROVENANCE_NOTICE = `${DISPLAY_FRAME}, I stopped this answer: I cou
  * Prompts still shipping as placeholders. **Empty: story 3 replaced all three.**
  *
  * The list stays, and so does the partition below, because the guard is what
- * matters, not the emptiness. A future placeholder is declared here and the
- * README pairing holds it; a prompt in neither list still fails the partition.
+ * matters, not the emptiness. A future placeholder is declared here, and a prompt
+ * in none of the lists still fails the partition.
  * Emptiness reached by deleting the list would pass every check and mean nothing,
  * which is why a test asserts the partition still has teeth over an empty one.
  */

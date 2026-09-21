@@ -330,7 +330,7 @@ are person-judged and owe none.
 - review/6 — ran (codex on glm-latest, 3 findings) -> reviews/answer-voice-screen.approach.3b101a0.json
 - review/8 — ran (codex: deepseek-pro-latest correctness / kimi-latest hidden-failure, 0 / 0 findings; doc-drift shadow: glm-latest, 10 findings) -> reviews/answer-voice-screen.correctness.3b101a0.json, reviews/answer-voice-screen.hidden-failure.3b101a0.json, reviews/answer-voice-screen.doc-drift.3b101a0.json. Base for both correctness critics was `d42bbb0`, the last SHA they actually read, not round 5's `0e685ed` — otherwise round 5's fixes would never have been read line by line. The shadow pass used `main`, as it always does.
 - close/3b — no activation — `./install.sh --check` n/a (this repo ships none); no guard-hook block observed this session; the reviewer harness promoted every pass it ran this round (approach, correctness, hidden-failure and the doc-drift shadow, round 3b101a0). No proposal: the recurring counts are a product finding and are filed as OPS-2, not a workflow lesson.
-- close/4 — presented: re-review only. Round 0e685ed's approved set includes the mark-list BLOCKER, which Thomas treated as a redesign when he stopped that round before the correctness pass, so merge was not offered.
+- close/4 — presented: re-review or merge (no redesign this round). Thomas chose to close the quotation-mark gap found during verification and then re-review; merge was not taken.
 
 ## Build note (2026-09-15)
 
@@ -2261,3 +2261,20 @@ marks nobody listed" — is not true.
 **Also noticed, in passing.** The `PROVISIONAL_PROMPTS` docstring says a future placeholder "is
 declared here and the README pairing holds it". No README pairing covers that list: the pairing test
 checks the reader-facing and routing lists only.
+
+## Decisions (2026-09-21, found while closing round 3b101a0)
+
+Put to Thomas at the step-4 stop as decisions separate from the fork, with each option's cost:
+closing the gap costs a correctness-only review round, because it changes what the safety screen
+refuses; merging now ships a known, improbable way through under a comment that claims there is none.
+
+- **The declared list is not total:** **CLOSE THE GAP, THEN RE-REVIEW.** Add Unicode's own
+  `Quotation_Mark` property to the screen and the two missing ornaments to the named list, have the
+  test cover the property independently as it covers the categories, and correct the comment —
+  stating plainly that marks outside the Basic Multilingual Plane cannot be refused.
+- **The provisional-prompts comment claims a README pairing that does not exist:** **FIX IT.**
+- **Backlog prefixes for non-feature items:** **the workflow's — `OPS-` for tooling and hygiene,
+  `BUG-` for defects.** Recorded on `claude/backlog-oregon-context` as the resolution of its Open
+  question 2.
+
+The fork itself: **re-review**, chosen with the gap fix, so the next review reads it.

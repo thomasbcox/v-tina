@@ -73,25 +73,26 @@ describe("the one grammar", () => {
     expect(quotes[0]).toMatchObject({ text: `${q("Deflection program")} means a collaborative program` });
   });
 
-  // Every character Unicode files as an initial or final quotation mark, computed rather than
-  // typed: the requirement is all of them, so the test states the categories itself instead of
+  // Every character Unicode itself classes as a quotation mark — the initial and final
+  // quotation categories and its Quotation_Mark property — computed rather than typed. The
+  // requirement is all of them, so the test states the Unicode sources itself instead of
   // reading them from the screen, where dropping one would shrink the test along with it.
-  const DIRECTIONAL_MARKS: string[] = [];
+  const UNICODE_QUOTATION_MARKS: string[] = [];
   for (let cp = 0; cp <= 0x10ffff; cp += 1) {
     if (cp >= 0xd800 && cp <= 0xdfff) continue; // surrogates are not characters
     const ch = String.fromCodePoint(cp);
-    if (/[\p{Pi}\p{Pf}]/u.test(ch)) DIRECTIONAL_MARKS.push(ch);
+    if (/[\p{Pi}\p{Pf}\p{Quotation_Mark}]/u.test(ch)) UNICODE_QUOTATION_MARKS.push(ch);
   }
   // What the screen must refuse outside a quotation: its own declared list, iterated rather than
-  // copied, and every directional mark — except `“`, which opens the one quotation accepted.
-  const REFUSED_MARKS = [...new Set([...NAMED_QUOTE_MARKS, ...DIRECTIONAL_MARKS])].filter((m) => m !== O);
+  // copied, and every Unicode quotation mark — except `“`, which opens the one quotation accepted.
+  const REFUSED_MARKS = [...new Set([...NAMED_QUOTE_MARKS, ...UNICODE_QUOTATION_MARKS])].filter((m) => m !== O);
 
   it("refuses every mark that could pass for a delimiter but does not open a quotation", () => {
     // The grammar is total over quotation marks: an unrecognised one is refused, never let
     // through as prose. Iterating the declared list itself means a mark added to it is
     // covered with no new case written — the copy this replaced covered only the marks
     // someone had remembered to type (approach review round 3b101a0).
-    expect(DIRECTIONAL_MARKS.length, "the category scan found nothing, so it checks nothing").toBeGreaterThan(0);
+    expect(UNICODE_QUOTATION_MARKS.length, "the Unicode scan found nothing, so it checks nothing").toBeGreaterThan(0);
     for (const mark of REFUSED_MARKS) {
       const text = `Under EO 23-02: ${mark}a 13% rise in unsheltered homelessness.`;
       const { tokens } = lex(text, true);

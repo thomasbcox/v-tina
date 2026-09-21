@@ -110,24 +110,37 @@ export const APOSTROPHES = "'’";
 /**
  * Marks a reader could take for a quotation delimiter, **as a list rather than as cases**.
  *
- * `“` opens the one kind of quotation this grammar accepts. Every member here is refused
- * outside a quotation and is ordinary content inside one, so an unfamiliar mark cannot
- * open an unverified span. `'` and `’` are the exception the list cannot state: they are
- * also apostrophes, so they are refused only where a word starts.
+ * `“` opens the one kind of quotation this grammar accepts. Every other mark matched here is
+ * refused outside a quotation and is ordinary content inside one. `'` and `’` are the
+ * exception the list cannot state: they are also apostrophes, so they are refused only
+ * where a word starts.
  *
  * **Why a list.** Three rounds closed one glyph at a time — single marks, then an unclosed
  * straight `'`, then `”` and `’` — and each time the next unlisted mark still reached the
  * reader: `«…»`, `` `…` ``, `‹…›` and `❝…❞` all streamed a fabricated figure (approach
- * review round 0e685ed). The directional classes are matched by Unicode category so the
- * set closes over marks nobody listed; the rest are named because their categories are not
- * quotation-specific.
+ * review round 0e685ed).
+ *
+ * **Where the marks come from, so coverage does not rest on anyone's memory.** Unicode's
+ * categories for initial and final quotation punctuation; Unicode's own `Quotation_Mark`
+ * property, which adds marks those categories miss — `⹂` and the vertical and half-width
+ * corner brackets among them, all of which passed as prose until this was added (found
+ * while closing round 3b101a0); and the marks named below. The named marks are lookalikes
+ * the standard does not class as quotation marks — the backtick, the dingbat quotation
+ * ornaments, the CJK angle brackets — beside common marks named so the list reads plainly,
+ * which Unicode also covers.
+ *
+ * **One limit, stated rather than hidden.** The lexer reads one UTF-16 unit at a time, so a
+ * mark stored as two cannot be matched: the quotation ornaments `🙶🙷🙸` (U+1F676–1F678) pass
+ * as prose. No member of the Unicode sources above is stored that way. Adding such a mark
+ * here would not refuse it, and the refusal test, which iterates this list, fails if anyone
+ * tries — as it does if a later Unicode version adds one to those sources.
  *
  * Exported so the tests iterate this list rather than a copy of it: a copy stops covering
  * the list the day someone adds a mark here (approach review round 3b101a0).
  */
-export const NAMED_QUOTE_MARKS = `"'\`«»‹›„‚‟❛❜❝❞〝〞〟「」『』《》〈〉＂＇`;
+export const NAMED_QUOTE_MARKS = `"'\`«»‹›„‚‟❛❜❝❞❟❠〝〞〟「」『』《》〈〉＂＇`;
 const QUOTE_LIKE = new RegExp(
-  `[\\p{Pi}\\p{Pf}${NAMED_QUOTE_MARKS.replace(/[\\^\]-]/g, (c) => `\\${c}`)}]`,
+  `[\\p{Pi}\\p{Pf}\\p{Quotation_Mark}${NAMED_QUOTE_MARKS.replace(/[\\^\]-]/g, (c) => `\\${c}`)}]`,
   "u",
 );
 

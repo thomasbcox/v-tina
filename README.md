@@ -332,9 +332,13 @@ quoting their defined terms (measured in `reviews/answer-voice-screen.md`), so a
 contains curly marks of its own, and the grammar tracks the nesting rather than closing at the first
 inner mark. No other mark may open one. The grammar carries a **declared list of marks a reader could take for a
 delimiter** — straight quotes, the other curly marks, guillemets, low quotes, backticks, corner and
-decorative marks — and refuses every one of them outside a quotation, while treating all of them as
-ordinary content inside one. An apostrophe inside a word, `Oregon's`, is untouched; `'` and `’` are
-refused only where a word starts, and the answering prompt tells the model to avoid all of these marks.
+decorative marks — together with **every character Unicode itself classes as a quotation mark**, and
+refuses every one of them outside a quotation, while treating all of them as ordinary content inside
+one. An apostrophe inside a word, `Oregon's`, is untouched; `'` and `’` are refused only where a word
+starts, and the answering prompt tells the model to avoid all of these marks. **One limit:** the lexer
+reads one UTF-16 unit at a time, so a mark stored as two cannot be matched — the quotation ornaments
+`🙶🙷🙸` pass as prose. `NAMED_QUOTE_MARKS` in `src/lib/voice.ts` states the limit and what catches an
+attempt to list such a mark.
 **The list replaced four rounds of single fixes.** Single marks went unrecognised entirely; then an
 unclosed `'` was read as an apostrophe; then `”` and `’` were still prose; and each time the next
 unlisted mark — `«…»`, a backtick, `‹…›`, `❝…❞` — carried a fabricated figure to the reader.
