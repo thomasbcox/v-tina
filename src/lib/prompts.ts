@@ -8,25 +8,24 @@ import {
 } from "./voice";
 
 /**
- * The prompts V-Tina runs on.
+ * The prompts V-Tina runs on, in two kinds.
  *
- * Two kinds live here and they are not equal in standing.
+ * **Routing prompts** — the classifier and the neutralising rewrite — produce a
+ * label or a rephrased question, never prose a reader sees, so they carry no voice.
  *
- * **Routing prompts** — the classifier and the neutralising rewrite — are this
- * story's own work. They produce a label or a rephrased question, never prose a
- * reader sees, so they carry no voice and nothing later replaces them.
+ * **Reader-facing prompts** — the system prompt the answering model writes under,
+ * and the notices a reader may be shown — are prose a member of the public reads.
+ * The answering prompt tells the model to speak as a virtual avatar of the
+ * Governor, never as her, and the deferral and the provenance notice speak that
+ * way themselves. The failure notice is deliberately out of character; its own
+ * comment says why.
  *
- * **Voice-bearing prompts** — the deferral the reader actually reads, and the
- * system prompt the answering model writes under — are PROVISIONAL. User Story 2
- * was deliberately cut so that Governor Kotek's voice (her lexicon, her four-step
- * pacing, the AI-ism validator, the legislative deflection framework) is User
- * Story 3's subject rather than a side effect of building the router. The
- * placeholder below is deliberately plain, chosen at this story's approval stop
- * precisely so that nobody mistakes it for a decision about how she sounds.
- *
- * `PROVISIONAL_PROMPTS` is the machine-readable form of that warning, and the
- * README documents the same list with a test holding the two equal — the pattern
- * the domain allowlist, the pillar list and the retrieval threshold already use.
+ * `ROUTING_PROMPTS` and `READER_FACING_PROMPTS` below are the machine-readable form
+ * of that split, and `PROVISIONAL_PROMPTS`, empty, is kept for a future
+ * placeholder. A test requires every exported prompt to sit in exactly one of the
+ * declared lists, and the README documents the routing and reader-facing lists
+ * with a test holding each equal to the code — the pattern the domain allowlist,
+ * the pillar list and the retrieval threshold use.
  */
 
 /** Oregon's official state portal, which the deferral must send readers to. */

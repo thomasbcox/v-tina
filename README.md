@@ -11,17 +11,19 @@ original, so a reader can verify it directly.
 **The service answers questions; there is no user interface yet.** The repository holds the
 Next.js skeleton, the shared boundary types, startup environment validation, the gate and CI
 (story `technology-foundation`), the vector schema and ingestion pipeline (`policy-chunks-ingest`),
-a real seed corpus ingested into the hosted store (`seed-corpus-ingest`), and the `/api/chat`
-endpoint with its safety routing (`chat-safety-routing`).
+a real seed corpus ingested into the hosted store (`seed-corpus-ingest`), the `/api/chat`
+endpoint with its safety routing (`chat-safety-routing`), and the voice it answers in
+(`answer-voice-screen`): a virtual avatar of the Governor that quotes the record rather than
+speaking for her. *How V-Tina speaks* has the rules and what enforces them.
 
-Two things that endpoint does **not** yet have, both deliberate. It does not speak in Governor
-Kotek's voice — the prompt it answers under is a plain placeholder, and her lexicon, pacing and
-deflection framework are the next story. And there is no chat screen: the endpoint is exercised
-directly. Everything under *Intended stack* not named here is still planned, not built.
+What the endpoint does **not** have, deliberately. It does not write in Governor Kotek's personal
+idiom: nothing in the corpus records how she talks, so her lexicon and pacing wait on a later story
+with a corpus of her own speech. And there is no chat screen — the endpoint is exercised directly.
+Everything under *Intended stack* not named here is still planned, not built.
 
 ## Purpose
 
-The full specification — agent roles, interface contracts, five user stories, and their
+The full specification — agent roles, interface contracts, the user stories and their
 acceptance criteria — is committed here:
 
 **[v-tina-user-stories.md](v-tina-user-stories.md)**
@@ -127,8 +129,8 @@ ingestion accepts. Adding a pillar means editing the constant and this section t
 
 ### Frontmatter reference
 
-Every document carries all five fields. Ties on retrieval similarity are broken by `kind` (an
-executive document outranks legislative history) and then by `date`, most recent first.
+Every document carries every field in the table below. Ties on retrieval similarity are broken by
+`kind` (an executive document outranks legislative history) and then by `date`, most recent first.
 
 | Field | Meaning |
 |---|---|

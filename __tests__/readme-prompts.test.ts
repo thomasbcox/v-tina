@@ -24,8 +24,8 @@ const exported = Object.entries(prompts)
   .filter((name) => name !== "OREGON_PORTAL_URL"); // a link, not a prompt
 
 describe("AC12 — every prompt is classified, and the buckets mean what they say", () => {
-  it("the three lists partition every prompt this module ships", () => {
-    // Exhaustive: a new prompt in none of the three fails here, so classifying it
+  it("the declared lists partition every prompt this module ships", () => {
+    // Exhaustive: a new prompt in none of the lists fails here, so classifying it
     // is mandatory rather than a habit.
     expect(exported.length).toBeGreaterThan(0);
     expect([...exported].sort()).toEqual(
@@ -77,7 +77,7 @@ describe("AC12 — every prompt is classified, and the buckets mean what they sa
     }
   });
 
-  it("the README documents the same three lists, equal in both directions", () => {
+  it("the README documents the reader-facing and routing lists, equal in both directions", () => {
     for (const [heading, declared] of [
       ["### Reader-facing prompts", READER_FACING_PROMPTS],
       ["### Routing prompts", ROUTING_PROMPTS],

@@ -105,7 +105,7 @@ export const CITATION_WINDOW = 240;
 const OPEN = "“";
 const CLOSE = "”";
 /** The single marks that double as apostrophes: a delimiter only where a word starts. */
-const APOSTROPHES = "'’";
+export const APOSTROPHES = "'’";
 
 /**
  * Marks a reader could take for a quotation delimiter, **as a list rather than as cases**.
@@ -121,8 +121,11 @@ const APOSTROPHES = "'’";
  * review round 0e685ed). The directional classes are matched by Unicode category so the
  * set closes over marks nobody listed; the rest are named because their categories are not
  * quotation-specific.
+ *
+ * Exported so the tests iterate this list rather than a copy of it: a copy stops covering
+ * the list the day someone adds a mark here (approach review round 3b101a0).
  */
-const NAMED_QUOTE_MARKS = `"'\`«»‹›„‚‟❛❜❝❞〝〞〟「」『』《》〈〉＂＇`;
+export const NAMED_QUOTE_MARKS = `"'\`«»‹›„‚‟❛❜❝❞〝〞〟「」『』《》〈〉＂＇`;
 const QUOTE_LIKE = new RegExp(
   `[\\p{Pi}\\p{Pf}${NAMED_QUOTE_MARKS.replace(/[\\^\]-]/g, (c) => `\\${c}`)}]`,
   "u",
