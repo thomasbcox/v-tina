@@ -1,0 +1,117 @@
+{
+  "summary": "Mon Sep 21 06:30:24 PDT 2026 — The branch rewrites README voice and prompt documentation, adds extensive comments and docstrings in prompts.ts, voice.ts, and orchestrate.ts, and adds test prose plus a captured-answer fixture note. Five living-text sentences are false: two reader-facing/frame comments overgeneralize past FAILURE_NOTICE, the wire-record table omits provenance notices, the answering prompt overstates quotation-mark enforcement inside quotations, and the lexer docstring claims totality while its own UTF-16 limit lets astral quotation ornaments pass as prose.",
+  "seeds": [
+    {
+      "from_diff": "ANSWER_SYSTEM_PROMPT",
+      "changes": "Rewritten from the plain placeholder into an avatar/provenance answering prompt.",
+      "searched": "README Status and How V-Tina speaks, prompts.ts comments and prompt body, tests, and the product specification, by name and by placeholder/avatar/provenance meaning."
+    },
+    {
+      "from_diff": "PROVISIONAL_PROMPTS",
+      "changes": "Emptied and incorporated into a new prompt partition.",
+      "searched": "README prompt sections, prompts.ts docstrings, and readme-prompts tests, by name and by provisional/placeholder meaning."
+    },
+    {
+      "from_diff": "PROVENANCE_NOTICE",
+      "changes": "Added as the distinct provenance refusal notice and emitted through the answer stream.",
+      "searched": "README stream and provenance prose, prompts.ts, orchestrate.ts refusal paths, and tests, by name and by refusal-notice meaning."
+    },
+    {
+      "from_diff": "DISPLAY_FRAME",
+      "changes": "Added as the injected avatar frame and used by avatar-voiced notices.",
+      "searched": "voice.ts and prompts.ts comments, reader-facing notices, README cadence prose, and tests, by name and by frame/notice meaning."
+    },
+    {
+      "from_diff": "READER_FACING_PROMPTS",
+      "changes": "Added as the partition for prompts a reader meets, including FAILURE_NOTICE and PROVENANCE_NOTICE.",
+      "searched": "prompts.ts comments, README prompt lists, and readme-prompts tests, by name and by voice/notice meaning."
+    },
+    {
+      "from_diff": "screenedAnswer",
+      "changes": "Added streaming opening screening, quotation holds, verification, cadence injection, and refusal behavior.",
+      "searched": "orchestrate.ts comments and implementation, README behavior rows, and answer-screen tests, by name and by hold/refusal/streaming meaning."
+    },
+    {
+      "from_diff": "streamed_tokens",
+      "changes": "Answer generation now passes through screenedAnswer, which can emit the provenance notice as streamed text.",
+      "searched": "README record-kind table, events schema, and orchestrate.ts yield sites, by name and by emitted-text meaning."
+    },
+    {
+      "from_diff": "An answer containing one is stopped.",
+      "changes": "Added as an answering-prompt claim about quotation-like marks.",
+      "searched": "ANSWER_SYSTEM_PROMPT, the lexer implementation and tests, orchestrate.ts emission paths, and README quotation-mark prose, by exact phrase and by delimiter meaning."
+    },
+    {
+      "from_diff": "NAMED_QUOTE_MARKS",
+      "changes": "Added as the declared list of quotation-like marks refused outside a quotation.",
+      "searched": "voice.ts comments and implementation, voice tests, README marks prose, and the answering prompt, by name and by quotation-mark meaning."
+    },
+    {
+      "from_diff": "grammar is total over quotation marks",
+      "changes": "Added as a lexer docstring claim that no unrecognised quotation mark passes as prose.",
+      "searched": "voice.ts grammar and limit comments, the mark matcher and refusal tests, and README marks prose, by exact phrase and by totality/exception meaning."
+    },
+    {
+      "from_diff": "CADENCE_TARGET_WORDS",
+      "changes": "Added a declared 150-word cadence target shared by the prompt, screen, and README.",
+      "searched": "voice.ts comments and implementation, the answering prompt, README cadence prose, and tests, by name and by 150-word meaning."
+    }
+  ],
+  "findings": [
+    {
+      "severity": "IMPORTANT",
+      "title": "Wire table omits provenance text in streamed tokens",
+      "file": "README.md",
+      "line": 230,
+      "sentence": "| `streamed_tokens` | Text for the reader — either the generated answer, or the fixed deferral |",
+      "evidence_file": "src/lib/chat/orchestrate.ts",
+      "evidence_line": 361,
+      "claim": "The row says streamed_tokens carries only generated answer text or the fixed deferral. The branch adds a refusal path that yields PROVENANCE_NOTICE as a streamed_tokens record, so the exhaustive either/or description is false.",
+      "suggestion": "| `streamed_tokens` | Text for the reader — generated answer text, the fixed deferral, or the provenance notice |"
+    },
+    {
+      "severity": "IMPORTANT",
+      "title": "Prompt overstates quotation-like mark enforcement",
+      "file": "src/lib/prompts.ts",
+      "line": 111,
+      "sentence": "An answer containing one is stopped.",
+      "evidence_file": "src/lib/chat/orchestrate.ts",
+      "evidence_line": 480,
+      "claim": "The prompt says an answer containing any other quotation-like mark is stopped. Inside an outer curly quotation the lexer treats such marks as the record's own content; after verification the streaming path emits the whole raw quotation rather than refusing it.",
+      "suggestion": "An answer using one outside a quotation is stopped; inside a quotation it is the record's own content."
+    },
+    {
+      "severity": "NIT",
+      "title": "Frame comment overgeneralizes to every reader-facing notice",
+      "file": "src/lib/voice.ts",
+      "line": 23,
+      "sentence": "The frame as a reader sees it: the one wording the answer path injects and every\n * reader-facing notice opens with.",
+      "evidence_file": "src/lib/prompts.ts",
+      "evidence_line": 153,
+      "claim": "The comment says every reader-facing notice opens with DISPLAY_FRAME. FAILURE_NOTICE is in READER_FACING_PROMPTS and deliberately begins with neutral infrastructure prose rather than the avatar frame.",
+      "suggestion": "The frame as a reader sees it: the one wording the answer path injects and the avatar-voiced notices open with."
+    },
+    {
+      "severity": "NIT",
+      "title": "Reader-facing list comment includes a neutral notice",
+      "file": "src/lib/prompts.ts",
+      "line": 191,
+      "sentence": "The prompts a reader actually meets — the avatar's own voice, finished rather\n * than provisional.",
+      "evidence_file": "src/lib/prompts.ts",
+      "evidence_line": 153,
+      "claim": "The comment characterizes the whole reader-facing list as the avatar's own voice. The list includes FAILURE_NOTICE, whose own docstring says it is deliberately not in character and whose text is neutral infrastructure prose.",
+      "suggestion": "The prompts a reader actually meets; the avatar-voiced ones are finished, while `FAILURE_NOTICE` is deliberately neutral."
+    },
+    {
+      "severity": "NIT",
+      "title": "Lexer docstring claims totality despite its stated astral limit",
+      "file": "src/lib/voice.ts",
+      "line": 217,
+      "sentence": "Every other mark that could pass for a delimiter is a **violation**, so the\n * grammar is total over quotation marks rather than letting an unrecognised one\n * through as prose: a straight `\"` anywhere outside a quotation (it is not\n * directional, so it cannot nest), a closing `”` with nothing open, `‘` anywhere\n * (it can only open), and `'` or `’` where a word starts.",
+      "evidence_file": "src/lib/voice.ts",
+      "evidence_line": 133,
+      "claim": "The sentence says the grammar is total and lets no unrecognised quotation mark through as prose. The same branch's stated UTF-16 limit says the astral quotation ornaments 🙶🙷🙸 pass as prose, directly contradicting the totality claim.",
+      "suggestion": "Every other mark the lexer can match that could pass for a delimiter is a violation; marks stored as two UTF-16 units are the stated exception and pass as prose."
+    }
+  ]
+}

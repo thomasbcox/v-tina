@@ -328,7 +328,7 @@ are person-judged and owe none.
 - frame/6 — ran twice. Round 1 (superseded design) -> reviews/answer-voice-screen.design.fdc04f4.json. Round 2, the binding pass, after Thomas inverted the design at the consult: codex on kimi-latest, 6 findings, 13 regressions -> reviews/answer-voice-screen.design.896817f.json
 - frame/9 — demonstrated red for all nine sized criteria against the ratified regressions (two sabotages were incomplete on the first attempt, reported as such and redone). Plus four defects the live runs found that the suite could not, each now covered by a red-able test.
 - review/6 — ran (codex on glm-latest, 3 findings) -> reviews/answer-voice-screen.approach.3b101a0.json
-- review/8 — ran (codex: deepseek-pro-latest correctness / kimi-latest hidden-failure, 0 / 0 findings; doc-drift shadow: glm-latest, 10 findings) -> reviews/answer-voice-screen.correctness.3b101a0.json, reviews/answer-voice-screen.hidden-failure.3b101a0.json, reviews/answer-voice-screen.doc-drift.3b101a0.json. Base for both correctness critics was `d42bbb0`, the last SHA they actually read, not round 5's `0e685ed` — otherwise round 5's fixes would never have been read line by line. The shadow pass used `main`, as it always does.
+- review/8 — ran (codex: deepseek-pro-latest correctness / kimi-latest hidden-failure, 1 / 0 findings; doc-drift shadow: glm-latest, 5 findings) -> reviews/answer-voice-screen.correctness.26728d4.json, reviews/answer-voice-screen.hidden-failure.26728d4.json, reviews/answer-voice-screen.doc-drift.26728d4.json. The first correctness attempt was refused by the runner (its final message was not valid JSON) and was retried once alone, same round and base, so the doc-drift trial was not spent twice on one commit. Both correctness critics read `git diff 1ab191a...HEAD` with the shadow's artifacts and verdicts excluded.
 - close/3b — no activation — `./install.sh --check` n/a (this repo ships none); no guard-hook block observed this session; the reviewer harness promoted every pass it ran this round (approach, correctness, hidden-failure and the doc-drift shadow, round 3b101a0). No proposal: the recurring counts are a product finding and are filed as OPS-2, not a workflow lesson.
 - close/4 — presented: re-review or merge (no redesign this round). Thomas chose to close the quotation-mark gap found during verification and then re-review; merge was not taken.
 
@@ -2329,3 +2329,52 @@ the last HEAD the correctness critics read. Only what moved.
 | 3, 4 | The matcher in `src/lib/voice.ts` refuses, outside a quotation, the named marks, Unicode's initial and final quotation categories, and Unicode's `Quotation_Mark` property; `❟` and `❠` join the named marks. `NAMED_QUOTE_MARKS` and `APOSTROPHES` are exported so `__tests__/voice.test.ts` iterates the declared list itself, alongside its own independent scan of the Unicode sources, with a floor test for the marks closed by name before the list existed. The comment above the list states the two-unit limit |
 | 10, 12 | `src/lib/prompts.ts`: the module header describes the routing / reader-facing split as it stands, and the `PROVISIONAL_PROMPTS` docstring no longer claims a README pairing. `__tests__/readme-prompts.test.ts`: test names state what they check without counting the lists |
 | README | *Status* names this story among what is built and says what is deliberately absent; count copies replaced by the kinds they counted; the marks paragraph names the Unicode property and the limit |
+
+## Codex correctness pass — round 7 (2026-09-21, base 1ab191a, HEAD 26728d4)
+
+**The first correctness attempt was refused, and retried once.** It executed 23 commands — it probed
+the new matcher itself — but its final message was not valid JSON ("Expecting ',' delimiter at
+offset 1326"), so the runner promoted nothing. The retry ran alone, with the same round id, base and
+prompt, against the unchanged HEAD. Both line-by-line critics were given the diff with
+`reviews/answer-voice-screen.doc-drift*` excluded, so the shadow's claims could not prime them through
+it.
+
+**Correctness (deepseek-pro-latest, 29 commands, 1 finding).** Summary, verbatim: "This round-7 change
+expands the quotation-delimiter refusals in src/lib/voice.ts by adding Unicode's `Quotation_Mark`
+binary property and two named ornaments (`❟ ❠`) to `QUOTE_LIKE`, exports
+`NAMED_QUOTE_MARKS`/`APOSTROPHES` so the tests iterate the declared list rather than a hand-typed copy,
+and rewrites the prompts.ts module header, README prose, and the grammar tests. The behavior change is
+strictly fail-closed: the lexer refuses more delimiter-like characters outside a quotation, and the
+story's verification confirms none of the newly refused characters appears in the corpus or the
+captured real answer, so R3 (false positives) does not grow. The restructured tests compute the
+Unicode-derived set independently of the screen (so dropping a category or property errors rather than
+shrinking the test), add a floor test for the marks closed in earlier rounds that would not be caught
+by iterating the list, and correctly handle the apostrophe exception and the inside-a-quotation
+contents; I traced each loop and found no assertion removed and no coverage weakened. The 'two UTF-16
+unit' limit on astral ornaments is disclosed and decided, and no astral code point is currently in the
+Unicode sources, so the claim holds. No correctness or hidden-failure defect found; one minor
+living-text count survives in the rewritten header."
+
+### NIT
+
+**Rewritten module header still counts the prompt kinds** — `src/lib/prompts.ts:11`
+
+- **Claim:** The added line `* The prompts V-Tina runs on, in two kinds.` is a count of the two kinds
+  enumerated immediately below in the same docstring (Routing prompts / Reader-facing prompts), a set
+  free to grow. Per the builder protocol's Counts-are-copies rule (stated once; a number that is the
+  size of an enumerable set beside it is a copy that drifts silently), this numeral can go stale when
+  a third kind is added: the two bold headings and the lists would change but nothing would flag the
+  'two'. The same branch fixed exactly this shape elsewhere ('the three lists' in the test names), so
+  the header it rewrote and retained a count of is the same class left behind.
+- **Suggestion:** Drop the numeral — e.g. revert the lead to 'The prompts V-Tina runs on.' or phrase
+  the two kinds by name rather than by count, since the two bold headings below already enumerate them.
+
+**Hidden failure (kimi-latest, 11 commands, 0 findings).** "The change is failure-transparent and, if
+anything, removes a silent-decay mechanism rather than adding one. The product-code diff is a widened
+regex character class (Unicode's Quotation_Mark property), two added named marks, and export keywords;
+the lexer stays total — every non-opening quote-like mark outside a quotation still becomes a violation
+token, never prose, and no try/catch, fallback, or deleted assertion appears anywhere in the diff…"
+
+**REACH.** Reported by every pass and all of the over-inclusive kind — regex fragments read as paths —
+with one worth naming: the correctness retry tried to write a simulation script to `/tmp/sim.mjs` and
+run it. No such file exists afterwards, so nothing persisted outside the review worktree.

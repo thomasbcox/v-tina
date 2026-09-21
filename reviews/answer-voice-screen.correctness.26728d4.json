@@ -1,0 +1,13 @@
+{
+  "summary": "This round-7 change expands the quotation-delimiter refusals in src/lib/voice.ts by adding Unicode's `Quotation_Mark` binary property and two named ornaments (`❟ ❠`) to `QUOTE_LIKE`, exports `NAMED_QUOTE_MARKS`/`APOSTROPHES` so the tests iterate the declared list rather than a hand-typed copy, and rewrites the prompts.ts module header, README prose, and the grammar tests. The behavior change is strictly fail-closed: the lexer refuses more delimiter-like characters outside a quotation, and the story's verification confirms none of the newly refused characters appears in the corpus or the captured real answer, so R3 (false positives) does not grow. The restructured tests compute the Unicode-derived set independently of the screen (so dropping a category or property errors rather than shrinking the test), add a floor test for the marks closed in earlier rounds that would not be caught by iterating the list, and correctly handle the apostrophe exception and the inside-a-quotation contents; I traced each loop and found no assertion removed and no coverage weakened. The 'two UTF-16 unit' limit on astral ornaments is disclosed and decided, and no astral code point is currently in the Unicode sources, so the claim holds. No correctness or hidden-failure defect found; one minor living-text count survives in the rewritten header.",
+  "findings": [
+    {
+      "severity": "NIT",
+      "title": "Rewritten module header still counts the prompt kinds",
+      "file": "src/lib/prompts.ts",
+      "line": 11,
+      "claim": "The added line `* The prompts V-Tina runs on, in two kinds.` is a count of the two kinds enumerated immediately below in the same docstring (Routing prompts / Reader-facing prompts), a set free to grow. Per the builder protocol's Counts-are-copies rule (stated once; a number that is the size of an enumerable set beside it is a copy that drifts silently), this numeral can go stale when a third kind is added: the two bold headings and the lists would change but nothing would flag the 'two'. The same branch fixed exactly this shape elsewhere ('the three lists' in the test names), so the header it rewrote and retained a count of is the same class left behind.",
+      "suggestion": "Drop the numeral — e.g. revert the lead to 'The prompts V-Tina runs on.' or phrase the two kinds by name rather than by count, since the two bold headings below already enumerate them."
+    }
+  ]
+}
