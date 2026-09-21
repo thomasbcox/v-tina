@@ -330,7 +330,7 @@ are person-judged and owe none.
 - review/6 — n/a — round 26728d4 was a correctness-only re-review: round 3b101a0 approved no redesign, so no approach pass ran. It last ran in round 3b101a0. *(Corrected 2026-09-21 at close/3b: this line still carried round 3b101a0's artifact path, which read as though the approach pass had run this round.)*
 - review/8 — ran (codex: deepseek-pro-latest correctness / kimi-latest hidden-failure, 1 / 0 findings; doc-drift shadow: glm-latest, 5 findings) -> reviews/answer-voice-screen.correctness.26728d4.json, reviews/answer-voice-screen.hidden-failure.26728d4.json, reviews/answer-voice-screen.doc-drift.26728d4.json. The first correctness attempt was refused by the runner (its final message was not valid JSON) and was retried once alone, same round and base, so the doc-drift trial was not spent twice on one commit. Both correctness critics read `git diff 1ab191a...HEAD` with the shadow's artifacts and verdicts excluded.
 - close/3b — ran (codex on kimi-latest) -> reviews/answer-voice-screen.lesson.26728d4.json. Activation: the runner refused the round-7 correctness critic's first reply (session-observed); `./install.sh --check` n/a (this repo ships none); no guard-hook block observed. Proposal: .aar/proposals/answer-voice-screen.md — the recovery for a partial correctness refusal re-runs the whole step, spending a trial run on a commit already sampled. Checked: qualified candidate, two nits.
-- close/4 — presented: re-review or merge (no redesign this round). Thomas chose to close the quotation-mark gap found during verification and then re-review; merge was not taken.
+- close/4 — presented: re-review or merge (round 26728d4 approved no redesign). Thomas chose **merge**; the after-action lesson was approved with the checker's two corrections and filed as AAR-1 on `claude/backlog-oregon-context`.
 
 ## Build note (2026-09-15)
 
@@ -2398,3 +2398,19 @@ approach decisions.
 | Finding | Decision | What changed |
 |---|---|---|
 | NIT — the rewritten module header counts the prompt kinds | Fix it | `src/lib/prompts.ts`: "The prompts V-Tina runs on, in two kinds." → "The prompts V-Tina runs on." The two kinds are named in bold directly below, so the count said nothing they do not. No other living text in `src/`, `__tests__/` or `README.md` repeats the phrase |
+
+## Merge decision and the lesson (2026-09-21, round 26728d4)
+
+**Thomas: "Merge"** — given at the step-4 fork, after it was presented, in this session.
+
+**The lesson: "Approve, with corrections."** Filed as `AAR-1` on `claude/backlog-oregon-context`
+(commit `efcced3`), with the lesson check's two corrections applied — the ledger count at the moment
+of decision, and the same-day stopped run in another repository that shows spending the trial's cap
+is not peculiar to the recovery path. Filed there rather than here by his choice: this repository's
+`BACKLOG.md` exists only on that branch, so creating it here would have collided with it and added a
+file to AC13's check. The proposal file is removed from this branch in the same commit, so the entry
+is the lesson's only copy.
+
+**AC13 at the fork.** Every product path in `git diff --name-only main...HEAD -- . ':(exclude)reviews/'`
+was within the declared five; the one other line was the lesson proposal, a workflow record, removed
+by this commit.
