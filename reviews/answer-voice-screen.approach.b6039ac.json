@@ -1,0 +1,26 @@
+{
+  "verdict": "Wed Sep 16 08:16:35 PDT 2026 — The redesigned macro shape is sound and I would keep it: one lexer, one verifier, declared citation kinds, shared constants, and no parser dependency. The `stable` contract is sound for the requested ambiguities: a pending straight apostrophe is held until it resolves as a delimiter or prose, and a curly quotation closed at depth zero cannot be retroactively nested by later text. Folding quotation-mark glyphs is acceptable for word-level fidelity: it does not make an added or removed mark, a changed word, or a cross-class mark change match, though it does erase glyph direction within one mark class. The two things I would not ship as-is are the cadence enforcement mechanism, which can emit output that fails its own declared ceiling, and the full-buffer streaming loop, which is measurably quadratic against the configured 4000-token answer budget.",
+  "regressions": [],
+  "findings": [
+    {
+      "severity": "BLOCKER",
+      "reversibility": "two-way",
+      "standing": "kludgy",
+      "title": "Cadence enforcement is boundary-fragile and does not enforce its ceiling",
+      "locus": "src/lib/chat/orchestrate.ts:341-353,402-434; src/lib/voice.ts:68-89",
+      "claim": "The replacement does enforce cadence at runtime, but the mechanism is not sound. It sets `frameDue` only after the target is crossed and then waits for a sentence start inferred from already-emitted text. A model chunk split between a sentence terminator and its following whitespace makes the next fragment begin with whitespace, so the first sentence start is missed and injection is delayed. More importantly, `CADENCE_MAX_UNQUOTED_WORDS` is not a runtime guard: a sentence longer than the 50-word allowance is emitted entire before the next boundary. I ran the real `screenedAnswer` with a 220-word own-prose sentence; the injected frame appeared only after that sentence, and the emitted answer failed `checkCadence` with a 228-word gap. That contradicts AC6 and README’s claim that no reader meets more than 200 of the avatar’s own words without re-identification. The two constants are therefore a symptom of a mechanism that cannot provide the guarantee it documents.",
+      "alternative": "Make sentence-boundary state part of the streaming lexer state before emission: buffer the terminator plus following whitespace, or hold the first non-space character of the next sentence, and inject the frame before releasing that character. Then choose one honest policy: either enforce a hard ceiling with a defined safety action at 200 words, such as injection at a clause boundary or a provenance-style stop, or drop the hard-ceiling constant and document the cadence as approximate with a stated sentence-length limitation. Do not derive the decision from the already-emitted string.",
+      "win": "Makes AC6, README, runtime behaviour, and `checkCadence` agree; removes dependence on arbitrary model chunk boundaries; and replaces one enforced number plus one uneffective ceiling with a single policy whose guarantee is real."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The stream re-parses the whole answer on every model chunk",
+      "locus": "src/lib/chat/orchestrate.ts:402-434; src/lib/voice.ts:166-236,365-393",
+      "claim": "`screenedAnswer` appends every model chunk to `full`, calls `lex(full, final)`, and walks every token from offset zero on each chunk; `verifyQuotedSpan` also rebuilds and normalises the same retrieved passages for every quotation. With the configured `ANSWER_MAX_TOKENS` of 4000 and token-sized deltas, work grows quadratically in answer length. On this worktree I drove the real `screenedAnswer` with one-word chunks: 500 chunks took about 22 ms, 1000 about 66 ms, 2000 about 237 ms, and 4000 about 927 ms—nearly a second of server CPU for one maximum-length answer, before SSE framing or concurrent readers. That is disproportionate to R1–R7 and works against the progressive-delivery requirement the design is meant to preserve.",
+      "alternative": "Keep `lex` as the single grammar, but expose one incremental lexer used by both offline and streaming paths, or at minimum after the opening have `advance` lex only the unreleased suffix and add the release offset. Precompute a per-answer passage index once, grouping normalised body text and title by `documentTitle`, and have `verifyQuotedSpan` consult that index. No dependency is needed.",
+      "win": "Turns per-chunk work from O(answer-so-far) to O(new text), removes repeated passage normalisation, and reduces a maximum-length answer from roughly a second of quadratic CPU to linear work that preserves streaming latency under load."
+    }
+  ]
+}

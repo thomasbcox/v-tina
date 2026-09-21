@@ -1,0 +1,36 @@
+{
+  "verdict": "2026-09-16 06:56:27 PDT — The macro shape is sound and I would keep it: pure policy in voice.ts, an injectable async-generator orchestrator, shared prompt/screen constants, and no new dependency. A TransformStream would add transport coupling without removing the necessary opening and quotation state. I would not build the textual provenance layer as shipped: the quote grammar is duplicated and partly forgiving, citation attribution is an unanchored numeric-substring heuristic, and cadence is documented as enforced but has no runtime consumer. Those three shapes need correction before merge.",
+  "regressions": [],
+  "findings": [
+    {
+      "severity": "BLOCKER",
+      "reversibility": "one-way",
+      "standing": "kludgy",
+      "title": "The quote contract has three parsers and no single grammar",
+      "locus": "src/lib/voice.ts:110-124,253-340; src/lib/chat/orchestrate.ts:261-263,333-365; src/lib/prompts.ts:108-112",
+      "claim": "The async-generator seam is right, but quotation tokenization is implemented independently by quotedSpans, verifyQuotations, and screenedAnswer's character scanner. The copies already diverge: offline verification has a merged-span fallback for nested quotes, while the streaming scanner closes at the first matching mark, so a straight-quoted outer span containing a straight inner quote emits the inner term as unverified prose. Single-quoted model output is not recognized at all and bypasses AC4. Apostrophes inside double quotes are harmless, but single-quote delimiters and nested same-mark quotes are realistic model output. The verifier also splits on ellipsis and passes when each segment is found, although AC3 and the prompt both forbid elision; a segmented quotation can even combine passages. This is the same class of live bug that motivated verifyOneQuotation, now encoded as two verifiers that can drift again.",
+      "alternative": "Keep the hold-each-quotation design, but define one explicit quote grammar and implement one small pure lexer that emits prose and quotation tokens across chunk boundaries. Have both offline and streaming paths call the same verifyQuotedSpan(span, precedingContext, chunks). Either reject ellipses to match AC3, or change the spec and prompt to permit segmented quotations. For marks, require unambiguous curly outer quotes in the prompt and treat any other outer delimiter as a provenance violation; do not add a parser dependency for this.",
+      "win": "One quote grammar replaces three ad hoc paths, closes the single-quote and nested-mark bypasses, makes elision behavior match AC3, removes the merged-span fallback and duplicate verifier, and lets tests exercise the same tokenization the runtime uses."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "kludgy",
+      "title": "Bare numeric citation matching can attribute a quote to the wrong document",
+      "locus": "src/lib/voice.ts:176-205,271-279,299-338; src/lib/chat/orchestrate.ts:257-259",
+      "claim": "Citation detection reduces a title to a bare identifier and then uses unanchored substring matching. Ballot Measure 110 becomes the bare string 110, and the corpus itself contains 110% in EO 24-02, so an unrelated statistic in the preceding window can make a following quotation appear cited to Ballot Measure 110. A year such as 2024 is usually shielded only because citationKey happens to take the first number in a title such as SB 1537 (2024); that is incidental rather than a designed rule. titles.find also selects retrieval order rather than the nearest citation, and the offline and streaming paths use different context windows of 180 and 240 characters. The result is false wrong-document attribution, false refusals of faithful quotations, and ambiguous behaviour when several documents are named nearby.",
+      "alternative": "Derive a small declarative citation alias table from source metadata—for example EO/Executive Order 23-02, SB 1537, and Ballot Measure/Measure 110—and match those aliases with word-boundary patterns immediately before each quote. Select the nearest match and share one context-window constant. Alternatively, require a canonical citation prefix in the answering prompt. No dependency is needed.",
+      "win": "Eliminates incidental-number attribution and retrieval-order ambiguity, centralizes the citation contract, and reduces false refusals while preserving the wrong-document check."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "Cadence is test-only while documented as enforced",
+      "locus": "src/lib/voice.ts:343-384; src/lib/chat/orchestrate.ts:275-447; README.md:316-322",
+      "claim": "checkCadence has no production caller. screenedAnswer enforces only the opening and quotation holds; after the opening is released, an arbitrarily long run of unquoted prose streams to the reader regardless of the declared 150-word bound. Meanwhile README says all three voice rules are enforced by voice.ts, and AC6 is a reader-observable outcome. The exported function and its tests therefore create an appearance of runtime enforcement that the answer path does not provide, which is over-built relative to R1-R7 unless a later story is its named consumer.",
+      "alternative": "Either wire cadence into the same token stream by counting unquoted words since the last frame and enforcing a defined boundary behavior, or narrow AC6 and README to prompt-plus-manual/live verification and make checkCadence an explicitly named Story 5 diagnostic rather than present it as current enforcement. The choice should be recorded because it changes reader-visible behaviour.",
+      "win": "Makes the shipped behaviour, documentation, and tests agree; either gives AC6 a real gate or removes dead production surface and an unsupported enforcement claim."
+    }
+  ]
+}

@@ -11,17 +11,19 @@ original, so a reader can verify it directly.
 **The service answers questions; there is no user interface yet.** The repository holds the
 Next.js skeleton, the shared boundary types, startup environment validation, the gate and CI
 (story `technology-foundation`), the vector schema and ingestion pipeline (`policy-chunks-ingest`),
-a real seed corpus ingested into the hosted store (`seed-corpus-ingest`), and the `/api/chat`
-endpoint with its safety routing (`chat-safety-routing`).
+a real seed corpus ingested into the hosted store (`seed-corpus-ingest`), the `/api/chat`
+endpoint with its safety routing (`chat-safety-routing`), and the voice it answers in
+(`answer-voice-screen`): a virtual avatar of the Governor that quotes the record rather than
+speaking for her. *How V-Tina speaks* has the rules and what enforces them.
 
-Two things that endpoint does **not** yet have, both deliberate. It does not speak in Governor
-Kotek's voice — the prompt it answers under is a plain placeholder, and her lexicon, pacing and
-deflection framework are the next story. And there is no chat screen: the endpoint is exercised
-directly. Everything under *Intended stack* not named here is still planned, not built.
+What the endpoint does **not** have, deliberately. It does not write in Governor Kotek's personal
+idiom: nothing in the corpus records how she talks, so her lexicon and pacing wait on a later story
+with a corpus of her own speech. And there is no chat screen — the endpoint is exercised directly.
+Everything under *Intended stack* not named here is still planned, not built.
 
 ## Purpose
 
-The full specification — agent roles, interface contracts, five user stories, and their
+The full specification — agent roles, interface contracts, the user stories and their
 acceptance criteria — is committed here:
 
 **[v-tina-user-stories.md](v-tina-user-stories.md)**
@@ -49,9 +51,10 @@ test suite.
 | `src/lib/supabase.ts` | Retrieval (`queryPolicyChunks`) and the Supabase-backed chunk store |
 | `src/app/api/chat/route.ts` | The public chat endpoint: Node runtime, request-path environment contract |
 | `src/lib/chat/` | The routing decision, the request contract, and the stream framing |
-| `src/lib/fireworks.ts` | The chat-completions client; `src/lib/retry.ts` is the shared transient-failure policy |
-| `src/lib/prompts.ts` | The classifier and rewrite prompts, and the **provisional** voice-bearing ones |
-| `__tests__/fixtures/` | Synthetic source documents for the unit suite — **not** the corpus |
+| `src/lib/fireworks.ts` | The chat client, completions and streaming; `src/lib/retry.ts` is the shared transient-failure policy |
+| `src/lib/voice.ts` | The one quotation grammar, the opening screen, quote verification and the frame cadence |
+| `src/lib/prompts.ts` | The classifier and rewrite prompts, and the reader-facing ones — nothing is provisional now |
+| `__tests__/fixtures/` | Synthetic source documents for the unit suite — **not** the corpus — plus one real answer captured token by token from the live model |
 | `AGENTS.md` | Repo-local reviewer guidance |
 | `reviews/` | Story specifications and review artifacts |
 | `.claude/workflow.json` | Configuration for the review workflow |
@@ -86,14 +89,14 @@ the one place a change is needed.
 
 ## The gate
 
-`npm run gate` runs three checks and reports **all** of them before exiting:
+`npm run gate` runs every check declared in `scripts/gate.mjs` and reports **all** of them before exiting:
 
 - `typecheck` — `tsc --noEmit`
 - `lint` — `eslint`
 - `test` — `vitest run`
 
 It deliberately does not chain them with `&&`: a failing first check would otherwise hide the
-state of the other two. CI runs this same script rather than restating the checks, so the local
+state of the rest. CI runs this same script rather than restating the checks, so the local
 gate and the CI check cannot become different things.
 
 ## Source documents
@@ -115,8 +118,8 @@ list in the code when the corpus needs another official domain, and this section
 
 ### Policy pillars
 
-Every document belongs to exactly one pillar, and retrieval can filter by it. These are Governor
-Kotek's three stated priorities. This is the same list the code declares (`POLICY_PILLARS` in
+Every document belongs to exactly one pillar, and retrieval can filter by it. These are the priorities the
+specification names. This is the same list the code declares (`POLICY_PILLARS` in
 `src/lib/ingest/pillars.ts`) and a test holds the two equal, so this section cannot drift from what
 ingestion accepts. Adding a pillar means editing the constant and this section together.
 
@@ -126,8 +129,8 @@ ingestion accepts. Adding a pillar means editing the constant and this section t
 
 ### Frontmatter reference
 
-Every document carries all five fields. Ties on retrieval similarity are broken by `kind` (an
-executive document outranks legislative history) and then by `date`, most recent first.
+Every document carries every field in the table below. Ties on retrieval similarity are broken by
+`kind` (an executive document outranks legislative history) and then by `date`, most recent first.
 
 | Field | Meaning |
 |---|---|
@@ -252,7 +255,7 @@ settled as a detail inside this one. It is reported rather than omitted so the a
 ### Failing closed
 
 A verdict that does not arrive inside the deadline, does not parse, or is not exactly one of the
-three declared labels is treated as **out of bounds**. A flaky classifier makes this service
+labels declared in `src/lib/safety.ts` is treated as **out of bounds**. A flaky classifier makes this service
 useless rather than wrong, which is the right way round for a service that speaks in a sitting
 governor's name. The parse is an exact match after trimming: a lenient parse is how a hedged reply
 becomes a confident label.
@@ -301,20 +304,80 @@ candidate was **19.5 s** on one comparison, which is why it was rejected — but
 sample against another, not as a stable ranking. Re-measure before changing models, and take more
 than one reading.
 
-### Provisional prompts
+### How V-Tina speaks
 
-This story built the router, not Governor Kotek's voice. Prompts that produce a label or a
-rephrased question are finished work. Prompts a reader actually reads are **provisional** and the
-next story replaces them:
+**She never speaks as Governor Kotek. She speaks as an avatar of her.** What the record says is
+**quoted, with its citation**; everything else is marked as the avatar's own words. Executive orders
+and bills quote well, which is what makes the rule practical.
 
-- `GROUNDED_DEFERRAL`
+This replaced an attempt to write in the Governor's own register, and the reason is worth keeping:
+several of the "lexical anchors" the product specification names — "True North",
+"mission-focused", "not a blank check" — appear in **no** corpus document, and another
+("deflection") appears only as a legal diversion programme. The dated check is in
+`reviews/answer-voice-screen.md`. There is no speech or interview material
+here at all. Quoting the record needs no such evidence, and unlike a register it can be checked.
+
+These rules derive from **one grammar** in `src/lib/voice.ts` — the streaming answer path
+and every offline check call the same lexer, so they cannot disagree about what a quotation is.
+
+| Rule | What is enforced |
+|---|---|
+| **Say who is speaking** | The answer opens by identifying the avatar. After about **150** of its own words it identifies itself again — and if the model does not, the answer path **injects** the frame at the start of the next sentence. The frame never splits a sentence, so one long sentence can carry a stretch well past 150 before it lands: **there is no hard ceiling**, by choice, rather than interrupt a sentence mid-thought. Quoted text does not count: while the record is speaking, the frame is not what is at stake. |
+| **Quote faithfully** | A quotation goes in curly marks, `“like this”`, and must be verbatim — contiguous, unelided — in a passage **of the document it is cited to**. Membership over all passages is not enough: orders quote statutes and bills share boilerplate, so a span can be genuine and still cited to a document that does not contain it. |
+| **Never write as her** | First person as the Governor is forbidden in the avatar's own prose, and **allowed inside a quotation**, because corpus executive orders open "I, TINA KOTEK, Governor of the State of Oregon" and quoting them is correct. |
+
+**Why curly marks, and only curly marks.** They are the one delimiter that can be nested reliably:
+opening and closing are different characters. The corpus uses them inside its own text, mostly bills
+quoting their defined terms (measured in `reviews/answer-voice-screen.md`), so a quotation of that text
+contains curly marks of its own, and the grammar tracks the nesting rather than closing at the first
+inner mark. No other mark may open one. The grammar carries a **declared list of marks a reader could take for a
+delimiter** — straight quotes, the other curly marks, guillemets, low quotes, backticks, corner and
+decorative marks — together with **every character Unicode itself classes as a quotation mark**, and
+refuses every one of them outside a quotation, while treating all of them as ordinary content inside
+one. An apostrophe inside a word, `Oregon's`, is untouched; `'` and `’` are refused only where a word
+starts, and the answering prompt tells the model to avoid all of these marks. **One limit:** the lexer
+reads one UTF-16 unit at a time, so a mark stored as two cannot be matched — the quotation ornaments
+`🙶🙷🙸` pass as prose. `NAMED_QUOTE_MARKS` in `src/lib/voice.ts` states the limit and what catches an
+attempt to list such a mark.
+**The list replaced four rounds of single fixes.** Single marks went unrecognised entirely; then an
+unclosed `'` was read as an apostrophe; then `”` and `’` were still prose; and each time the next
+unlisted mark — `«…»`, a backtick, `‹…›`, `❝…❞` — carried a fabricated figure to the reader.
+
+**How a citation is recognised.** Each document's kind is declared once — `EO` as "Executive Order",
+`SB` as "Senate Bill", `Ballot Measure` as "Measure" — and its number is never matched alone. The first
+version matched bare numbers, and `EO 24-02` contains "Springfield/Lane County (110%)", which made an
+unrelated statistic cite Ballot Measure 110. Matches are word-bounded and read **only from the avatar's own words**: a document named *inside* a
+quotation is the record talking, not the avatar citing, and reading it as a citation once refused a
+verbatim quotation of EO 24-02 because the passage quoted before it mentions EO 23-02. **When one
+sentence names several documents, the one that holds the quoted words is the citation** — a sentence
+ending "…distributed under Ballot Measure 110" had refused a verbatim SB 755 quotation. Across
+sentences the nearest name still wins on its own, so a quotation cannot borrow attribution from a
+document named in an earlier sentence.
+
+An unverifiable quotation, a quotation in the wrong marks, or an opening that speaks as the Governor
+and cannot be repaired stops the answer with a **provenance notice** — never the infrastructure
+failure notice. Telling a reader something went wrong when nothing broke is a false statement about
+the cause.
+
+### Reader-facing prompts
+
+Prose a member of the public actually reads. `src/lib/prompts.ts` declares them and a test holds this
+list equal to the code in both directions.
+
 - `ANSWER_SYSTEM_PROMPT`
+- `GROUNDED_DEFERRAL`
 - `FAILURE_NOTICE`
+- `PROVENANCE_NOTICE`
 
-This is the same list `PROVISIONAL_PROMPTS` declares in `src/lib/prompts.ts`, and a test holds the
-two equal in both directions. The placeholder answering prompt is deliberately plain: it governs
-accuracy and says nothing about tone, so that nobody mistakes it for a decision about how she
-sounds.
+### Routing prompts
+
+Prompts that produce a label or a rephrased question and are never read by anyone.
+
+- `CLASSIFIER_SYSTEM_PROMPT`
+- `REWRITE_SYSTEM_PROMPT`
+
+Nothing is provisional any more. `PROVISIONAL_PROMPTS` is empty, and the declared lists still partition
+every prompt the module exports — a new one classified into none of them fails the suite.
 
 
 ## Ingesting the corpus

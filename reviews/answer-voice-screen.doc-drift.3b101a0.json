@@ -1,0 +1,167 @@
+{
+  "summary": "Sun Sep 20 13:56:02 PDT 2026 — This branch rewrites the answering prompt, empties the provisional-prompt list, and adds the voice screen, quotation verifier, cadence enforcement, and provenance refusal. It touches README prose, prompt and voice/orchestration comments and docstrings, and test prose. Ten living-text sentences are false afterwards: stale status and provisional-prompt claims, overbroad reader-facing-notice claims, an incomplete wire-record description, and two overbroad enforcement guarantees.",
+  "seeds": [
+    {
+      "from_diff": "ANSWER_SYSTEM_PROMPT",
+      "changes": "Rewritten from a plain placeholder into an avatar/provenance answering prompt.",
+      "searched": "README Status and How V-Tina speaks, prompts.ts module docstring and prompt body, and the product specification, by name and by placeholder/voice/provisional meaning."
+    },
+    {
+      "from_diff": "PROVISIONAL_PROMPTS",
+      "changes": "Emptied and moved into a three-way prompt partition with a new reader-facing list.",
+      "searched": "README prompt sections, prompts.ts docstrings, and readme-prompts tests, by name and by provisional/placeholder meaning."
+    },
+    {
+      "from_diff": "PROVENANCE_NOTICE",
+      "changes": "Added as a distinct refusal notice and emitted through the answer stream.",
+      "searched": "README stream table and provenance paragraph, orchestrate refusal paths, and prompts.ts, by name and by refusal-notice meaning."
+    },
+    {
+      "from_diff": "DISPLAY_FRAME",
+      "changes": "Added as the injected avatar frame and used by avatar-voiced notices.",
+      "searched": "voice.ts and prompts.ts comments, reader-facing notices, README cadence prose, and tests, by name and by frame/notice meaning."
+    },
+    {
+      "from_diff": "READER_FACING_PROMPTS",
+      "changes": "Added as the partition for prompts a reader meets, including FAILURE_NOTICE and PROVENANCE_NOTICE.",
+      "searched": "prompts.ts comments, README prompt lists, and readme-prompts tests, by name and by voice/notice meaning."
+    },
+    {
+      "from_diff": "screenedAnswer",
+      "changes": "Added streaming opening screening, quotation holds, verification, cadence injection, and refusal behavior.",
+      "searched": "orchestrate comments and implementation plus README behavior rows, by name and by hold/refusal/streaming meaning."
+    },
+    {
+      "from_diff": "streamed_tokens",
+      "changes": "Answer generation now passes through screenedAnswer, which can emit the provenance notice as streamed text.",
+      "searched": "README record-kind table, events schema, and orchestrate yield sites, by name and by emitted-text meaning."
+    },
+    {
+      "from_diff": "Use no other quotation-like mark anywhere in your answer",
+      "changes": "Added an answering-prompt rule claiming that any such mark stops the answer.",
+      "searched": "ANSWER_SYSTEM_PROMPT, the lexer implementation and tests, and README quotation-mark prose, by exact phrase and by delimiter meaning."
+    },
+    {
+      "from_diff": "no-citation",
+      "changes": "Added as a verifier result that the streaming path deliberately excludes from refusal and releases after logging.",
+      "searched": "verifyQuotedSpan reasons, orchestrate filtering and emission, and README provenance guarantees, by name and by citation/refusal meaning."
+    },
+    {
+      "from_diff": "CADENCE_TARGET_WORDS",
+      "changes": "Added a declared 150-word cadence target shared by the prompt, screen, and README.",
+      "searched": "voice.ts comments and implementation, the answering prompt, README cadence prose, and tests, by name and by 150-word meaning."
+    }
+  ],
+  "findings": [
+    {
+      "severity": "IMPORTANT",
+      "title": "Status still counts two missing endpoint capabilities",
+      "file": "README.md",
+      "line": 17,
+      "sentence": "Two things that endpoint does **not** yet have, both deliberate.",
+      "evidence_file": "src/lib/prompts.ts",
+      "evidence_line": 102,
+      "claim": "The sentence says two capabilities are still absent. After this branch, the answering prompt is an explicit avatar/provenance prompt and the answer path screens it, so the voice capability is present; only the chat screen remains absent. The rewritten ANSWER_SYSTEM_PROMPT made the sentence false.",
+      "suggestion": "The endpoint now speaks as an avatar; the one thing it does **not** yet have, by design, is a chat screen."
+    },
+    {
+      "severity": "IMPORTANT",
+      "title": "Status still calls the answering prompt a plain placeholder",
+      "file": "README.md",
+      "line": 17,
+      "sentence": "It does not speak in Governor\nKotek's voice — the prompt it answers under is a plain placeholder, and her lexicon, pacing and\ndeflection framework are the next story.",
+      "evidence_file": "src/lib/prompts.ts",
+      "evidence_line": 102,
+      "claim": "The sentence says the answering prompt is still a plain placeholder and that this work is the next story. The branch replaces that placeholder with a finished avatar, quotation, citation, and cadence prompt; it is neither plain nor deferred to a later story.",
+      "suggestion": "The endpoint speaks as an avatar of Governor Kotek rather than in her own voice; its answering prompt is a finished provenance prompt, and her unsourced lexicon, pacing, and deflection framework were deliberately not adopted."
+    },
+    {
+      "severity": "IMPORTANT",
+      "title": "Module docstring still calls voice prompts provisional",
+      "file": "src/lib/prompts.ts",
+      "line": 19,
+      "sentence": "**Voice-bearing prompts** — the deferral the reader actually reads, and the\n * system prompt the answering model writes under — are PROVISIONAL.",
+      "evidence_file": "src/lib/prompts.ts",
+      "evidence_line": 176,
+      "claim": "The docstring says the reader-facing system prompt and deferral are provisional. This branch empties PROVISIONAL_PROMPTS and classifies ANSWER_SYSTEM_PROMPT and the notices as reader-facing, finished prompts, so the present-tense claim is false.",
+      "suggestion": "Voice-bearing prompts are reader-facing and finished; `PROVISIONAL_PROMPTS` is empty."
+    },
+    {
+      "severity": "IMPORTANT",
+      "title": "Module docstring still describes a plain placeholder prompt",
+      "file": "src/lib/prompts.ts",
+      "line": 23,
+      "sentence": "The\n * placeholder below is deliberately plain, chosen at this story's approval stop\n * precisely so that nobody mistakes it for a decision about how she sounds.",
+      "evidence_file": "src/lib/prompts.ts",
+      "evidence_line": 102,
+      "claim": "The docstring says the prompt below is a plain placeholder that makes no voice decision. The branch replaced it with a detailed avatar-frame, quotation, citation, and cadence prompt, so both the placeholder claim and the no-voice-decision claim are false.",
+      "suggestion": "The answering prompt below is deliberately not an attempt at her register: it frames the avatar and requires quotations from the record."
+    },
+    {
+      "severity": "NIT",
+      "title": "Stale claim that a test holds the provisional README list equal",
+      "file": "src/lib/prompts.ts",
+      "line": 27,
+      "sentence": "`PROVISIONAL_PROMPTS` is the machine-readable form of that warning, and the\n * README documents the same list with a test holding the two equal — the pattern\n * the domain allowlist, the pillar list and the retrieval threshold already use.",
+      "evidence_file": "__tests__/readme-prompts.test.ts",
+      "evidence_line": 82,
+      "claim": "The sentence claims a test holds the README and PROVISIONAL_PROMPTS equal. After the branch, PROVISIONAL_PROMPTS is empty and the README-equality test compares only the reader-facing and routing lists; no test compares a README provisional list with the empty constant.",
+      "suggestion": "`PROVISIONAL_PROMPTS` is the machine-readable placeholder list, now empty; the README states that it is empty, while a test holds the reader-facing and routing lists equal to the README."
+    },
+    {
+      "severity": "NIT",
+      "title": "Frame comment overgeneralizes to every reader-facing notice",
+      "file": "src/lib/voice.ts",
+      "line": 23,
+      "sentence": "The frame as a reader sees it: the one wording the answer path injects and every\n * reader-facing notice opens with.",
+      "evidence_file": "src/lib/prompts.ts",
+      "evidence_line": 208,
+      "claim": "The comment says every reader-facing notice opens with DISPLAY_FRAME. FAILURE_NOTICE is in READER_FACING_PROMPTS and deliberately begins with “Something went wrong…” rather than the avatar frame, so the universal claim is false.",
+      "suggestion": "The frame as a reader sees it: the one wording the answer path injects and the avatar-voiced notices open with."
+    },
+    {
+      "severity": "NIT",
+      "title": "Reader-facing list comment includes a deliberately neutral notice",
+      "file": "src/lib/prompts.ts",
+      "line": 191,
+      "sentence": "The prompts a reader actually meets — the avatar's own voice, finished rather\n * than provisional.",
+      "evidence_file": "src/lib/prompts.ts",
+      "evidence_line": 208,
+      "claim": "The comment characterizes all prompts in this list as the avatar's own voice. The list includes FAILURE_NOTICE, whose own docstring says it is deliberately not in character and whose text is neutral infrastructure prose.",
+      "suggestion": "The prompts a reader actually meets; the avatar-voiced ones are finished, while `FAILURE_NOTICE` is deliberately neutral."
+    },
+    {
+      "severity": "IMPORTANT",
+      "title": "Wire documentation omits provenance text in streamed tokens",
+      "file": "README.md",
+      "line": 228,
+      "sentence": "| `streamed_tokens` | Text for the reader — either the generated answer, or the fixed deferral |",
+      "evidence_file": "src/lib/chat/orchestrate.ts",
+      "evidence_line": 361,
+      "claim": "The README says streamed_tokens carries only generated answer text or the fixed deferral. The new refusal path emits PROVENANCE_NOTICE as a streamed_tokens record, so the exhaustive either/or description is false.",
+      "suggestion": "| `streamed_tokens` | Text for the reader — generated answer text, the fixed deferral, or the provenance notice |"
+    },
+    {
+      "severity": "IMPORTANT",
+      "title": "Prompt overstates quotation-like mark enforcement",
+      "file": "src/lib/prompts.ts",
+      "line": 112,
+      "sentence": "An answer containing one is stopped.",
+      "evidence_file": "src/lib/voice.ts",
+      "evidence_line": 262,
+      "claim": "The prompt says an answer containing any other quotation-like mark is stopped. The lexer treats everything between the outer curly quotation marks as quotation content and emits it as a quotation, so a faithful quotation containing a guillemet, low quote, backtick, or similar mark is not stopped.",
+      "suggestion": "An answer using one outside a quotation is stopped; inside a quotation it is the record's own content."
+    },
+    {
+      "severity": "IMPORTANT",
+      "title": "Provenance documentation omits the no-citation release path",
+      "file": "README.md",
+      "line": 351,
+      "sentence": "An unverifiable quotation, a quotation in the wrong marks, or an opening that speaks as the Governor\nand cannot be repaired stops the answer with a **provenance notice** — never the infrastructure\nfailure notice.",
+      "evidence_file": "src/lib/chat/orchestrate.ts",
+      "evidence_line": 475,
+      "claim": "The README says an unverifiable quotation stops the answer. The streaming path explicitly excludes the verifier's no-citation result from refusal, logs it, and then emits the quotation, so a quotation returned as UnverifiedQuotation with reason no-citation can reach the reader without a provenance notice.",
+      "suggestion": "A fabricated or misattributed quotation, a quotation in the wrong marks, or an opening that speaks as the Governor and cannot be repaired stops the answer with a provenance notice; a verbatim quotation with no recognised citation is logged and released."
+    }
+  ]
+}

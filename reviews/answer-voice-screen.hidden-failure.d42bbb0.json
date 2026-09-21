@@ -1,0 +1,13 @@
+{
+  "summary": "The change is largely failure-transparent by design: grammar violations and unverifiable quotations refuse loudly with a distinct PROVENANCE_NOTICE (never conflated with infrastructure FAILURE_NOTICE), generation errors with the opening still held release only screened stable text and then rethrow into the outer catch, which emits an error event — nothing is swallowed. The no-citation release path is a documented, deliberate proportionality decision (story file: 'reported, not refused') and is logged, not silent. One real hidden-failure finding: the impersonation repair in releaseOpening assumes stripping the first sentence removes the impersonating form and never re-screens the repaired text, so a repair that failed is indistinguishable from one that succeeded and the degraded content reaches the reader with nothing surfaced.",
+  "findings": [
+    {
+      "severity": "IMPORTANT",
+      "title": "Impersonation repair is never re-verified — a failed repair silently ships",
+      "file": "src/lib/chat/orchestrate.ts",
+      "line": 368,
+      "claim": "When screenOpening returns 'impersonates', the repair cuts only up to the FIRST sentence boundary (`text.search(/(?<=[.!?])\\s+(?=[A-Z\\u201C])/)`) and keeps the remainder. But screenOpening detected the impersonating form anywhere in the opening's prose — IMPERSONATION_FORMS such as 'my administration' or an anchor-plus-pronoun match can sit in a later sentence. In that case `kept` still contains the impersonation, it is wrapped in the frame by `framed(kept)`, and emitted to the reader: the repair silently failed and nothing surfaces that. Refusal fires only when `kept === \"\"` (impersonation in the first sentence with nothing after). A safety repair whose success is never asserted is a silent fallback — the code continues in the exact degraded state (the avatar speaking as the Governor) the check exists to prevent, with no log and no refusal.",
+      "suggestion": "After computing the repaired text, re-run `screenOpening` on it (or check that the detected form no longer appears in the kept prose) and refuse with the provenance notice when it still impersonates — the refusal path already exists, it just only fires on the empty-remainder case. Alternatively, cut through the sentence containing the detected form rather than unconditionally the first sentence, and still re-screen before emitting."
+    }
+  ]
+}

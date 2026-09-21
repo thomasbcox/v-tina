@@ -1,0 +1,87 @@
+{
+  "verdict": "Fundamentally a sound, right-sized shape: one new pure module, one rewritten prompt file, one buffering seam in the orchestrator, no new dependency. On the four questions posed: (a) the dumb normalised-comparison screen is the right instrument GIVEN the story's own honest framing — it is a tripwire over a declared list, not a preamble detector, and AC1's live read carries the general case; the design earns its dumbness because a screen needing judgement would add unfalsifiable surface to a story that already has six person-judged criteria. (b) Interpolating BANNED_OPENINGS into the prompt follows the repo's own SAFETY_CLASSIFICATIONS precedent and keeps prompt and screen from drifting, but the precedent is a parser-constrained closed vocabulary while this hands a generative model an enumerated list of forbidden phrases — a mild priming hazard, and the proposed AC7 test pins bare containment rather than prohibition (NIT finding). (c) The orchestrator is unambiguously the right seam: stream.ts is pure framing, fireworks.ts is transport, and buffering inside the pull-based generator composes naturally with the backpressure story 2 built; nothing belongs lower. (d) The 6-of-10 manual/reviewer split is mostly honest — a prompt's effect on prose is genuinely not decidable against a fake model — but it is not COMPLETELY honest: AC6's portal-naming half is mechanically pinnable today and the repo's own convention pins exactly this kind of invariant (IMPORTANT finding). (e) Nothing is over-built; the under-built spots are the AC6 pin and a missing risk for the FAILURE_NOTICE rewrite. Ship-shaped, subject to the findings and the consult decisions already queued.",
+  "findings": [
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "standard",
+      "title": "The screen's on-violation behaviour is the load-bearing decision and the proposed one can emit a mangled sentence",
+      "locus": "Open question 2; Design sketch — 'Holding the opening without breaking the stream'",
+      "claim": "The screen's entire value lives in what happens on a hit, yet the sketch leaves it to an open question and names strip-and-stream as the proposal. On a product wearing a sitting governor's name, a sloppy strip emits a grammatically broken opening directly to a public reader — trading R4 (a preamble reaches the reader) for a new wrong state no risk or criterion names: a mutilated first sentence reaches the reader. AC3's Then says only that the preamble 'never reaches the reader'; nothing asserts that what DOES reach the reader is well-formed, so the suite can go green while the reader meets wreckage. The choice also interacts with AC4's byte-identical guarantee, which covers only clean answers.",
+      "alternative": "Prefer option (c) — pass the answer through and record the violation server-side — on the ground that the prompt is the primary control and the screen is a tripwire measuring how well it holds; a tripwire that edits prose is a second author. If Thomas keeps strip-and-stream, add a companion assertion to AC4's oracle that stripped output is itself a complete, well-formed opening, so the mangling mode has a red.",
+      "win": "Eliminates an entire class of reader-visible mangling (or gives it a failing check), and the screen shrinks to a reporter — fewer states, no editing logic, no second-author risk."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "AC6's portal-naming half is assigned to a manual oracle although it is mechanically pinnable today",
+      "locus": "Test notes — Oracles, row AC6",
+      "claim": "AC6 has two halves: the deferral reads in register (genuinely manual) and it 'still names Oregon's official state portal' (a string containment against OREGON_PORTAL_URL, a constant that already exists and is already interpolated into GROUNDED_DEFERRAL). The repo's own convention pins exactly this class of invariant offline — the README pairing tests, the partition test, the domain-allowlist tests. Assigning the whole criterion to a live manual read hides an achievable check, contradicts the sketch's own claim that 'the mechanically-checkable parts are checked completely', and means a rewrite that drops the portal fails only when someone happens to read a deferral aloud.",
+      "alternative": "Split the oracle: a Small test asserting GROUNDED_DEFERRAL contains OREGON_PORTAL_URL (and, while there, that FAILURE_NOTICE still discloses the answer is incomplete), with the register half staying manual. The oracle table row names both.",
+      "win": "A real regression moves from a hoped-for live read to a deterministic suite failure, one short test added, and the story's honesty claim about mechanical coverage becomes true."
+    },
+    {
+      "severity": "NIT",
+      "reversibility": "two-way",
+      "standing": "standard",
+      "title": "Interpolating the banned list into the prompt primes the model with the phrases it bans, and the AC7 test pins presence rather than prohibition",
+      "locus": "Design sketch — 'Why the vocabulary is one constant'; Oracles row AC7",
+      "claim": "The SAFETY_CLASSIFICATIONS precedent this cites is a parser-constrained closed vocabulary: the classifier's reply is exact-matched against the list, so the interpolation is load-bearing. Here the list is shown to a generative model, where enumerating forbidden phrases is a known priming hazard. The proposed AC7 mechanism — assert the prompt contains every member of BANNED_OPENINGS — then locks the shape in: it proves the phrases are present, not that they are forbidden. A prompt carrying the list under a neutral heading passes while teaching rather than banning; the intent (the model is TOLD not to open this way) is exactly what the containment check cannot see.",
+      "alternative": "Keep the shared constant (the single-source discipline is right and the screen needs the closed list) but have the prompt state the rule in prose — open on the substance; no self-introduction, apology, or source-naming — with the list interpolated under an explicit forbidding instruction, and extend the AC7 assertion to require the forbidding scaffold around the list, not bare containment.",
+      "win": "Same single-source coupling, less priming surface, and the test asserts intent-adjacent structure instead of a substring count."
+    },
+    {
+      "severity": "NIT",
+      "reversibility": "two-way",
+      "standing": "kludgy",
+      "title": "AC10's scope names src/lib/chat/deps.ts, which the sketch never changes",
+      "locus": "Acceptance criterion 10; Design sketch (file map)",
+      "claim": "The sketch's file map covers prompts.ts, voice.ts, and orchestrate.ts; deps.ts appears only in the scope-containment list with no stated reason. The screen is a pure function consumed inside the orchestrator, so no collaborator wiring changes. A scope entry with no planned change is slack: it pre-authorises a diff nobody described, and the merge-time veto reads the header against exactly this list.",
+      "alternative": "Either name the deps.ts change in the sketch (if the screen is to be injected as a dependency, say so and why) or drop deps.ts from the enumerated set.",
+      "win": "The scope check Thomas runs at merge judges only real, described changes — no pre-authorised slack."
+    }
+  ],
+  "regressions": [
+    {
+      "criterion": "R1",
+      "regression": "Every recorded check passes — no named catchphrase, no attributed slogan — while the register instructions themselves become the unsourced stance: the 'what is required next' move instructs the model to state a requirement, and a confident prescriptive demand ('Oregon must now fund X') is a position attributed to the Governor that no passage supports. The letter (no lexical anchor appears) holds; the intent (nothing asserted about her that the record cannot support) is violated by the structure the prompt mandates, and a claim-by-claim trace that only checks facts waves a normative demand through as 'structure'."
+    },
+    {
+      "criterion": "R2",
+      "regression": "The answer's 'what the record shows' slot is filled with a figure that genuinely appears in a captured passage — but attached to a different subject, year, or programme than the passage attaches it to. A step-by-step trace that asks 'does this number appear in a passage' passes every step while the assembled claim is false. Letter: each token is sourced; intent: the CLAIM is supported, which requires the figure's referent to match, not merely its digits."
+    },
+    {
+      "criterion": "R3",
+      "regression": "Clean answers pass byte-identical and the multi-record streaming test passes, while every single exchange now waits for a complete first sentence (or the cap) before the first record is emitted — on a slow generation that is several added seconds of dead silence per answer, forever, even when nothing is ever flagged. The letter ('arrives progressively rather than as one block') holds; the intent (the streaming experience story 2 measured and chose a model for — 1.5s to first word) is quietly taxed on every reader, and no oracle measures the delay's size."
+    },
+    {
+      "criterion": "R4",
+      "regression": "The buffer releases at the character cap before a long first sentence completes, and once released the screen never sees later text — so a banned phrase sitting past the cap in a rambling opening sails through on the live path while the suite's table (which never exercises a banned phrase beyond the cap) stays green. A second, independent letter/intent gap: the prompt honestly forbids and the screen honestly catches every LISTED phrase, while the model opens with an unlisted preamble ('Certainly! Great question.') — list complete, both halves honest, preamble reaches the reader. The intent is 'no assistant preamble'; the letter is 'no listed preamble', and only AC1's manual read stands between them."
+    },
+    {
+      "criterion": "R5",
+      "regression": "The source-only rule text survives verbatim in the new prompt — the letter everyone will check — while the surrounding register instructions ('be direct, be urgent, never hedge, say what is required') push the model to resolve passage ambiguity confidently: answers stay loosely 'supported' but overstate direction, the precise failure story 2's prompt explicitly forbids ('do not overstate... do not reverse its direction') and the register actively invites. And AC5's oracle is one question read once: the model can happen to behave on that single question while the register systematically loosens grounding everywhere else — a sample of one cannot carry a claim about the register's cost."
+    },
+    {
+      "criterion": "AC3",
+      "regression": "The screen is validated over openings built from BANNED_OPENINGS plus the named variants, and all pass — while a banned preamble that opens the SECOND sentence ('Housing is the defining crisis of our time. As your Governor, I have always said...') is never examined, because the screen judges only the first-sentence buffer and the variant table covers 'mid-first-sentence' but nothing later. A reader meets a preamble; the letter ('an opening carrying a banned preamble never reaches the reader') is satisfied by defining 'opening' as whatever the buffer happened to hold."
+    },
+    {
+      "criterion": "AC4",
+      "regression": "The streaming half passes with exactly two records — the held opening, then the entire remainder as one block — satisfying 'more than one token record' and 'first before last' while a multi-paragraph real answer reaches the reader as a pause followed by a wall of text. The fake generator also supplies conveniently pre-chunked tokens, so re-segmentation on release (whitespace re-joined differently than it arrived) is never challenged. Letter: progressive, plural records; intent: token-by-token delivery as it is generated, the thing story 2 built the pull-based stream to get."
+    },
+    {
+      "criterion": "AC7",
+      "regression": "The assertion 'the prompt text contains every member of BANNED_OPENINGS' passes with the list interpolated under a heading that never forbids it — 'Vocabulary:' — or even in a context that presents the phrases neutrally, so prompt and screen provably name the same set while the prompt does not tell the model to avoid any of them. The containment test cannot distinguish 'forbidden' from 'mentioned', which is the criterion's entire intent. (See the NIT finding on the priming hazard this also entrenches.)"
+    },
+    {
+      "criterion": "AC9",
+      "regression": "PROVISIONAL_PROMPTS is empty and the partition verifiably covers every exported prompt — the letter — because a genuinely voice-bearing prompt (say, a new reader-facing notice added in this or a later change) was classified into ROUTING_PROMPTS. The partition test checks coverage, never correctness of classification: a prompt a reader hears sits in the 'no voice' bucket, every test green, which is precisely the misclassification the partition exists to catch. The vacuity case the author names proves the list isn't empty-by-deletion; it does not prove the lists mean what they claim."
+    },
+    {
+      "criterion": "Risk list (missing risk)",
+      "regression": "R1–R5 are all genuine wrong-states a person can meet — none is a scope statement in risk's clothing — but one real wrong-state is missing: the FAILURE_NOTICE register rewrite. A reader mid-answer on a failed stream reads the notice; rewritten for voice it could perform the Governor's persona during an infrastructure failure (an avatar apologising in-character for a system error asserts something false about the situation) or dilute its one load-bearing disclosure — 'the answer is incomplete' — in favour of sounding right. R1 covers positions about the Governor, R5 covers answer grounding; neither covers a failure notice that trades honesty for register. Add an R6, or extend R1 to cover it, and give the notice's disclosure the same Small pin recommended for AC6's portal."
+    }
+  ]
+}

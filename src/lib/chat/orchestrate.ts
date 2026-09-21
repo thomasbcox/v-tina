@@ -3,7 +3,26 @@ import {
   ANSWER_SYSTEM_PROMPT,
   FAILURE_NOTICE,
   GROUNDED_DEFERRAL,
+  PROVENANCE_NOTICE,
 } from "../prompts";
+import {
+  CITATION_WINDOW,
+  DISPLAY_FRAME,
+  LOOK_BEHIND_CHARS,
+  cadenceAfter,
+  citationTextOf,
+  indexPassages,
+  lex,
+  rawOf,
+  scanCadence,
+  screenOpening,
+  verifyQuotations,
+  verifyQuotedSpan,
+  type CadenceState,
+  type OpeningVerdict,
+  type LexResult,
+  type LexResume,
+} from "../voice";
 import type { ClassificationResult } from "../safety";
 import type { ChatMessage } from "../fireworks";
 import { currentQuestion, type ChatRequestBody } from "./request";
@@ -221,11 +240,12 @@ export async function* orchestrateChat(
   if (gone()) return;
 
   try {
-    for await (const text of deps.answer(
-      buildAnswerMessages(body, question, chunks),
-      signal,
+    for await (const event of screenedAnswer(
+      deps.answer(buildAnswerMessages(body, question, chunks), signal),
+      chunks,
+      log,
     )) {
-      if (text) yield { type: "streamed_tokens", text };
+      yield event;
     }
   } catch (error) {
     log("generation failed", error);
@@ -239,4 +259,265 @@ export async function* orchestrateChat(
   // schema. Reported as not recorded so the absence is visible in the product
   // rather than hidden. Its own story; see the story file's Non-goals.
   yield { type: "audit_log_status", recorded: false };
+}
+
+/** How much opening to hold before judging it: the earliest sentence end in the
+ *  avatar's own prose that has something after it, or this many characters. */
+export const OPENING_HOLD_CHARS = 240;
+
+/** Sentence-starting words that read naturally lowercased after the frame. Any
+ *  other first word — a proper noun, an acronym — keeps its capital. */
+const FUNCTION_WORDS = new Set([
+  "the", "this", "that", "these", "those", "it", "its", "in", "on", "under", "for",
+  "a", "an", "and", "but", "also", "however", "their", "they", "there", "we", "what",
+]);
+
+/** A sentence's first word as it reads after the frame: lowercased only when it is a
+ *  function word, so "The order…" becomes "…Governor, the order…" and "Oregon's
+ *  order…" keeps its capital. */
+function afterFrame(word: string): string {
+  return FUNCTION_WORDS.has(word.toLowerCase()) ? word.toLowerCase() : word;
+}
+
+/** Prefixes `sentence` with the frame. */
+function framed(sentence: string): string {
+  const first = /^\s*(\p{L}+)/u.exec(sentence)?.[1] ?? "";
+  return `${DISPLAY_FRAME}, ${sentence.trimStart().replace(first, afterFrame(first))}`;
+}
+
+/** The letters of the word starting at `at`. */
+const LETTERS = /\p{L}+/uy;
+function wordAt(text: string, at: number): string {
+  LETTERS.lastIndex = at;
+  return LETTERS.exec(text)?.[0] ?? "";
+}
+
+/**
+ * The answer, screened on its way to the reader.
+ *
+ * **Built on the one grammar.** `lex` decides what is prose, what is a quotation
+ * and what is a violation, here and in every offline check alike; this function
+ * only decides what to do with each token. The first version re-implemented the
+ * grammar as a character scanner, and the two drifted — a fabricated quotation in
+ * single quotes reached the reader.
+ *
+ * - The **opening** is held until its own prose reaches a sentence end with more to
+ *   follow, then screened: impersonation is stripped (or refused if nothing would
+ *   survive), a missing frame is prefixed.
+ * - Text is released only as far as the lexer calls it **stable**, so a quotation
+ *   is held from its opening mark until nesting closes, then verified against the
+ *   document the preceding text cites.
+ * - The avatar's own words are counted by `scanCadence`, and at the first sentence
+ *   start past the target without a frame, **the frame is injected** (Thomas chose
+ *   enforcement over documentation, knowing it may read abruptly). That sentence's
+ *   start is held until its first word is complete and it is clear the model is not
+ *   repeating the frame itself — a few characters, never a sentence.
+ * - A refusal emits `PROVENANCE_NOTICE`, never `FAILURE_NOTICE`.
+ *
+ * **Linear in the answer.** Each model token lexes only what has not been released,
+ * a quotation still held resumes its scan instead of starting it again, and the
+ * passages are indexed once. The first version re-lexed the whole answer on every
+ * token: 465 ms of CPU for a maximum-length answer, quadratic (approach review round
+ * b6039ac). **Stated limit:** held text is still copied once per token when the next
+ * token is appended to it — about 10 ms for a single 4,000-word quotation.
+ */
+export async function* screenedAnswer(
+  tokens: AsyncIterable<string>,
+  chunks: readonly RetrievedPolicyChunk[],
+  log: (context: string, error: unknown) => void,
+): AsyncGenerator<ChatStreamEvent> {
+  const passages = indexPassages(chunks);
+  /**
+   * The model's text the stream still needs: everything not yet released, behind
+   * `LOOK_BEHIND_CHARS` of what was. A character in it never changes, only how much
+   * of it is decided. Offsets below are into this buffer.
+   */
+  let buf = "";
+  /** How much of `buf` has been released to the reader, or deliberately dropped. */
+  let released = 0;
+  /** How many characters have been discarded from the front of `buf`. */
+  let discarded = 0;
+  /** Where the lexer's scan of a still-undecided construct had got to, as offsets
+   *  into the whole answer so that discarding cannot move them. */
+  let held: LexResume | undefined;
+  let openingDone = false;
+  let refused = false;
+  /** The avatar's own words at the end of what the reader has received — where a
+   *  quotation's citation is read. Built with `citationTextOf`. */
+  let context = "";
+  let cadence: CadenceState = { words: 0 };
+
+  /** Sends `text` to the reader. `cites` is what it adds to the citation context:
+   *  all of it for the avatar's own words, less for anything quoted. */
+  function* emit(text: string, cites: string = text): Generator<ChatStreamEvent> {
+    if (text === "") return;
+    context = (context + cites).slice(-CITATION_WINDOW * 2);
+    yield { type: "streamed_tokens", text };
+  }
+
+  function* refuse(why: string): Generator<ChatStreamEvent> {
+    refused = true;
+    log("answer refused on provenance", why);
+    yield { type: "streamed_tokens", text: PROVENANCE_NOTICE };
+  }
+
+  /** Releases an opening that has ALREADY screened clean — `ok`, or `missing-frame`,
+   *  which is repaired by prefixing the frame. An impersonating one never reaches here:
+   *  the loop in `advance` drops it and screens the next sentence instead. */
+  function* releaseOpening(opening: string, verdict: OpeningVerdict): Generator<ChatStreamEvent, boolean> {
+    const text = verdict.kind === "missing-frame" ? framed(opening) : opening;
+    const bad = verifyQuotations(text, passages).filter((b) => b.reason !== "no-citation");
+    if (bad.length > 0) {
+      yield* refuse(`quotation ${bad[0].reason}: ${bad[0].text.slice(0, 60)}`);
+      return false;
+    }
+    cadence = cadenceAfter(text);
+    yield* emit(text, lex(text, true).tokens.map(citationTextOf).join(""));
+    return true;
+  }
+
+  /** The earliest sentence end inside the avatar's own prose with text after it. */
+  function openingSplit(stableText: string, final: boolean): number {
+    const ranges: Array<[number, number]> = [];
+    let at = 0;
+    for (const t of lex(stableText, true).tokens) {
+      const raw = rawOf(t);
+      if (t.kind === "prose") ranges.push([at, at + raw.length]);
+      at += raw.length;
+    }
+    for (const m of stableText.matchAll(/[.!?]\s+(?=\S)/g)) {
+      const pos = m.index ?? 0;
+      if (ranges.some(([a, b]) => pos >= a && pos < b)) return pos + m[0].length;
+    }
+    if (stableText.length >= OPENING_HOLD_CHARS || final) return stableText.length;
+    return -1;
+  }
+
+  /**
+   * Releases the avatar's own words in `buf[from, to)`, injecting the frame where the
+   * cadence is due. Returns how far it released: `to`, or the start of a sentence that
+   * must wait for more text before the frame can be placed in front of it.
+   */
+  function* releaseProse(from: number, to: number, final: boolean): Generator<ChatStreamEvent, number> {
+    let at = from;
+    for (;;) {
+      const stop = scanCadence(buf, at, to, cadence, final);
+      if (stop.kind === "end") {
+        yield* emit(buf.slice(at, to));
+        return to;
+      }
+      yield* emit(buf.slice(at, stop.at));
+      const word = wordAt(buf, stop.at);
+      if (stop.kind === "undecided" || (!final && stop.at + word.length >= buf.length)) {
+        return stop.at;
+      }
+      log("cadence frame injected", cadence.words);
+      yield* emit(`${DISPLAY_FRAME}, ${afterFrame(word)}`);
+      cadence.words = 1;
+      at = stop.at + word.length;
+    }
+  }
+
+  /** Lexes `buf` from `from`, resuming any scan the previous call left open. */
+  function lexFrom(from: number, final: boolean): LexResult {
+    const base = discarded + from;
+    const resume = held && { at: held.at - base, scanned: held.scanned - base, depth: held.depth };
+    const result = lex(buf.slice(from), final, buf[from - 1] ?? " ", resume);
+    const next = result.resume;
+    held = next && { at: next.at + base, scanned: next.scanned + base, depth: next.depth };
+    return result;
+  }
+
+  function* advance(final: boolean): Generator<ChatStreamEvent> {
+    /**
+     * The opening, one sentence at a time, until one screens clean.
+     *
+     * **Every released opening has been screened, and repair never invents a boundary.**
+     * The first version cut the held text at the first sentence end it could find —
+     * including one inside a quotation — kept the remainder unscreened, and marked the
+     * opening done, so the sentence after a dropped one was never screened either. Both
+     * let "my administration" reach the reader (approach and hidden-failure, round
+     * d42bbb0). Each candidate here is what `openingSplit` calls a sentence, which it
+     * takes only from the avatar's own prose.
+     */
+    while (!openingDone) {
+      const split = openingSplit(buf.slice(released, released + lexFrom(released, final).stable), final);
+      if (split <= 0) return; // hold: no sentence has finished yet
+      const candidate = buf.slice(released, released + split);
+      const verdict = screenOpening(candidate);
+      if (verdict.kind === "impersonates") {
+        if (final && released + split >= buf.length) {
+          yield* refuse(`opening impersonated ("${verdict.form}") and could not be repaired`);
+          return;
+        }
+        log("impersonating opening dropped", verdict.form);
+        released += split; // screen the next sentence as the opening instead
+        continue;
+      }
+      const ok = yield* releaseOpening(candidate, verdict);
+      openingDone = true;
+      released += split;
+      if (!ok) return;
+    }
+    // Only what is unreleased, with the one character of look-behind the grammar reads.
+    const { tokens: toks } = lexFrom(released, final);
+    let start = released;
+    for (const t of toks) {
+      const end = start + rawOf(t).length;
+      if (t.kind === "prose") {
+        released = yield* releaseProse(start, end, final);
+        if (released < end) return;
+      } else if (t.kind === "violation") {
+        yield* refuse(`grammar: ${t.reason}`);
+        return;
+      } else {
+        const problem = verifyQuotedSpan(t.text, context, passages);
+        if (problem && problem.reason !== "no-citation") {
+          yield* refuse(`quotation ${problem.reason}: ${problem.text.slice(0, 60)}`);
+          return;
+        }
+        if (problem) log("quotation released without a detected citation", problem.text.slice(0, 60));
+        yield* emit(t.raw, citationTextOf(t));
+        released = end;
+      }
+      start = end;
+    }
+  }
+
+  /** Drops released text no rule can read any more. */
+  function forgetReleased(): void {
+    const drop = released - LOOK_BEHIND_CHARS;
+    if (drop <= 0) return;
+    buf = buf.slice(drop);
+    released -= drop;
+    discarded += drop;
+  }
+
+  try {
+    for await (const text of tokens) {
+      if (refused) return;
+      if (!text) continue;
+      buf += text;
+      yield* advance(false);
+      forgetReleased();
+    }
+  } catch (error) {
+    // Generation died with the opening still held. Release what is stable —
+    // SCREENED, never raw — before the failure propagates: `FAILURE_NOTICE`
+    // promises nothing above it is affected (found by story 2's own suite).
+    if (!openingDone && !refused) {
+      const { stable } = lexFrom(released, false);
+      const candidate = buf.slice(released, released + stable);
+      const verdict = candidate === "" ? undefined : screenOpening(candidate);
+      if (verdict === undefined) {
+        // Nothing screened clean before the failure; the notice stands alone.
+      } else if (verdict.kind === "impersonates") {
+        yield* refuse(`opening impersonated ("${verdict.form}") when generation failed`);
+      } else {
+        yield* releaseOpening(candidate, verdict);
+      }
+    }
+    throw error;
+  }
+  if (!refused) yield* advance(true);
 }
