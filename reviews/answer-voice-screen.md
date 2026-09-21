@@ -2318,3 +2318,14 @@ floor cover every named mark would turn it back into the copy the round-6 BLOCKE
 **Not run.** The refused set grows only by characters absent from the corpus and the recorded answer,
 and which an English answer does not contain; the prompt is byte-identical. The gate's replay of the
 captured real answer passes.
+
+## Build note (2026-09-21, round 7)
+
+Correctness only: round 6 approved no redesign, so this re-review verifies its fixes. Base `1ab191a`,
+the last HEAD the correctness critics read. Only what moved.
+
+| AC | Where it is satisfied now |
+|---|---|
+| 3, 4 | The matcher in `src/lib/voice.ts` refuses, outside a quotation, the named marks, Unicode's initial and final quotation categories, and Unicode's `Quotation_Mark` property; `❟` and `❠` join the named marks. `NAMED_QUOTE_MARKS` and `APOSTROPHES` are exported so `__tests__/voice.test.ts` iterates the declared list itself, alongside its own independent scan of the Unicode sources, with a floor test for the marks closed by name before the list existed. The comment above the list states the two-unit limit |
+| 10, 12 | `src/lib/prompts.ts`: the module header describes the routing / reader-facing split as it stands, and the `PROVISIONAL_PROMPTS` docstring no longer claims a README pairing. `__tests__/readme-prompts.test.ts`: test names state what they check without counting the lists |
+| README | *Status* names this story among what is built and says what is deliberately absent; count copies replaced by the kinds they counted; the marks paragraph names the Unicode property and the limit |
