@@ -50,6 +50,8 @@ exactly as now — a question read as Oregon's still gets the deferral when the 
 4. Add the third open item, worded as in *The entry — FEAT-3*, on the same terms.
 5. Add the fourth and fifth open items, worded as in *The entries — OPS-1 and OPS-2*, on the same
    terms.
+6. Add the lesson Thomas approved at `answer-voice-screen`'s round-7 close, worded as in *The entry —
+   AAR-1*.
 
 ## Non-goals
 
@@ -206,13 +208,50 @@ is visible rather than a silent allowlist.
 **Sequencing.** Independent of the FEAT items. Its first run should flag OPS-1's line.
 ```
 
+## The entry — AAR-1 (added 2026-09-21 by Thomas's direction)
+
+**Fourth scope amendment, stated so it can be vetoed at merge review.** At the round-7 close of
+`answer-voice-screen`, Thomas approved the after-action lesson "with the checker's two corrections" and
+chose to file it here rather than on that branch. The workflow writes an approved lesson into
+`BACKLOG.md` on the story's own branch, but this repository's `BACKLOG.md` exists only on this branch:
+creating it there would have collided with this one at merge and added a file to that story's
+scope-containment check. The lesson's proposal file was removed from that branch in the same step, so
+this entry is its only copy. The two corrections: the ledger count at the moment of decision, and the
+same-day stopped run that shows spending the cap is not peculiar to the recovery path.
+
+```markdown
+### AAR-1 — Recover a partial correctness refusal by re-running only the refused critic
+
+**What happened (2026-09-21).** In `answer-voice-screen` round 26728d4 the review runner refused the
+correctness critic's reply — its final message was not valid JSON — while the hidden-failure critic
+and the doc-drift shadow passed. The loop's only recovery for that, "round stopped; rerun /review",
+repeats the whole step and so dispatches all three critics again.
+
+**The lesson.** Repeating the whole step spends one of the doc-drift trial's capped runs on a commit
+the trial has already sampled, and replaces the results that passed. The narrower recovery — re-run
+only the refused critic, with the same round id, base and prompt, against an unchanged HEAD —
+completed the round at neither cost, and the loop describes it nowhere, so the next builder to meet a
+partial refusal must either spend the run or improvise.
+
+**Weight — as checked.** The independent lesson check found the lesson real and modest. The cap cost
+is the weaker half: the trial's ledger shows a run consumed the same day by an ordinary stop in
+another repository, so spending the cap is not peculiar to this path. The undocumented recovery is the
+stronger half. When the decision was taken, no commit had yet been sampled twice. Evidence and the
+corrected figures: `reviews/answer-voice-screen.md` → `review/8` and "Codex correctness pass — round
+7", and `reviews/answer-voice-screen.lesson.26728d4.json`.
+
+**Remedy — not decided.** Approving the lesson approves no change. Documenting the narrower recovery in
+the review skill, or teaching the runner to decline a second trial run for a round it has already
+sampled, is a later story through the workflow's own loop.
+```
+
 ## Acceptance criteria
 
 Bookkeeping throughout, so plain numbered statements rather than Gherkin (`AGENTS.md`).
 
 1. `BACKLOG.md` exists at the repository root with an Open section and a Done section, and the Open
-   section carries exactly the items in *The entry*, *The entry — FEAT-2*, *The entry — FEAT-3* and
-   *The entries — OPS-1 and OPS-2*, as approved.
+   section carries exactly the items in *The entry*, *The entry — FEAT-2*, *The entry — FEAT-3*,
+   *The entries — OPS-1 and OPS-2* and *The entry — AAR-1*, as approved.
 2. The item's wording keeps the rule to questions that name **no** jurisdiction, keeps every other
    out-of-bounds rule, marks its design as not decided, requires the measured question set with its
    must-decline controls, and points to this file for the evidence instead of restating it.

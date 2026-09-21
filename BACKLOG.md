@@ -114,4 +114,28 @@ is visible rather than a silent allowlist.
 
 **Sequencing.** Independent of the FEAT items. Its first run should flag OPS-1's line.
 
+### AAR-1 — Recover a partial correctness refusal by re-running only the refused critic
+
+**What happened (2026-09-21).** In `answer-voice-screen` round 26728d4 the review runner refused the
+correctness critic's reply — its final message was not valid JSON — while the hidden-failure critic
+and the doc-drift shadow passed. The loop's only recovery for that, "round stopped; rerun /review",
+repeats the whole step and so dispatches all three critics again.
+
+**The lesson.** Repeating the whole step spends one of the doc-drift trial's capped runs on a commit
+the trial has already sampled, and replaces the results that passed. The narrower recovery — re-run
+only the refused critic, with the same round id, base and prompt, against an unchanged HEAD —
+completed the round at neither cost, and the loop describes it nowhere, so the next builder to meet a
+partial refusal must either spend the run or improvise.
+
+**Weight — as checked.** The independent lesson check found the lesson real and modest. The cap cost
+is the weaker half: the trial's ledger shows a run consumed the same day by an ordinary stop in
+another repository, so spending the cap is not peculiar to this path. The undocumented recovery is the
+stronger half. When the decision was taken, no commit had yet been sampled twice. Evidence and the
+corrected figures: `reviews/answer-voice-screen.md` → `review/8` and "Codex correctness pass — round
+7", and `reviews/answer-voice-screen.lesson.26728d4.json`.
+
+**Remedy — not decided.** Approving the lesson approves no change. Documenting the narrower recovery in
+the review skill, or teaching the runner to decline a second trial run for a round it has already
+sampled, is a later story through the workflow's own loop.
+
 ## Done
