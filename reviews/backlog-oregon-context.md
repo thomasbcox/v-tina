@@ -265,6 +265,10 @@ criterion names a size (`workflow-protocol.md` → *Change classes*).
    latent rather than live. The alternative is a prefix of this repository's own, which avoids that
    ambiguity at the price of a second vocabulary. Put to Thomas at the `answer-voice-screen` round-6
    fork (2026-09-20).
+   **Resolved 2026-09-21: the workflow's prefixes** (Thomas) — `OPS-` for tooling and hygiene, `BUG-`
+   for defects. The deciding reason: the workflow itself writes `AAR-` items into this backlog when a
+   lesson is approved, so its vocabulary is already this backlog's, and the lookup ambiguity a
+   separate set would avoid already exists for those.
 
 
 ## Approval (2026-09-18)
