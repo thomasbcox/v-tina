@@ -29,3 +29,23 @@ Base `main`, as the shadow pass always uses. 10 findings — **9 real, 1 false a
 round on a different model family, which is corroboration rather than duplication: the approach
 critic reached it from the accepted sweep, the shadow critic from the branch's changed names.
 Findings 6–9 are four the approach critic did not reach, all in code comments and the wire table.
+
+## Round 26728d4 (2026-09-21)
+
+Base `main`. 5 findings — **5 real, 0 false alarm, 0 cannot tell.** The correctness and hidden-failure
+critics were given the branch diff with this file and the shadow's artifacts excluded, so this round's
+line-by-line findings were not primed by the shadow's; the loop record still names the artifact path,
+so the isolation is partial.
+
+| # | Title | file:line | Verdict | Evidence |
+|---|---|---|---|---|
+| 1 | Wire table omits provenance text in streamed tokens | `README.md:230` | **real** | Repeat of round 3b101a0's #8, unchanged: `refuse` yields `PROVENANCE_NOTICE` as `streamed_tokens` (`src/lib/chat/orchestrate.ts:361`) |
+| 2 | Prompt overstates quotation-like mark enforcement | `src/lib/prompts.ts:111` | **real** | Repeat of #9: inside a quotation the listed marks are content, and a verified quotation is emitted raw (`src/lib/chat/orchestrate.ts:480`) |
+| 3 | Frame comment overgeneralizes to every reader-facing notice | `src/lib/voice.ts:23` | **real** | Repeat of #6: `FAILURE_NOTICE` (`src/lib/prompts.ts:153`) does not open with the frame |
+| 4 | Reader-facing list comment includes a neutral notice | `src/lib/prompts.ts:191` | **real** | Repeat of #7: `FAILURE_NOTICE`'s own docstring says it is deliberately not in character |
+| 5 | Lexer docstring claims totality despite its stated astral limit | `src/lib/voice.ts:217` | **real** | **New.** "the grammar is total over quotation marks rather than letting an unrecognised one through as prose" — false: `🙶🙷🙸` pass as prose, as the comment on `NAMED_QUOTE_MARKS` (`src/lib/voice.ts:133`) now states. The sentence predates this round; the limit written this round is what made the contradiction visible |
+
+**Trial note.** Round 3b101a0's one false alarm (the no-citation path) was not repeated. Finding 5 is
+the pattern the round-6 approach review named — a claim corrected in one copy and left standing in
+another. Neither line-by-line critic reported it this round; the correctness critic's one finding
+was elsewhere.

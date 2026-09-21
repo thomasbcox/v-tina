@@ -2378,3 +2378,17 @@ token, never prose, and no try/catch, fallback, or deleted assertion appears any
 **REACH.** Reported by every pass and all of the over-inclusive kind — regex fragments read as paths —
 with one worth naming: the correctness retry tried to write a simulation script to `/tmp/sim.mjs` and
 run it. No such file exists afterwards, so nothing persisted outside the review worktree.
+
+## Decisions (2026-09-21, round 7 — 26728d4)
+
+### Correctness pass
+
+**NIT — rewritten module header still counts the prompt kinds (`src/lib/prompts.ts:11`).** *Fix it.*
+Thomas: "Fix it" — drop the count, so the header reads "The prompts V-Tina runs on."
+
+### Hidden-failure pass
+
+No findings. No decisions to take.
+
+No approach pass ran this round (correctness only, as round 6 approved no redesign), so there are no
+approach decisions.
