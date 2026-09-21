@@ -8,7 +8,7 @@ import {
 } from "./voice";
 
 /**
- * The prompts V-Tina runs on, in two kinds.
+ * The prompts V-Tina runs on.
  *
  * **Routing prompts** — the classifier and the neutralising rewrite — produce a
  * label or a rephrased question, never prose a reader sees, so they carry no voice.

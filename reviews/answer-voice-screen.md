@@ -2392,3 +2392,9 @@ No findings. No decisions to take.
 
 No approach pass ran this round (correctness only, as round 6 approved no redesign), so there are no
 approach decisions.
+
+## Fixes (2026-09-21, round 7 — 26728d4)
+
+| Finding | Decision | What changed |
+|---|---|---|
+| NIT — the rewritten module header counts the prompt kinds | Fix it | `src/lib/prompts.ts`: "The prompts V-Tina runs on, in two kinds." → "The prompts V-Tina runs on." The two kinds are named in bold directly below, so the count said nothing they do not. No other living text in `src/`, `__tests__/` or `README.md` repeats the phrase |
