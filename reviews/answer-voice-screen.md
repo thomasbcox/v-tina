@@ -329,7 +329,7 @@ are person-judged and owe none.
 - frame/9 — demonstrated red for all nine sized criteria against the ratified regressions (two sabotages were incomplete on the first attempt, reported as such and redone). Plus four defects the live runs found that the suite could not, each now covered by a red-able test.
 - review/6 — ran (codex on glm-latest, 3 findings) -> reviews/answer-voice-screen.approach.3b101a0.json
 - review/8 — ran (codex: deepseek-pro-latest correctness / kimi-latest hidden-failure, 0 / 0 findings; doc-drift shadow: glm-latest, 10 findings) -> reviews/answer-voice-screen.correctness.3b101a0.json, reviews/answer-voice-screen.hidden-failure.3b101a0.json, reviews/answer-voice-screen.doc-drift.3b101a0.json. Base for both correctness critics was `d42bbb0`, the last SHA they actually read, not round 5's `0e685ed` — otherwise round 5's fixes would never have been read line by line. The shadow pass used `main`, as it always does.
-- close/3b — no activation this round — `./install.sh --check` n/a (this repo ships none); no guard-hook block observed this session; the reviewer harness promoted every pass it ran this round (approach 0e685ed). The harness refusal earlier in this session — codex's rejected key — was dispositioned at round d42bbb0's close.
+- close/3b — no activation — `./install.sh --check` n/a (this repo ships none); no guard-hook block observed this session; the reviewer harness promoted every pass it ran this round (approach, correctness, hidden-failure and the doc-drift shadow, round 3b101a0). No proposal: the recurring counts are a product finding and are filed as OPS-2, not a workflow lesson.
 - close/4 — presented: re-review only. Round 0e685ed's approved set includes the mark-list BLOCKER, which Thomas treated as a redesign when he stopped that round before the correctness pass, so merge was not offered.
 
 ## Build note (2026-09-15)
@@ -2204,3 +2204,60 @@ what the previous round's manual pass did not think to read.
 ### Correctness pass
 
 No findings from either critic. No decisions to take.
+
+## Fixes (2026-09-20, round 6 — 3b101a0)
+
+| Finding | Decision | What changed |
+|---|---|---|
+| BLOCKER — the mark rule as parallel copies | Fix narrowly | `NAMED_QUOTE_MARKS` and `APOSTROPHES` are exported from `src/lib/voice.ts`, values unchanged. The refusal test in `__tests__/voice.test.ts` now iterates the exported list itself, plus every character Unicode files as an initial or final quotation mark — computed by the test from the categories, independently of the screen, so a category dropped from the screen fails the test instead of shrinking it. The stray-mark and inside-a-quotation assertions iterate the same set. A new test holds the marks closed by name in earlier rounds, because iterating the list catches a mark added to it but not one removed. On 2026-09-20 the iteration covers 43 marks where the hand-typed copy held 29. The prompt, the README and the prompt pin are unchanged, as decided |
+| IMPORTANT — the sweep missed the most visible stale claims | Fix | README *Status* now names `answer-voice-screen` among what is built, says the endpoint answers as a virtual avatar that quotes the record, points to *How V-Tina speaks* for the rules rather than restating them, and says what is deliberately absent: her personal idiom, which nothing in the corpus records, and the chat screen. The `src/lib/prompts.ts` module header now describes the routing / reader-facing split as it stands, says the failure notice is deliberately out of character, and describes the partition and README tests as they actually run |
+| IMPORTANT — living count copies | Fix the three in scope, file the fourth | README "five user stories" → "the user stories"; "all five fields" → "every field in the table below". In `__tests__/readme-prompts.test.ts`, "the three lists" and "none of the three" → "the declared lists" and "none of the lists", and "the README documents the same three lists" → "the reader-facing and routing lists" — which also corrects the name's substance, since that test checks two lists. The `src/lib/ingest/pillars.ts` comment is filed as OPS-1 |
+| The recurrence | File the mechanical check | Filed as OPS-2 |
+
+**Where the two items were filed.** On `claude/backlog-oregon-context` (commit `d7041f2`), as a third
+scope amendment to that records story, not on this branch: `BACKLOG.md` is outside AC13's declared
+paths, and putting it here would have broken the scope criterion Thomas had just chosen to keep. The
+prefix `OPS-` is an assumption, recorded there as its Open question 2 and put to Thomas at this
+round's fork.
+
+**Correction to the round-6 consult.** I said the mechanical check "touches `scripts/gate.mjs`,
+outside this branch's scope". It need not: it could be a test in the existing suite, inside AC13's
+paths. The reason it is a later story is that it needs its own design — where a count ends and a
+parameter begins — not file scope. OPS-2 says so.
+
+## Post-fix verification (2026-09-20, round 6)
+
+### Demonstrate red
+
+Committed before any sabotage (`4fe1616`); each sabotage applied to `src/lib/voice.ts` alone and the
+exact bytes restored after, tree confirmed clean.
+
+| # | Sabotage | Result |
+|---|---|---|
+| S1 | The screen drops the Unicode categories, keeping the named marks | **RED** — the iteration test, the named-marks floor, and the single-quote bypass test |
+| S2 | The declared list is emptied, leaving the categories | **RED** — the named-marks floor, and "refuses any quotation not in curly marks". The iteration test stays green here **by design**: it iterates the list, so a removal is the floor's to catch, which is why the floor exists |
+| S3 | A mark is declared in the exported list while the screen reads a copy without it | **RED** — the iteration test alone. This is the drift the finding described, and the hand-typed copy this replaced would have stayed **green**: it never listed the added mark |
+| S5 | A listed mark inside a quotation ends it | **RED** — the iteration test's inside-a-quotation loop, plus the nesting and defined-term tests |
+
+### Live verification
+
+**Not run this round, because nothing a reader receives can have changed.** The product-code diff is
+two `export` keywords and comments; every string exported by `prompts.ts` and `voice.ts` was compared
+against the reviewed commit and is byte-identical.
+
+### Found while verifying — not fixed, put to Thomas at the fork
+
+**The declared list is not total, and the comment above it says it is.** Designing S3 turned up marks
+the screen lets through as prose. Checked against Unicode's own `Quotation_Mark` property, which the
+JavaScript regex engine supports directly: of its members, seven are neither in the list nor in the
+two categories — `⹂` (U+2E42), the vertical corner brackets `﹁﹂﹃﹄` (U+FE41–FE44) and the halfwidth
+corner brackets `｢｣` (U+FF62–FF63). Two ornaments that sit beside the listed `❛❜❝❞` are missing too —
+`❟` (U+275F) and `❠` (U+2760). A span opened with any of them lexes as prose and would stream
+unverified. Separately, `🙶🙷🙸` (U+1F676–1F678) could not be refused even if listed: the lexer reads
+one UTF-16 unit at a time, and these lie outside the Basic Multilingual Plane. None of them is
+likely in an English answer; the finding is that the comment above the list — "the set closes over
+marks nobody listed" — is not true.
+
+**Also noticed, in passing.** The `PROVISIONAL_PROMPTS` docstring says a future placeholder "is
+declared here and the README pairing holds it". No README pairing covers that list: the pairing test
+checks the reader-facing and routing lists only.
