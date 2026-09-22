@@ -283,8 +283,8 @@ criterion names a size (`workflow-protocol.md` → *Change classes*).
 
 - frame/6 — n/a — records class: no design review runs (workflow-protocol.md → Change classes)
 - frame/9 — n/a — records class: no demonstrate-red, and no criterion names a size
-- review/6 — n/a — records class: no reviewer pass
-- review/8 — n/a — records class: no reviewer pass
+- review/6 — n/a — records class: no reviewer pass (workflow-protocol.md → Change classes); confirmed at /review 2026-09-22
+- review/8 — n/a — records class: no reviewer pass, and so no doc-drift shadow run either; confirmed at /review 2026-09-22
 - close/3b — not yet reached
 - close/4 — not yet reached
 
@@ -325,3 +325,11 @@ entry is that they are requirements on the work, not evidence. Prefix: `FEAT-`.
 N/A — mechanical. One new markdown file holding one entry; no structure, pattern or dependency. The
 evidence is stated once, here, a dated record; the entry is living text and points to it, so it carries
 no measurements that could go stale (`workflow-protocol.md` → *Counts are copies*).
+
+## Build note (2026-09-22)
+
+| AC | Where it is satisfied |
+|---|---|
+| 1 | `BACKLOG.md` at the repository root: an Open section holding FEAT-1, FEAT-2, FEAT-3, OPS-1, OPS-2 and AAR-1, each as worded in this file's entry sections, and an empty Done section |
+| 2 | `BACKLOG.md` → FEAT-1: the rule limited to questions that name no jurisdiction, every other out-of-bounds rule kept, the shape marked not decided, the measured question set with its must-decline controls required, and the evidence pointed to here rather than restated |
+| 3 | Loop check at the merge fork — `git diff --name-only main...HEAD -- . ':(exclude)reviews/'` |
