@@ -286,7 +286,7 @@ criterion names a size (`workflow-protocol.md` → *Change classes*).
 - review/6 — n/a — records class: no reviewer pass (workflow-protocol.md → Change classes); confirmed at /review 2026-09-22
 - review/8 — n/a — records class: no reviewer pass, and so no doc-drift shadow run either; confirmed at /review 2026-09-22
 - close/3b — activation, nothing new — `./install.sh --check` n/a (this repo ships none); no guard-hook block observed this session. The runner did refuse a result this session — the `answer-voice-screen` round-7 correctness critic's reply was not valid JSON — but that activation was already dispositioned at that story's close and is filed as AAR-1 in this branch's own `BACKLOG.md`, so it is not novel and no proposal follows. `.aar/rejected-lessons.md` does not exist in this repository; searched and found none.
-- close/4 — not yet reached
+- close/4 — presented: re-review or merge (records class, no findings and no fixes). Thomas chose **merge**, after reading the six entries; the entry check, the empty Done section and the scope check were shown at the fork.
 
 ## Open questions
 
@@ -333,3 +333,18 @@ no measurements that could go stale (`workflow-protocol.md` → *Counts are copi
 | 1 | `BACKLOG.md` at the repository root: an Open section holding FEAT-1, FEAT-2, FEAT-3, OPS-1, OPS-2 and AAR-1, each as worded in this file's entry sections, and an empty Done section |
 | 2 | `BACKLOG.md` → FEAT-1: the rule limited to questions that name no jurisdiction, every other out-of-bounds rule kept, the shape marked not decided, the measured question set with its must-decline controls required, and the evidence pointed to here rather than restated |
 | 3 | Loop check at the merge fork — `git diff --name-only main...HEAD -- . ':(exclude)reviews/'` |
+
+## Merge decision (2026-09-22)
+
+**Thomas: "Merge"** — given at the step-4 fork, after it was presented, in this session.
+
+**AC1, as checked before the fork.** Every entry in `BACKLOG.md`'s Open section matches the wording
+approved in this file's entry sections, character for character; no entry appears that was not
+approved; the Done section exists and is empty.
+
+**AC3 at the fork.** `git diff --name-only main...HEAD -- . ':(exclude)reviews/'` listed `BACKLOG.md`
+and nothing else.
+
+**No release records.** The repository keeps no `CHANGELOG.md`, and this story resolves no tracked
+backlog item — it creates the backlog — so nothing moves to Done. The after-action check proposed
+nothing, so there is no lesson to file or remove.
