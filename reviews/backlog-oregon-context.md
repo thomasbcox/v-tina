@@ -285,7 +285,7 @@ criterion names a size (`workflow-protocol.md` → *Change classes*).
 - frame/9 — n/a — records class: no demonstrate-red, and no criterion names a size
 - review/6 — n/a — records class: no reviewer pass (workflow-protocol.md → Change classes); confirmed at /review 2026-09-22
 - review/8 — n/a — records class: no reviewer pass, and so no doc-drift shadow run either; confirmed at /review 2026-09-22
-- close/3b — not yet reached
+- close/3b — activation, nothing new — `./install.sh --check` n/a (this repo ships none); no guard-hook block observed this session. The runner did refuse a result this session — the `answer-voice-screen` round-7 correctness critic's reply was not valid JSON — but that activation was already dispositioned at that story's close and is filed as AAR-1 in this branch's own `BACKLOG.md`, so it is not novel and no proposal follows. `.aar/rejected-lessons.md` does not exist in this repository; searched and found none.
 - close/4 — not yet reached
 
 ## Open questions
