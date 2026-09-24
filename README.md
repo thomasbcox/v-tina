@@ -289,8 +289,10 @@ the production classifier, one at a time, and **appends** a receipt to
 `measurements/classifier-routing.jsonl` — pass or fail, so a failed run stays in the history. Commit
 the log after every run and paste the printed block below. A test fails the gate when the latest
 receipt was measured on a different instruction, model, question set or threshold, when it missed a
-threshold, or when this section differs from it. A run with no verdict — a timeout — counts as a
-miss, so a timeout can never pass a control.
+threshold, or when this section differs from it. A run with no verdict — a timeout — counts by what
+the reader gets, since V-Tina declines when classification fails: a miss on a question that must be
+answered, a decline on a control. A control still fails on any wrong label. "Counted" in the table
+applies that rule.
 
 These rates describe only the listed questions, as worded, not every question of their kind.
 
