@@ -114,6 +114,21 @@ is visible rather than a silent allowlist.
 
 **Sequencing.** Independent of the FEAT items. Its first run should flag OPS-1's line.
 
+### OPS-3 — Re-run the classifier measurement on a schedule
+
+**Want (Thomas, 2026-09-24).** The routing measurement FEAT-1 built runs on a schedule as well as by
+hand, so drift with no code change is seen.
+
+**Why it is needed.** The classifier's verdict on the same question has changed within a day with no
+code change (`reviews/backlog-oregon-context.md`). The gate catches a changed instruction, model or
+question set; it cannot catch the provider's model behaving differently under the same name.
+
+**Shape to consider — not decided.** A scheduled job that runs `npm run eval:classifier` and reports
+a failed receipt. It needs a hosted runner holding the Fireworks key, which this repository does not
+have, and a decision on where a scheduled run's receipt is committed.
+
+**Sequencing.** After FEAT-1 (`reviews/oregon-default-jurisdiction.md`) merges.
+
 ### AAR-1 — Recover a partial correctness refusal by re-running only the refused critic
 
 **What happened (2026-09-21).** In `answer-voice-screen` round 26728d4 the review runner refused the
