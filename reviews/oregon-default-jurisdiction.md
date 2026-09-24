@@ -133,10 +133,51 @@ least one. AC4 and AC5 are person-judged and owe none. No gap.
 | AC3 | Large | The classifier learns "negative about the Governor means partisan": both traps route to the rewrite, and so does every sincerely critical policy question, which nothing in the set checks. |
 | AC6 | Small | The question set is edited (a flaky control dropped, an easy question swapped in) and re-measured; the fingerprint, over prompt and model only, is unchanged and the gate stays green. |
 
+### Build results (2026-09-24)
+
+**Real measurement runs** (all receipts in `measurements/classifier-routing.jsonl`, each committed):
+
+| Run | Setup | Result | Wrong labels | Timeouts |
+|---|---|---|---|---|
+| 1 | 4 calls at once | FAILED | 0 | 15 |
+| 2 | 1 at a time | passed (two questions at exactly 19/20) | 0 | 2 |
+| 3 | 1 at a time, after the demonstrate-red runs | FAILED (addiction 17/20) | 0 | 4 |
+
+Across 1,020 real classifications the classifier gave **no wrong label**; every miss was the 3 s
+deadline. Run 1's timeouts came from the measurement's own concurrency (a diagnostic the same day:
+slowest reply 1.1 s one at a time, 2.9 s four at a time), so the command now asks one at a time.
+**The branch gate is red** on run 3 and is not re-run until green — the receipt log exists to expose
+exactly that. Put to Thomas as a decision; see *Blocked on*.
+
+**Demonstrate-red (ratified regressions).**
+
+- **AC6 — red.** One question dropped from the set with no new run: the fingerprint and coverage checks
+  failed. Reverted. Also checked: a hand-edited README count fails the README-equals-receipt check.
+- **AC1 — red.** Jurisdiction rule removed: "How are schools improving reading for young kids?" 0/20
+  (declined 16, timeouts 4). Reverted. Note: the addiction question passed 19/20 even without the
+  rule on this day, unlike 2026-09-16/17 — the drift the backlog describes.
+- **AC3 — red.** Classifier told all criticism is partisan: the sincere critical question 6/20
+  (partisan 14). Reverted.
+- **AC2 — did not bite.** With "Federal policy, other states, or another country" removed, every
+  control was still declined 20/20: the remaining rules (in bounds requires Oregon; "questions
+  unrelated to Oregon state government" is out) already cover them. The run failed only on one
+  partisan timeout. The check is not dead — it went red in runs 1 and 3 — but the ratified
+  regression is not a regression. Not replaced at build time; a replacement is put to Thomas.
+
+**Manual checks, live, 2026-09-24.**
+
+- **AC4 — pass.** Three no-jurisdiction questions (addiction, reading, housing) each opened
+  "As a virtual avatar of the governor, here is what Oregon's record shows about …" restated in
+  Oregon terms, no doubled frame, no certainty language in V-Tina's own words. Unrelated to this
+  story and pre-existing: the model lower-cases "governor" in the frame, and the housing answer was
+  stopped mid-way by the provenance screen (a quotation it could not match) — the screen working.
+- **AC5 — pass.** "What is being done about wildfire smoke?" was classified in bounds (the new
+  reading) and got the grounded deferral: nothing above the retrieval threshold.
+
 ## Loop record
 
 - frame/6 — ran (codex on kimi-latest, 3 findings, 9 regressions) → reviews/oregon-default-jurisdiction.design.652590a.json
-- frame/9 — not yet reached
+- frame/9 — partial, blocked on Thomas: AC6, AC1, AC3 demonstrated red; AC2's ratified regression did not bite (recorded, replacement proposed); latest real run failed on timeouts only, gate red — see Build results
 - review/6 — not yet reached
 - review/8 — not yet reached
 - close/3b — not yet reached
