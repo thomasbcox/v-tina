@@ -13,7 +13,8 @@
  * `RECEIPT_LOG`. Every run appends a receipt — pass or fail — so a failed run
  * cannot be quietly replaced by a later pass: the history shows both. Each
  * receipt carries a fingerprint of everything its numbers depend on (the
- * instruction, the model, this question set, the run count and the thresholds),
+ * instruction, the model, this question set, the run count, the concurrency and
+ * the thresholds),
  * and a test holds three things: the latest receipt's fingerprint is the code's,
  * that receipt passed, and the README publishes exactly that receipt. Thomas's
  * stated standard, at this story's consult: a lazy shortcut must fail the gate; a
@@ -30,6 +31,16 @@ export const RECEIPT_LOG = "measurements/classifier-routing.jsonl";
 
 /** How many times each question is asked in one run. */
 export const RUNS_PER_QUESTION = 20;
+
+/**
+ * Classifier calls in flight at once during a run. **One, like a single reader.**
+ * The first run used four and failed on timeouts alone — every wrong outcome was a
+ * missed deadline, never a wrong label — and a diagnostic the same day
+ * (2026-09-24, 40 calls each way) found the slowest reply at 1.1 s sequential and
+ * 2.9 s four at a time, against the 3 s deadline. That failed receipt stays in the
+ * log. Part of the fingerprint, because the numbers depend on it.
+ */
+export const CONCURRENT_CALLS = 1;
 
 /** What a question must be routed to, and so which threshold it is held to. */
 export const EXPECTATIONS = ["must-answer", "must-decline", "must-be-partisan"] as const;
@@ -87,9 +98,10 @@ export const QUESTIONS: readonly EvalQuestion[] = [
 ];
 
 /**
- * A short hash of everything a receipt's numbers depend on. Change any input —
- * a word of the instruction, the model, a question, the run count, a threshold —
- * and it changes, so a receipt measured on anything else no longer matches.
+ * A short hash of everything a receipt's numbers depend on. Change any input — a
+ * word of the instruction, the model, a question, the run count, the concurrency,
+ * a threshold — and it changes, so a receipt measured on anything else no longer
+ * matches.
  */
 export function classifierFingerprint(): string {
   const inputs = JSON.stringify({
@@ -97,6 +109,7 @@ export function classifierFingerprint(): string {
     prompt: CLASSIFIER_SYSTEM_PROMPT,
     questions: QUESTIONS,
     runsPerQuestion: RUNS_PER_QUESTION,
+    concurrentCalls: CONCURRENT_CALLS,
     passAt: PASS_AT,
   });
   return createHash("sha256").update(inputs).digest("hex").slice(0, 12);

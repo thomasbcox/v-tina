@@ -22,6 +22,7 @@ import { getEdgeEnv } from "../src/lib/env";
 import { CLASSIFIER_MODEL } from "../src/lib/fireworks";
 import {
   EXPECTED_LABEL,
+  CONCURRENT_CALLS,
   NO_VERDICT,
   QUESTIONS,
   RECEIPT_LOG,
@@ -32,10 +33,6 @@ import {
   type QuestionResult,
   type Receipt,
 } from "./classifier-questions";
-
-/** Concurrent classifier calls. Enough to finish in minutes, few enough not to
- *  trip the provider's rate limit and turn the measurement into one of timeouts. */
-const CONCURRENCY = 4;
 
 /** Loaded the way `ingest-corpus.ts` does, for the same reason: a standalone script
  *  gets no `.env.local` from Next.js, and a variable already set must win. */
@@ -65,7 +62,7 @@ async function main(): Promise<void> {
       process.stdout.write(".");
     }
   }
-  await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+  await Promise.all(Array.from({ length: CONCURRENT_CALLS }, worker));
   process.stdout.write("\n\n");
 
   const results: QuestionResult[] = QUESTIONS.map((q, qi) => {
