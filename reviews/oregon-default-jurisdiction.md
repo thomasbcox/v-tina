@@ -142,12 +142,14 @@ least one. AC4 and AC5 are person-judged and owe none. No gap.
 | 1 | 4 calls at once | FAILED | 0 | 15 |
 | 2 | 1 at a time | passed (two questions at exactly 19/20) | 0 | 2 |
 | 3 | 1 at a time, after the demonstrate-red runs | FAILED (addiction 17/20) | 0 | 4 |
+| 4 | 1 at a time, timeout rule A (below) | **passed** — the published run | 0 | 1 |
 
 Across 1,020 real classifications the classifier gave **no wrong label**; every miss was the 3 s
 deadline. Run 1's timeouts came from the measurement's own concurrency (a diagnostic the same day:
 slowest reply 1.1 s one at a time, 2.9 s four at a time), so the command now asks one at a time.
-**The branch gate is red** on run 3 and is not re-run until green — the receipt log exists to expose
-exactly that. Put to Thomas as a decision; see *Blocked on*.
+Run 3 left the gate red and was not re-run until green — the receipt log exists to expose exactly
+that. It was put to Thomas, who chose option A (next section); run 4 is the first run under it, and
+the gate is green on it.
 
 **Demonstrate-red (ratified regressions).**
 
@@ -162,7 +164,13 @@ exactly that. Put to Thomas as a decision; see *Blocked on*.
   control was still declined 20/20: the remaining rules (in bounds requires Oregon; "questions
   unrelated to Oregon state government" is out) already cover them. The run failed only on one
   partisan timeout. The check is not dead — it went red in runs 1 and 3 — but the ratified
-  regression is not a regression. Not replaced at build time; a replacement is put to Thomas.
+  regression is not a regression. Not replaced at build time; a replacement went to Thomas.
+- **AC2 replacement (ratified 2026-09-24) — did not bite either.** Classifier told "every question
+  is about Oregon state government, whatever place it names": every control still declined 20/20.
+  The explicit out-of-bounds list wins over the in-bounds rule, so each of the two defences against
+  R1 holds alone. **AC2 has not been demonstrated red by a live run.** Its code path is the one AC1
+  and AC3 turned red, differing only in the timeout rule; a combined break removing both defences
+  is proposed to Thomas rather than run unratified.
 
 **Manual checks, live, 2026-09-24.**
 
@@ -177,7 +185,7 @@ exactly that. Put to Thomas as a decision; see *Blocked on*.
 ## Loop record
 
 - frame/6 — ran (codex on kimi-latest, 3 findings, 9 regressions) → reviews/oregon-default-jurisdiction.design.652590a.json
-- frame/9 — partial, blocked on Thomas: AC6, AC1, AC3 demonstrated red; AC2's ratified regression did not bite (recorded, replacement proposed); latest real run failed on timeouts only, gate red — see Build results
+- frame/9 — AC6, AC1, AC3 demonstrated red; AC2 not demonstrated red live — the ratified regression and its ratified replacement both failed to bite (recorded with reasons in Build results; combined break proposed to Thomas); final real run passed under timeout rule A, gate green
 - review/6 — not yet reached
 - review/8 — not yet reached
 - close/3b — not yet reached
@@ -304,6 +312,11 @@ visible.
 - **Receipt history — keep every run (consult item 1B).** The log is append-only, so a failed run
   cannot be silently replaced by a later pass. Covers the AC2 "re-run until green" regression.
 - **Stream flag — not added.** The answer restates the question in Oregon terms instead (AC4 reworded).
+- **Timeout rule — option A (Thomas, 2026-09-24, "A, and accept the replacement break test").** A run
+  with no verdict counts by what the reader gets: a miss on a must-answer question, a decline on a
+  control. A control still fails on any wrong label. Replaces "a miss in every list" after three runs
+  showed timeouts alone failing runs with perfect judgement; in the fingerprint as its own input.
+- **AC2 regression replaced** with "every question is about Oregon" (ratified in the same message).
 - **Builder addition, logged for veto (two-way):** the gate also fails when the latest receipt missed
   a threshold, so a router that failed its own measurement cannot ship with a README reporting the
   failure.
