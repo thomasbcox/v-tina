@@ -142,7 +142,8 @@ least one. AC4 and AC5 are person-judged and owe none. No gap.
 | 1 | 4 calls at once | FAILED | 0 | 15 |
 | 2 | 1 at a time | passed (two questions at exactly 19/20) | 0 | 2 |
 | 3 | 1 at a time, after the demonstrate-red runs | FAILED (addiction 17/20) | 0 | 4 |
-| 4 | 1 at a time, timeout rule A (below) | **passed** — the published run | 0 | 1 |
+| 4 | 1 at a time, timeout rule A (below) | passed | 0 | 1 |
+| 5 | same, after the combined AC2 break | FAILED (reading question 16/20) | 0 | 4 |
 
 Across 1,020 real classifications the classifier gave **no wrong label**; every miss was the 3 s
 deadline. Run 1's timeouts came from the measurement's own concurrency (a diagnostic the same day:
@@ -171,6 +172,18 @@ the gate is green on it.
   R1 holds alone. **AC2 has not been demonstrated red by a live run.** Its code path is the one AC1
   and AC3 turned red, differing only in the timeout rule; a combined break removing both defences
   is proposed to Thomas rather than run unratified.
+- **AC2 combined break (ratified 2026-09-24) — did not bite.** Both protections removed at once
+  (every question told Oregon's, and the out-of-bounds jurisdiction line deleted): every control
+  still declined 20/20. What remains — the service described as about Oregon state policy, and
+  "questions unrelated to Oregon state government" out of bounds — is enough for this model. The
+  run failed only on the reading question's timeouts. **AC2 is not demonstrable red by any prompt
+  edit tried**; recorded as such.
+
+**A latency finding (2026-09-24), put to Thomas.** The reading question is slow in its own right:
+timed alone, median 784 ms with 3 of 15 calls over the 3 s deadline, against median 350 ms and none
+over for the homelessness question. It missed on timeouts in runs 3, 5 and the combined break; each
+such miss is a reader wrongly turned away. The gate is red on run 5 and is not re-run until green.
+Separately: the classification deadline is not in the fingerprint, though every receipt depends on it.
 
 **Manual checks, live, 2026-09-24.**
 
@@ -185,7 +198,7 @@ the gate is green on it.
 ## Loop record
 
 - frame/6 — ran (codex on kimi-latest, 3 findings, 9 regressions) → reviews/oregon-default-jurisdiction.design.652590a.json
-- frame/9 — AC6, AC1, AC3 demonstrated red; AC2 not demonstrated red live — the ratified regression and its ratified replacement both failed to bite (recorded with reasons in Build results; combined break proposed to Thomas); final real run passed under timeout rule A, gate green
+- frame/9 — AC6, AC1, AC3 demonstrated red; AC2 not demonstrated red live — the ratified regression and its ratified replacement both failed to bite (recorded with reasons in Build results; combined break proposed to Thomas); AC2 combined break also did not bite; latest real run failed on the reading question's timeouts, gate red, latency decision put to Thomas
 - review/6 — not yet reached
 - review/8 — not yet reached
 - close/3b — not yet reached
