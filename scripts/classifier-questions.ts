@@ -124,7 +124,7 @@ const questionResultSchema = z.object({
   correct: z.number().int().nonnegative(),
   runs: z.number().int().positive(),
   /** Count of each wrong outcome: a label, or `NO_VERDICT`. */
-  misses: z.record(z.enum([...SAFETY_CLASSIFICATIONS, NO_VERDICT]), z.number().int().positive()),
+  misses: z.partialRecord(z.enum([...SAFETY_CLASSIFICATIONS, NO_VERDICT]), z.number().int().positive()),
 });
 
 export const receiptSchema = z.object({
