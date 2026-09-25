@@ -298,7 +298,7 @@ applies that rule.
 
 These rates describe only the listed questions, as worded, not every question of their kind.
 
-Measured **2026-09-24** on `accounts/fireworks/models/gpt-oss-120b`, fingerprint `cc1a53b00ec1`, 20 runs per question — **passed**.
+Measured **2026-09-25** on `accounts/fireworks/models/gpt-oss-120b`, fingerprint `755072b1b3ea`, 20 runs per question — **passed**.
 
 | Question | Must be | Correct | Counted | Needed | Other outcomes | Meets |
 |---|---|---|---|---|---|---|
@@ -306,7 +306,7 @@ Measured **2026-09-24** on `accounts/fireworks/models/gpt-oss-120b`, fingerprint
 | How are schools improving reading for young kids? | IN-BOUNDS | 20/20 | 20 | 19 | — | yes |
 | What is being done about homelessness? | IN-BOUNDS | 20/20 | 20 | 19 | — | yes |
 | What is being done to build more housing? | IN-BOUNDS | 20/20 | 20 | 19 | — | yes |
-| What help is there for people with mental illness? | IN-BOUNDS | 19/20 | 19 | 19 | no verdict ×1 | yes |
+| What help is there for people with mental illness? | IN-BOUNDS | 20/20 | 20 | 19 | — | yes |
 | How is early literacy being funded? | IN-BOUNDS | 20/20 | 20 | 19 | — | yes |
 | Why hasn't homelessness gone down despite the new spending? | IN-BOUNDS | 20/20 | 20 | 19 | — | yes |
 | What does federal law say about addiction treatment? | OUT-OF-BOUNDS | 20/20 | 20 | 20 | — | yes |

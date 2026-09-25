@@ -84,7 +84,8 @@ proof).
 7. Scope containment: `git diff --name-only main...HEAD -- . ':(exclude)reviews/'` lists only
    `src/lib/prompts.ts`, `scripts/classifier-eval.ts`, `scripts/classifier-questions.ts`,
    `measurements/classifier-routing.jsonl`, `package.json`, `README.md`, `BACKLOG.md` (the
-   scheduled re-run filed as an item) and `__tests__/readme-classifier-eval.test.ts`.
+   scheduled re-run filed as an item) and `__tests__/readme-classifier-eval.test.ts` — and, by the
+   2026-09-24 scope amendment below, `src/lib/safety.ts`.
 
 ## Test notes
 
@@ -144,6 +145,7 @@ least one. AC4 and AC5 are person-judged and owe none. No gap.
 | 3 | 1 at a time, after the demonstrate-red runs | FAILED (addiction 17/20) | 0 | 4 |
 | 4 | 1 at a time, timeout rule A (below) | passed | 0 | 1 |
 | 5 | same, after the combined AC2 break | FAILED (reading question 16/20) | 0 | 4 |
+| 6 | 10 s classification deadline | **passed** — the published run | 0 | 0 |
 
 Across 1,020 real classifications the classifier gave **no wrong label**; every miss was the 3 s
 deadline. Run 1's timeouts came from the measurement's own concurrency (a diagnostic the same day:
@@ -198,7 +200,7 @@ Separately: the classification deadline is not in the fingerprint, though every 
 ## Loop record
 
 - frame/6 — ran (codex on kimi-latest, 3 findings, 9 regressions) → reviews/oregon-default-jurisdiction.design.652590a.json
-- frame/9 — AC6, AC1, AC3 demonstrated red; AC2 not demonstrated red live — the ratified regression and its ratified replacement both failed to bite (recorded with reasons in Build results; combined break proposed to Thomas); AC2 combined break also did not bite; latest real run failed on the reading question's timeouts, gate red, latency decision put to Thomas
+- frame/9 — AC6, AC1, AC3 demonstrated red; AC2 not demonstrable red — its ratified regression, the ratified replacement and the ratified combined break all failed to bite, because the classifier's remaining instructions still decline every control (reasons in Build results); final real run passed at the 10 s deadline, gate green
 - review/6 — not yet reached
 - review/8 — not yet reached
 - close/3b — not yet reached
@@ -345,3 +347,21 @@ visible.
 - **AC6 — accepted:** edit the question set without re-measuring; the gate test fails.
 - **R1–R5 — accepted** as design critique; covered by the four above, the held-out questions, and the
   manual reads for AC4 and AC5.
+
+## Scope amendment and decisions (2026-09-24, after the latency finding)
+
+**Thomas:** "let go of the time limit for now - give it 10 seconds and tell people it takes a while;
+contemplate caching responses for common questions".
+
+- **Classification deadline 3 s → 10 s.** Adds `src/lib/safety.ts` to the diff — a scope amendment,
+  stated here so it can be vetoed at merge review. The README's latency section states the new
+  figure; its existing test holds the README equal to the code.
+- **The deadline is now in the fingerprint** (builder's addition, logged for veto: raised at the
+  previous stop, not objected to). Changing it made the gate fail until a new run — which is how
+  run 6 came about.
+- **"Tell people it takes a while"** — read as the reader. No chat screen exists, so it is filed as
+  FEAT-4, a requirement on User Story 4's screen, and stated in the README for now. Open for Thomas
+  to redirect if he meant something built here.
+- **Caching** — contemplated, not built: FEAT-5, with the privacy decision (a cache stores the
+  public's questions) and the corpus-change invalidation as what it owes first.
+
