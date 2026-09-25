@@ -365,3 +365,13 @@ contemplate caching responses for common questions".
 - **Caching** — contemplated, not built: FEAT-5, with the privacy decision (a cache stores the
   public's questions) and the corpus-change invalidation as what it owes first.
 
+
+## Build note (2026-09-25)
+
+| AC | Files |
+|---|---|
+| 1, 2, 3 | `src/lib/prompts.ts` (classifier instruction: the jurisdiction rule and narrowed tie-break); `scripts/classifier-questions.ts` (question set, thresholds, timeout rule); `scripts/classifier-eval.ts` and `package.json` (`npm run eval:classifier`); `measurements/classifier-routing.jsonl` (receipts); `src/lib/safety.ts` (10 s classification deadline) |
+| 4 | `src/lib/prompts.ts` (answering instruction: "Say whose record it is") |
+| 5 | none — existing retrieval-threshold behaviour, checked live |
+| 6 | `scripts/classifier-questions.ts` (fingerprint, receipt schema, rendering); `__tests__/readme-classifier-eval.test.ts`; `README.md` ("Classifier reliability", routing step, latency section) |
+| 7 | scope check at the merge fork; `BACKLOG.md` carries OPS-3, FEAT-4, FEAT-5 |
