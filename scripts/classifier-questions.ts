@@ -14,7 +14,7 @@
  * cannot be quietly replaced by a later pass: the history shows both. Each
  * receipt carries a fingerprint of everything its numbers depend on (the
  * instruction, the model, this question set, the run count, the concurrency, the
- * thresholds and the timeout rule),
+ * thresholds, the timeout rule and the classification deadline),
  * and a test holds three things: the latest receipt's fingerprint is the code's,
  * that receipt passed, and the README publishes exactly that receipt. Thomas's
  * stated standard, at this story's consult: a lazy shortcut must fail the gate; a
@@ -24,7 +24,11 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { CLASSIFIER_MODEL } from "../src/lib/fireworks";
 import { CLASSIFIER_SYSTEM_PROMPT } from "../src/lib/prompts";
-import { SAFETY_CLASSIFICATIONS, type SafetyClassification } from "../src/lib/safety";
+import {
+  CLASSIFY_DEADLINE_MS,
+  SAFETY_CLASSIFICATIONS,
+  type SafetyClassification,
+} from "../src/lib/safety";
 
 /** Where the receipts live, relative to the repository root. */
 export const RECEIPT_LOG = "measurements/classifier-routing.jsonl";
@@ -117,8 +121,8 @@ export const QUESTIONS: readonly EvalQuestion[] = [
 /**
  * A short hash of everything a receipt's numbers depend on. Change any input — a
  * word of the instruction, the model, a question, the run count, the concurrency,
- * a threshold, the timeout rule — and it changes, so a receipt measured on anything else no longer
- * matches.
+ * a threshold, the timeout rule, the classification deadline — and it changes, so
+ * a receipt measured on anything else no longer matches.
  */
 export function classifierFingerprint(): string {
   const inputs = JSON.stringify({
@@ -129,6 +133,7 @@ export function classifierFingerprint(): string {
     concurrentCalls: CONCURRENT_CALLS,
     passAt: PASS_AT,
     controlTimeoutIsDecline: CONTROL_TIMEOUT_IS_DECLINE,
+    classifyDeadlineMs: CLASSIFY_DEADLINE_MS,
   });
   return createHash("sha256").update(inputs).digest("hex").slice(0, 12);
 }

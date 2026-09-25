@@ -32,8 +32,14 @@ export type SafetyClassification = (typeof SAFETY_CLASSIFICATIONS)[number];
  * this number by a test — the same measure-rather-than-assume treatment the
  * retrieval threshold already gets. Accepted knowingly at this story's approval
  * stop; recorded in `reviews/chat-safety-routing.md`, Open question 2.
+ *
+ * **10 s since 2026-09-24, up from 3 s** (Thomas, FEAT-1). A timeout fails closed,
+ * so a slow classification turns a reader away. Measured that day, one question
+ * alone missed 3 s in 3 of 15 calls (slowest 3.4 s) while another never came close:
+ * the model deliberates longer on some questions. Thomas chose to let go of the
+ * tight limit for now and tell readers an answer can take a while.
  */
-export const CLASSIFY_DEADLINE_MS = 3000;
+export const CLASSIFY_DEADLINE_MS = 10_000;
 
 /**
  * The token budget for one classification.

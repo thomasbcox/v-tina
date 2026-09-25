@@ -269,8 +269,10 @@ hide the outage. A retrieval failure produces an `error` record instead.
 
 The specification asks for classification within 100 ms. **That is not met and cannot be**: a
 network round trip to a hosted model does not complete in 100 ms. What is controlled instead is the
-model, a short prompt, a token cap, and an explicit deadline of **3000 ms** covering the whole step
-including retries and backoff — one clock, not one per attempt.
+model, a short prompt, a token cap, and an explicit deadline of **10000 ms** covering the whole step
+including retries and backoff — one clock, not one per attempt. The deadline was **3 s** until
+2026-09-24; it was raised because some questions make the model deliberate past 3 s, and a missed
+deadline turns the reader away. An answer can therefore take several seconds to begin.
 
 Measured against the live service on 2026-09-10 over twelve questions: median **380 ms**, slowest
 **1462 ms**. At twelve samples the 95th percentile *is* the slowest observation, so treat that
