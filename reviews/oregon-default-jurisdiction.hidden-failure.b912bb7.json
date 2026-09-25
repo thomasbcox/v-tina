@@ -1,0 +1,13 @@
+{
+  "summary": "Measured at Thu Sep 24 21:46:07 PDT 2026. The change's failure handling is mostly loud: the eval script propagates worker exceptions to main().catch → exit 1, parseReceipts throws on a malformed log line, a missing receipt log falls back to [] but a test then fails with a named remediation, and every run appends a receipt pass-or-fail with exit 1 on a threshold miss. One real absorption: every non-ok classification — a deadline miss, an HTTP/network error, or an off-vocabulary reply (parseClassification's not-ok path) — is collapsed to the single bucket NO_VERDICT, and on control questions CONTROL_TIMEOUT_IS_DECLINE counts all of those as correct declines. The documented rationale covers only the deadline case, but the mechanism silently passes a control question when the classifier replies with something outside its declared vocabulary, and the reason breakdown is printed to stdout only, never persisted in the receipt, so the durable record cannot distinguish a timeout from a broken classifier.",
+  "findings": [
+    {
+      "severity": "IMPORTANT",
+      "title": "Off-vocabulary and error verdicts silently counted as correct declines on control questions",
+      "file": "scripts/classifier-eval.ts",
+      "line": 59,
+      "claim": "Every non-ok verdict — deadline miss, network/HTTP failure, and parseClassification's off-vocabulary reply — is pushed as the single token NO_VERDICT, and `countedCorrect` (scripts/classifier-questions.ts:167) then counts it as a correct decline on every control question. The documented rule (CONTROL_TIMEOUT_IS_DECLINE) justifies counting only a *deadline miss* as a decline, because the orchestrator fails closed; an off-vocabulary reply is a different, degraded state — the model is no longer following the instruction — yet it passes a 20/20 control threshold with nothing in the receipt to show it. The per-reason breakdown (`reasons` map) is written to stdout only, so the durable record collapses all failure modes into one opaque bucket and a reviewer of the log cannot tell a slow model from a broken one.",
+      "suggestion": "Persist the failure reason per miss in the receipt (e.g. key the misses map by reason, or add a `noVerdictReasons` breakdown), and restrict CONTROL_TIMEOUT_IS_DECLINE credit to verdicts whose reason is the deadline — let off-vocabulary replies and transport errors count as genuine misses on controls, so a classifier that stops following its instruction fails the run instead of passing it."
+    }
+  ]
+}

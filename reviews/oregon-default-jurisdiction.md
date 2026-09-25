@@ -202,7 +202,7 @@ Separately: the classification deadline is not in the fingerprint, though every 
 - frame/6 — ran (codex on kimi-latest, 3 findings, 9 regressions) → reviews/oregon-default-jurisdiction.design.652590a.json
 - frame/9 — AC6, AC1, AC3 demonstrated red; AC2 not demonstrable red — its ratified regression, the ratified replacement and the ratified combined break all failed to bite, because the classifier's remaining instructions still decline every control (reasons in Build results); final real run passed at the 10 s deadline, gate green
 - review/6 — ran (codex on glm-latest, 3 findings) → reviews/oregon-default-jurisdiction.approach.b912bb7.json
-- review/8 — not yet reached
+- review/8 — ran (codex: deepseek-pro-latest correctness / kimi-latest hidden-failure, 2 / 1 findings; doc-drift shadow: trial closed) → reviews/oregon-default-jurisdiction.correctness.b912bb7.json, reviews/oregon-default-jurisdiction.hidden-failure.b912bb7.json
 - close/3b — not yet reached
 - close/4 — not yet reached
 
@@ -399,4 +399,32 @@ requires `correct` plus the misses to equal `runs`. *Alternative:* a zod refinem
 "contains", so a stale table beside the current one still passes. *Alternative:* marker comments
 around the generated block and an exact-equality check on what lies between them. *Win:* the check
 enforces what its name says.
+
+## Codex correctness pass (2026-09-25, round b912bb7, base main, HEAD 641f45c)
+
+### Correctness (deepseek-pro-latest)
+
+**Summary:** implements FEAT-1 in the approved shape; scope containment exact; the published run and
+every gate recomputation match the committed log and README. No BLOCKER or IMPORTANT findings.
+
+- **NIT — receipt date is stamped in UTC** (`scripts/classifier-eval.ts:80`). A late-evening run
+  stamps the next day; the published receipt says 2026-09-25 for a run made on the evening of
+  2026-09-24 local time. *Suggestion:* stamp the local date.
+- **NIT — no receipt when the command fails before measuring** (`scripts/classifier-eval.ts:97`).
+  A configuration failure (missing key) exits without appending, while the header says every run
+  appends one. *Suggestion:* append a failure marker, or narrow the claim to every completed run.
+
+### Hidden-failure (kimi-latest)
+
+- **IMPORTANT — off-vocabulary and error verdicts count as declines on controls**
+  (`scripts/classifier-eval.ts:59`, `scripts/classifier-questions.ts:167`). Every non-verdict — a
+  deadline miss, a network error, or a reply outside the label vocabulary — is recorded as the one
+  bucket "no verdict", and on controls the timeout rule credits all of them as declines. The reason
+  breakdown goes to the console only, so the committed receipt cannot tell a slow model from one
+  that has stopped following its instruction. *Suggestion:* persist the reason per miss, and credit
+  only deadline misses as declines on controls.
+
+### Doc-drift (shadow)
+
+Trial closed — the trial had used all its runs; nothing ran.
 
