@@ -201,7 +201,7 @@ Separately: the classification deadline is not in the fingerprint, though every 
 
 - frame/6 — ran (codex on kimi-latest, 3 findings, 9 regressions) → reviews/oregon-default-jurisdiction.design.652590a.json
 - frame/9 — AC6, AC1, AC3 demonstrated red; AC2 not demonstrable red — its ratified regression, the ratified replacement and the ratified combined break all failed to bite, because the classifier's remaining instructions still decline every control (reasons in Build results); final real run passed at the 10 s deadline, gate green
-- review/6 — not yet reached
+- review/6 — ran (codex on glm-latest, 3 findings) → reviews/oregon-default-jurisdiction.approach.b912bb7.json
 - review/8 — not yet reached
 - close/3b — not yet reached
 - close/4 — not yet reached
@@ -375,3 +375,28 @@ contemplate caching responses for common questions".
 | 5 | none — existing retrieval-threshold behaviour, checked live |
 | 6 | `scripts/classifier-questions.ts` (fingerprint, receipt schema, rendering); `__tests__/readme-classifier-eval.test.ts`; `README.md` ("Classifier reliability", routing step, latency section) |
 | 7 | scope check at the merge fork; `BACKLOG.md` carries OPS-3, FEAT-4, FEAT-5 |
+
+## Codex (glm-latest) approach review (2026-09-25, base main, HEAD b912bb7)
+
+**Verdict:** the core shape is sound and it would build it the same way — a prompt-only change on
+the request path, an operator measurement through the production classifier, zod-validated
+append-only receipts, and a gate binding the published claim to the code. No eval framework, no
+orchestrator change. Its corrections make the evidence match its own claims. One REACH line was
+reported (a read-only `nl`/`printf` command whose label contained the word "eval"); a false alarm.
+
+**IMPORTANT — the fingerprint omits settings that change routing** (one-way × nonstandard). It
+leaves out the classifier's token cap (`CLASSIFY_MAX_TOKENS`) and the retry policy
+(`RETRY_MAX_ATTEMPTS`, `RETRY_BASE_MS`), each of which can change whether a label arrives in time.
+*Alternative:* one exported classifier configuration consumed by both the production classifier and
+the fingerprint, or include every non-injected classifier setting in the fingerprint. *Win:* a
+token-cap or retry change can no longer ship under old measured rates.
+
+**IMPORTANT — the receipt schema accepts impossible counts** (two-way × nonstandard). Nothing
+requires `correct` plus the misses to equal `runs`. *Alternative:* a zod refinement on each result.
+*Win:* self-contradictory evidence fails the gate.
+
+**IMPORTANT — README equality is only containment** (two-way × nonstandard). The test uses
+"contains", so a stale table beside the current one still passes. *Alternative:* marker comments
+around the generated block and an exact-equality check on what lies between them. *Win:* the check
+enforces what its name says.
+
