@@ -75,6 +75,40 @@ log, and whether the public's questions are stored at all is deliberately unreso
 **Sequencing.** Independent of FEAT-1 and FEAT-2. Touches `src/lib/chat/orchestrate.ts`, which
 `answer-voice-screen` also edits — start after that story merges.
 
+### FEAT-4 — Tell the reader an answer can take a while
+
+**Want (Thomas, 2026-09-24).** A reader is told that an answer can take a while to begin.
+
+**Why it is needed.** Classification may now take up to 10 seconds before anything streams (raised
+from 3 s in `reviews/oregon-default-jurisdiction.md`, because a missed deadline turns the reader
+away). Silence that long reads as a broken page.
+
+**Shape to consider — not decided.** A notice or progress indicator on the chat screen, shown from
+the moment a question is sent until the first record arrives. The screen is User Story 4 and does not
+exist yet, so this is a requirement on that story. Whether the stream should also send an early
+"working" record is part of the same decision.
+
+**Sequencing.** With or after User Story 4's chat screen.
+
+### FEAT-5 — Consider caching answers to common questions
+
+**Want (Thomas, 2026-09-24).** Contemplate caching responses for common questions, so a frequently
+asked question does not pay the classification and answer time every time.
+
+**Shape to consider — not decided.** Two levels, with different costs. Caching the classifier's
+verdict by exact question text removes the slowest, least predictable step for repeats and changes
+nothing a reader sees. Caching whole answers saves more but is harder to keep honest: an answer must
+be invalidated when the corpus changes, it freezes one sample of a varying model, and it must still
+pass the quotation screen as served.
+
+**Owed by the story that builds it.** A cache stores the public's questions, which is the privacy
+decision deliberately left open (`reviews/answer-voice-screen.md` → Non-goals, the audit-log stub;
+FEAT-3 keeps the two apart). Decide that first. Measure how often questions actually repeat before
+building: exact-text repeats may be rare. A cached verdict also sidesteps the drift the routing
+measurement watches for, so the cache's lifetime must be shorter than the re-measure interval (OPS-3).
+
+**Sequencing.** After FEAT-4 and User Story 4; there are no readers to repeat questions yet.
+
 ### OPS-1 — The policy-pillars comment still counts the pillars
 
 **What is wrong (found 2026-09-20).** The comment above `POLICY_PILLARS` in
@@ -113,6 +147,21 @@ and state how a flagged number that is genuinely a rule or a parameter is exempt
 is visible rather than a silent allowlist.
 
 **Sequencing.** Independent of the FEAT items. Its first run should flag OPS-1's line.
+
+### OPS-3 — Re-run the classifier measurement on a schedule
+
+**Want (Thomas, 2026-09-24).** The routing measurement FEAT-1 built runs on a schedule as well as by
+hand, so drift with no code change is seen.
+
+**Why it is needed.** The classifier's verdict on the same question has changed within a day with no
+code change (`reviews/backlog-oregon-context.md`). The gate catches a changed instruction, model or
+question set; it cannot catch the provider's model behaving differently under the same name.
+
+**Shape to consider — not decided.** A scheduled job that runs `npm run eval:classifier` and reports
+a failed receipt. It needs a hosted runner holding the Fireworks key, which this repository does not
+have, and a decision on where a scheduled run's receipt is committed.
+
+**Sequencing.** After FEAT-1 (`reviews/oregon-default-jurisdiction.md`) merges.
 
 ### AAR-1 — Recover a partial correctness refusal by re-running only the refused critic
 

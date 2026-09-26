@@ -1,0 +1,21 @@
+{
+  "summary": "The change implements FEAT-1 (read a no-jurisdiction question as Oregon's) in the shape the spec called for: two prompt edits on the request path (classifier jurisdiction rule + narrowed tie-break; answering 'Say whose record it is' section), a 3 s→10 s classification deadline with scope amendment to `src/lib/safety.ts`, an operator measurement script (`scripts/classifier-eval.ts` + `scripts/classifier-questions.ts`) that exercises the production `classify`, an append-only receipt log with the latest entry matching the code's fingerprint exactly, a README publication held to that receipt by a gate test, and the scheduled re-run / FEAT-4 / FEAT-5 filed in BACKLOG.md. Scope containment (AC7) is exact: the diff touches only the nine enumerated files plus the review-trail artifacts. The published run passed with 0 wrong labels and 0 timeouts across 340 real classifications, and the gate test's recomputations (fingerprint, coverage, threshold, README publication, limitation sentence) all match the committed log and README. I found no BLOCKER or IMPORTANT correctness defects; the two issues below are cosmetic accuracy points in the measurement script itself.",
+  "findings": [
+    {
+      "severity": "NIT",
+      "title": "Receipt date is stamped in UTC, disagreeing with the local dates used everywhere else",
+      "file": "scripts/classifier-eval.ts",
+      "line": 80,
+      "claim": "`new Date().toISOString().slice(0, 10)` yields the UTC date, so a run done late in a local evening stamps the next calendar day. The published README says 'Measured **2026-09-25**' while the operator's local date (and the story's own 'Build results (2026-09-24)') is 2026-09-24 — a reader today sees a date one day ahead of local time, which slightly undermines the 'outside skeptic can read an honest process' purpose this measurement exists for.",
+      "suggestion": "Stamp the receipt with the local date, e.g. build YYYY-MM-DD from `new Date().getFullYear()/getMonth()/getDate()` (local getters) instead of `toISOString().slice(0, 10)`."
+    },
+    {
+      "severity": "NIT",
+      "title": "No receipt is appended when the command fails before the measurement loop",
+      "file": "scripts/classifier-eval.ts",
+      "line": 97,
+      "claim": "The header (lines 12-14) promises 'Every run appends one receipt … pass or fail', and AC6 says every measurement run appends a receipt. But if `createChatDeps(getEdgeEnv())` throws at line 45 (missing `FIREWORKS_API_KEY` or Supabase vars — `getEdgeEnv` throws an `EnvValidationError`), `main().catch` logs and exits without writing anything, leaving a mis-configured run invisible in the append-only history. `classify` itself absorbs errors into `NO_VERDICT`, so this is confined to startup/config failure, but the guarantee in the header is overstated.",
+      "suggestion": "Either append a failing receipt (or a zero-result marker line) in the failure path before exiting, or narrow the header's claim to 'every completed run appends a receipt', so the documented guarantee matches the behavior."
+    }
+  ]
+}
