@@ -428,3 +428,25 @@ every gate recomputation match the committed log and README. No BLOCKER or IMPOR
 
 Trial closed — the trial had used all its runs; nothing ran.
 
+
+## Decisions (2026-09-25, round b912bb7)
+
+**Approach** — Thomas: "fix all three as recommended". None is a redesign, so the shape is blessed
+and the correctness pass ran in the same round.
+
+1. Fingerprint omits routing settings — **fix**, the smaller variant: add `CLASSIFY_MAX_TOKENS`,
+   `RETRY_MAX_ATTEMPTS` and `RETRY_BASE_MS` to the fingerprint; the live classifier is untouched.
+2. Receipt schema accepts impossible counts — **fix**: a refinement requiring correct plus misses to
+   equal runs.
+3. README equality is only containment — **fix**: marker comments around the generated block and an
+   exact-equality check.
+
+**Correctness and hidden-failure** — Thomas: "fix all three as recommended".
+
+4. Hidden-failure, IMPORTANT — **fix both halves**: persist each non-answer's cause in the receipt,
+   and credit only deadline misses as declines on controls.
+5. Correctness NIT, UTC date — **fix**: stamp the local date.
+6. Correctness NIT, no receipt on a failed start — **fix** by narrowing the claim to every run that
+   measures.
+
+**Doc-drift shadow:** trial closed; no verdicts file this round.
