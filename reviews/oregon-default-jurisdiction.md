@@ -204,7 +204,7 @@ Separately: the classification deadline is not in the fingerprint, though every 
 - review/6 — ran (codex on glm-latest, 3 findings) → reviews/oregon-default-jurisdiction.approach.b912bb7.json
 - review/8 — ran (codex: deepseek-pro-latest correctness / kimi-latest hidden-failure, 2 / 1 findings; doc-drift shadow: trial closed) → reviews/oregon-default-jurisdiction.correctness.b912bb7.json, reviews/oregon-default-jurisdiction.hidden-failure.b912bb7.json
 - close/3b — no activation — `./install.sh --check` n/a (this repo ships none); no guard-hook block observed this session; the review runner refused no result this session (it promoted every artifact; the approach pass's one REACH line was a reported read-only false alarm, and the doc-drift trial's closure is its expected cap, not a refusal). `.aar/rejected-lessons.md` does not exist; searched, none.
-- close/4 — not yet reached
+- close/4 — presented: re-review or merge after the round b912bb7 fixes (no redesign). Thomas chose **re-review** (invoked `/review`).
 
 ## Open questions
 
@@ -472,4 +472,13 @@ and the correctness pass ran in the same round.
 
 The fingerprint changed, so a fresh run was required: passed, published between the markers, gate
 green (372 tests).
+
+## Build note (2026-09-25, re-review of the round b912bb7 fixes)
+
+| Fix | Files |
+|---|---|
+| 1 fingerprint, 2 receipt consistency, 4 timeout-only credit and causes | `scripts/classifier-questions.ts`, `scripts/classifier-eval.ts` |
+| 3 exact README block | `README.md` (receipt markers), `__tests__/readme-classifier-eval.test.ts` |
+| 5 local date, 6 narrowed claim | `scripts/classifier-eval.ts`, `scripts/classifier-questions.ts`, `README.md` |
+| fresh run | `measurements/classifier-routing.jsonl`, `README.md` |
 
