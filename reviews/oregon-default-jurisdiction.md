@@ -201,8 +201,8 @@ Separately: the classification deadline is not in the fingerprint, though every 
 
 - frame/6 — ran (codex on kimi-latest, 3 findings, 9 regressions) → reviews/oregon-default-jurisdiction.design.652590a.json
 - frame/9 — AC6, AC1, AC3 demonstrated red; AC2 not demonstrable red — its ratified regression, the ratified replacement and the ratified combined break all failed to bite, because the classifier's remaining instructions still decline every control (reasons in Build results); final real run passed at the 10 s deadline, gate green
-- review/6 — ran (codex on glm-latest, 3 findings) → reviews/oregon-default-jurisdiction.approach.b912bb7.json
-- review/8 — ran (codex: deepseek-pro-latest correctness / kimi-latest hidden-failure, 2 / 1 findings; doc-drift shadow: trial closed) → reviews/oregon-default-jurisdiction.correctness.b912bb7.json, reviews/oregon-default-jurisdiction.hidden-failure.b912bb7.json
+- review/6 — n/a — round 371ef32 is a re-review verifying approved fixes (base 641f45c, no redesign last round): correctness only. Round b912bb7's approach pass → reviews/oregon-default-jurisdiction.approach.b912bb7.json
+- review/8 — ran round 371ef32 (codex: deepseek-flash-latest correctness — routed deepseek-pro-latest did not answer, twice, and failed `--probe-codex-routes`; overridden for this shell via CLAUDE_CODEX_ROUTE_CORRECTNESS — / kimi-latest hidden-failure, 4 / 0 findings; doc-drift shadow: trial closed) → reviews/oregon-default-jurisdiction.correctness.371ef32.json, reviews/oregon-default-jurisdiction.hidden-failure.371ef32.json
 - close/3b — no activation — `./install.sh --check` n/a (this repo ships none); no guard-hook block observed this session; the review runner refused no result this session (it promoted every artifact; the approach pass's one REACH line was a reported read-only false alarm, and the doc-drift trial's closure is its expected cap, not a refusal). `.aar/rejected-lessons.md` does not exist; searched, none.
 - close/4 — presented: re-review or merge after the round b912bb7 fixes (no redesign). Thomas chose **re-review** (invoked `/review`).
 
@@ -481,4 +481,40 @@ green (372 tests).
 | 3 exact README block | `README.md` (receipt markers), `__tests__/readme-classifier-eval.test.ts` |
 | 5 local date, 6 narrowed claim | `scripts/classifier-eval.ts`, `scripts/classifier-questions.ts`, `README.md` |
 | fresh run | `measurements/classifier-routing.jsonl`, `README.md` |
+
+## Codex correctness re-review (2026-09-25, round 371ef32, base 641f45c, HEAD 371ef32)
+
+**How it ran.** The routed correctness model, deepseek-pro-latest, exited with an error twice with
+HEAD unchanged, and `--probe-codex-routes` showed it the only route not answering. The hidden-failure
+critic's result from the first attempt was kept, and only the correctness critic was re-run, with the
+same round, base and question — the recovery `BACKLOG.md` AAR-1 records — on its catalog sibling
+deepseek-flash-latest (same family, shell-only override). The runner reported five REACH lines: four
+from quoting in the critic's own scripts, and one real — the critic wrote a scratch script to
+`/tmp/fp.py` to recompute the fingerprints independently.
+
+### Correctness (deepseek-flash-latest)
+
+**Summary:** the six fixes are implemented as approved. It independently recomputed both
+fingerprints, rendered the latest receipt and matched the README block exactly, parsed every receipt
+under the tightened schema, and confirmed scope containment. No BLOCKER or IMPORTANT findings.
+
+- **NIT — a result's own `expect` is trusted** (`__tests__/readme-classifier-eval.test.ts:40`). The
+  coverage check compares question text only; a receipt relabelling a control as must-answer would be
+  judged at 19/20. *Suggestion:* compare question and expectation pairs against the code's list.
+- **NIT — `runs` not tied to `runsPerQuestion`** (`scripts/classifier-questions.ts:197`). A receipt
+  saying 20 runs per question could record 25 of 25. *Suggestion:* a receipt-level refinement.
+- **NIT — timeout inferred from elapsed time, not from the failure itself**
+  (`scripts/classifier-eval.ts:76`). *Suggestion:* have `classify` return a structured failure kind.
+- **NIT — "a test holds three things" is a count** (`scripts/classifier-questions.ts:18`), already
+  inaccurate, and a copy under *Counts are copies*. *Suggestion:* name the kinds, drop the number.
+
+### Hidden-failure (kimi-latest)
+
+No findings. It checked the elapsed-time split's failure direction: reaching the deadline requires the
+one abort clock to have fired, so a fast error cannot be mislabelled a timeout and credited; the
+reverse mislabel lands in "no verdict", a miss everywhere — the strict direction.
+
+### Doc-drift (shadow)
+
+Trial closed; nothing ran.
 
