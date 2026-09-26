@@ -9,22 +9,31 @@
  * ships, not a copy of it. Needs the live Fireworks key; costs a few minutes and a
  * few cents, which is why it is an operator command and not part of the gate.
  *
- * Every run appends one receipt to `RECEIPT_LOG`, **pass or fail**, and exits
- * non-zero on any threshold miss. Commit the log after every run: a failed run
- * left out of the history is exactly what the append-only log exists to prevent.
- * Then paste the printed block into the README's "Classifier reliability"
- * section — a test holds the README equal to the latest receipt.
+ * Every run that measures appends one receipt to `RECEIPT_LOG`, **pass or fail**,
+ * and exits non-zero on any threshold miss. A run that fails before asking
+ * anything — missing credentials, say — appends nothing: it measured nothing.
+ * Commit the log after every run: a failed run left out of the history is exactly
+ * what the append-only log exists to prevent. Then paste the printed block
+ * between the README's receipt markers in "Classifier reliability" — a test holds
+ * that block equal to the latest receipt.
+ *
+ * A non-verdict is recorded as `TIMEOUT` when the call used the whole
+ * classification deadline, judged by elapsed time rather than by the wording of
+ * an error, and as `NO_VERDICT` otherwise. Each one's stated cause is kept in the
+ * receipt.
  */
 import { appendFileSync, existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { createChatDeps } from "../src/lib/chat/deps";
 import { getEdgeEnv } from "../src/lib/env";
 import { CLASSIFIER_MODEL } from "../src/lib/fireworks";
+import { CLASSIFY_DEADLINE_MS } from "../src/lib/safety";
 import {
   EXPECTED_LABEL,
   CONCURRENT_CALLS,
   NO_VERDICT,
   QUESTIONS,
+  TIMEOUT,
   RECEIPT_LOG,
   RUNS_PER_QUESTION,
   classifierFingerprint,
@@ -40,24 +49,32 @@ function loadLocalEnv(path = ".env.local"): void {
   if (existsSync(path)) process.loadEnvFile(path);
 }
 
+/** The operator's calendar date. `toISOString` would give UTC, stamping a
+ *  late-evening run with tomorrow (correctness review round b912bb7). */
+function localDate(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 async function main(): Promise<void> {
   loadLocalEnv();
   const { classify } = createChatDeps(getEdgeEnv());
 
   const jobs = QUESTIONS.flatMap((q, qi) => Array.from({ length: RUNS_PER_QUESTION }, () => qi));
   const outcomes: string[][] = QUESTIONS.map(() => []);
-  const reasons = new Map<string, number>();
+  const reasons: Record<string, number>[] = QUESTIONS.map(() => ({}));
   let next = 0;
 
   async function worker(): Promise<void> {
     while (next < jobs.length) {
       const qi = jobs[next++];
+      const started = Date.now();
       const verdict = await classify(QUESTIONS[qi].question);
       if (verdict.ok) {
         outcomes[qi].push(verdict.classification);
       } else {
-        outcomes[qi].push(NO_VERDICT);
-        reasons.set(verdict.reason, (reasons.get(verdict.reason) ?? 0) + 1);
+        outcomes[qi].push(Date.now() - started >= CLASSIFY_DEADLINE_MS ? TIMEOUT : NO_VERDICT);
+        reasons[qi][verdict.reason] = (reasons[qi][verdict.reason] ?? 0) + 1;
       }
       process.stdout.write(".");
     }
@@ -73,11 +90,19 @@ async function main(): Promise<void> {
       if (outcome === expected) correct++;
       else misses[outcome] = (misses[outcome] ?? 0) + 1;
     }
-    return { question: q.question, expect: q.expect, correct, runs: outcomes[qi].length, misses };
+    const noVerdictReasons = reasons[qi];
+    return {
+      question: q.question,
+      expect: q.expect,
+      correct,
+      runs: outcomes[qi].length,
+      misses,
+      ...(Object.keys(noVerdictReasons).length > 0 && { noVerdictReasons }),
+    };
   });
 
   const receipt: Receipt = {
-    date: new Date().toISOString().slice(0, 10),
+    date: localDate(new Date()),
     fingerprint: classifierFingerprint(),
     model: CLASSIFIER_MODEL,
     runsPerQuestion: RUNS_PER_QUESTION,
@@ -89,7 +114,11 @@ async function main(): Promise<void> {
   appendFileSync(RECEIPT_LOG, `${JSON.stringify(receipt)}\n`);
 
   process.stdout.write(`${renderReceipt(receipt)}\n\n`);
-  for (const [reason, n] of reasons) process.stdout.write(`no verdict ×${n}: ${reason}\n`);
+  for (const [qi, byReason] of reasons.entries()) {
+    for (const [reason, n] of Object.entries(byReason)) {
+      process.stdout.write(`no verdict ×${n} (${QUESTIONS[qi].question}): ${reason}\n`);
+    }
+  }
   process.stdout.write(`receipt appended to ${RECEIPT_LOG} — commit it, pass or fail\n`);
   if (!receipt.passed) process.exit(1);
 }
