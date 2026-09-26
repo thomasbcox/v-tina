@@ -203,7 +203,7 @@ Separately: the classification deadline is not in the fingerprint, though every 
 - frame/9 — AC6, AC1, AC3 demonstrated red; AC2 not demonstrable red — its ratified regression, the ratified replacement and the ratified combined break all failed to bite, because the classifier's remaining instructions still decline every control (reasons in Build results); final real run passed at the 10 s deadline, gate green
 - review/6 — ran (codex on glm-latest, 3 findings) → reviews/oregon-default-jurisdiction.approach.b912bb7.json
 - review/8 — ran (codex: deepseek-pro-latest correctness / kimi-latest hidden-failure, 2 / 1 findings; doc-drift shadow: trial closed) → reviews/oregon-default-jurisdiction.correctness.b912bb7.json, reviews/oregon-default-jurisdiction.hidden-failure.b912bb7.json
-- close/3b — not yet reached
+- close/3b — no activation — `./install.sh --check` n/a (this repo ships none); no guard-hook block observed this session; the review runner refused no result this session (it promoted every artifact; the approach pass's one REACH line was a reported read-only false alarm, and the doc-drift trial's closure is its expected cap, not a refusal). `.aar/rejected-lessons.md` does not exist; searched, none.
 - close/4 — not yet reached
 
 ## Open questions
@@ -450,3 +450,26 @@ and the correctness pass ran in the same round.
    measures.
 
 **Doc-drift shadow:** trial closed; no verdicts file this round.
+
+## Fixes (2026-09-25, round b912bb7)
+
+1. **Fingerprint omits routing settings.** `classifierFingerprint()` now also covers
+   `CLASSIFY_MAX_TOKENS`, `RETRY_MAX_ATTEMPTS` and `RETRY_BASE_MS`. The live classifier is untouched.
+2. **Impossible counts.** The receipt schema refines each result: correct plus misses must equal runs,
+   and recorded causes must equal the non-verdicts. A test feeds it an impossible receipt and a
+   mismatched one; both are refused.
+3. **README containment.** The published receipt sits between `<!-- classifier-receipt:start -->` and
+   `<!-- classifier-receipt:end -->`, and the test requires exact equality there. Checked: a stray row
+   inside the markers fails it.
+4. **Off-vocabulary and error verdicts credited on controls.** A non-verdict is now `timeout` when the
+   call used the whole classification deadline (judged by elapsed time, not error wording) and
+   `no verdict` otherwise; only `timeout` earns decline credit on a control. Each non-verdict's stated
+   cause is kept in the receipt (`noVerdictReasons`). A test pins the crediting. Older receipts, which
+   recorded every non-verdict as `no verdict`, still parse; they are history, never the judged one.
+5. **UTC date.** Receipts carry the operator's local date.
+6. **Failed start.** The claim now reads "every run that measures appends a receipt", in the script
+   header, the questions module and the README.
+
+The fingerprint changed, so a fresh run was required: passed, published between the markers, gate
+green (372 tests).
+
