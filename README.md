@@ -304,7 +304,7 @@ table applies that rule.
 These rates describe only the listed questions, as worded, not every question of their kind.
 
 <!-- classifier-receipt:start -->
-Measured **2026-09-25** on `accounts/fireworks/models/gpt-oss-120b`, fingerprint `755072b1b3ea`, 20 runs per question — **passed**.
+Measured **2026-09-25** on `accounts/fireworks/models/gpt-oss-120b`, fingerprint `a8674e61d746`, 20 runs per question — **passed**.
 
 | Question | Must be | Correct | Counted | Needed | Other outcomes | Meets |
 |---|---|---|---|---|---|---|
