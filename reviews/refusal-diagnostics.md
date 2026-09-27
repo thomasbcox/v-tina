@@ -193,10 +193,48 @@ They are flagged to Thomas with the approval record, and not reviewed by the des
 | R7 / AC7 | Small | *Builder's own.* The opening is compared without normalising one side, so a record opening that the model line-wrapped fails the check and is cut. The diagnosis FEAT-3 exists for is then lost on exactly its own case. | Written after approval; flagged to Thomas. |
 | R7 / AC7 | Small | *Builder's own.* The quotation field is cut, but the whole text still rides in the entry: kept to compute its length, or left in a second field. | Written after approval; flagged to Thomas. |
 
+### Build results (2026-09-27, commit 4b408ab)
+
+**Where each criterion is met.**
+
+| AC | Where |
+|---|---|
+| 1, 7 | `refusalEntry` and `REFUSAL_OPENING_CHARS` in `src/lib/voice.ts` (the record and the option-B rule). `refuseQuotation` in `src/lib/chat/orchestrate.ts` logs it as one JSON string. |
+| 2 | Every quotation refusal goes through `refuseQuotation`. The grammar site builds its problem with `violationOf`, and the free-text `refuse` is gone. The only other refusal, `refuseImpersonation`, takes the impersonating form. |
+| 3, 4 | `verifyQuotedSpan` reports `candidates` as `citedAs`, which is now a required list, `[]` when no document was taken. |
+| 5 | `refusalEntry` is handed only the problem and the passage index. |
+| 6 | Unchanged reader path. The refusal still yields only `PROVENANCE_NOTICE`. |
+| 8 | README → *What a refused quotation leaves in the server log*, next to the audit-log note. |
+| 9 | Checked before the review: the diff outside `reviews/` is `README.md`, `__tests__/answer-screen.test.ts`, `__tests__/chat-orchestrate.test.ts`, `__tests__/voice.test.ts`, `src/lib/chat/orchestrate.ts` and `src/lib/voice.ts`. `BACKLOG.md` follows at close. It is re-run at the merge fork. |
+
+**Gate:** passed (typecheck, lint, test). The one lint warning is pre-existing, in
+`__tests__/supabase.test.ts`, which this story does not touch.
+
+**Demonstrate-red.** Each ratified regression was applied on a clean tree (committed first), the
+named test was run, and the change was reverted. Every one went red.
+
+| Regression | Applied as | Red |
+|---|---|---|
+| R1 / AC1 — split across lines | JSON serialised with an indent | AC1 (screen) |
+| R1 / AC1 — generous cap | The whole-quotation branch sliced at 12,000 characters | AC1 (screen) and AC1 (real console) |
+| R2 / AC3 — every named document | `citedAs` from every document named in the window | AC3 (earlier-sentence case) |
+| R2 / AC4 — read a citation, wrote none | `citedAs: []` on the path that read one | AC3 |
+| R2 / AC4 — field absent | `citedAs` dropped from the entry when empty | AC4 |
+| R3 / AC5 — extra field | A constant `context` field added to the entry | AC5 (the field check) |
+| R3 / AC5 — the question inside a documented field | The asked question appended to `quotation` by a wrapping logger | AC5 (the marker check, confirmed from its message; the field check stays green) |
+| R4 / AC6 — another channel | The refused text added to an extra event before the notice | AC6. **The existing AC4 reader tests stayed green**, which is the gap the amendment closed. |
+| R5 / AC2 — old form on an existing path | The mid-answer grammar site reverted to a free-text log line | AC2. The stated gap (a refusal site that does not exist yet) is unchanged. |
+| AC1 oracle mode — an object to the console | The record handed to the logger as an object | AC1 (real console: not a string) and AC1 (screen) |
+| R7 / AC7 — opening compared unnormalised | The shortening rule skips `normalise` | AC7 (the line-wrapped unterminated case) |
+| R7 / AC7 — whole text rides elsewhere | A `full` field carrying the whole quotation | AC7 (the invented opening). AC5 stays green, because its quotation is short enough to keep whole. |
+
+**Not demonstrated, by decision:** R6 is a stated limit with no check. The AC2 "read alike"
+regression was rejected. AC8 (reviewer) and AC9 (manual) are judged by a person.
+
 ## Loop record
 
 - frame/6 — ran (codex on kimi-latest, 3 findings, 10 regressions) → reviews/refusal-diagnostics.design.655b822.json
-- frame/9 — not yet reached
+- frame/9 — demonstrated red: every ratified regression on a sized criterion (AC1–AC7), 12 runs, each red on its named test and reverted; build commit 4b408ab
 - review/6 — not yet reached
 - review/8 — not yet reached
 - close/3b — not yet reached
