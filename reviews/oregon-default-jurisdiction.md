@@ -204,7 +204,7 @@ Separately: the classification deadline is not in the fingerprint, though every 
 - review/6 — n/a — round 371ef32 is a re-review verifying approved fixes (base 641f45c, no redesign last round): correctness only. Round b912bb7's approach pass → reviews/oregon-default-jurisdiction.approach.b912bb7.json
 - review/8 — ran round 371ef32 (codex: deepseek-flash-latest correctness — routed deepseek-pro-latest did not answer, twice, and failed `--probe-codex-routes`; overridden for this shell via CLAUDE_CODEX_ROUTE_CORRECTNESS — / kimi-latest hidden-failure, 4 / 0 findings; doc-drift shadow: trial closed) → reviews/oregon-default-jurisdiction.correctness.371ef32.json, reviews/oregon-default-jurisdiction.hidden-failure.371ef32.json
 - close/3b — activation, nothing new — `./install.sh --check` n/a (this repo ships none); no guard-hook block observed this session. The review runner refused to promote the round 371ef32 correctness critic twice (codex exited 1: the routed model deepseek-pro-latest was not answering, confirmed by `--probe-codex-routes`). Not novel: a flaky route and its remedy are documented (the `CLAUDE_CODEX_ROUTE_<PURPOSE>` override and `--probe-codex-routes`, `BACKLOG.md` OPS-64 in the workflow's backlog per the review skill), and re-running only the refused critic is this repo's AAR-1, already filed. `.aar/rejected-lessons.md` does not exist; searched, none. No proposal.
-- close/4 — presented: re-review or merge after the round b912bb7 fixes (no redesign). Thomas chose **re-review** (invoked `/review`).
+- close/4 — presented twice. After round b912bb7's fixes: re-review or merge — Thomas chose **re-review**. After round 371ef32's fixes: re-review or merge — Thomas chose **merge** (2026-09-26).
 
 ## Open questions
 
