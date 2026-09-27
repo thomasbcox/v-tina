@@ -195,18 +195,6 @@ They are flagged to Thomas with the approval record, and not reviewed by the des
 
 ### Build results (2026-09-27, commit 4b408ab)
 
-**Where each criterion is met.**
-
-| AC | Where |
-|---|---|
-| 1, 7 | `refusalEntry` and `REFUSAL_OPENING_CHARS` in `src/lib/voice.ts` (the record and the option-B rule). `refuseQuotation` in `src/lib/chat/orchestrate.ts` logs it as one JSON string. |
-| 2 | Every quotation refusal goes through `refuseQuotation`. The grammar site builds its problem with `violationOf`, and the free-text `refuse` is gone. The only other refusal, `refuseImpersonation`, takes the impersonating form. |
-| 3, 4 | `verifyQuotedSpan` reports `candidates` as `citedAs`, which is now a required list, `[]` when no document was taken. |
-| 5 | `refusalEntry` is handed only the problem and the passage index. |
-| 6 | Unchanged reader path. The refusal still yields only `PROVENANCE_NOTICE`. |
-| 8 | README → *What a refused quotation leaves in the server log*, next to the audit-log note. |
-| 9 | Checked before the review: the diff outside `reviews/` is `README.md`, `__tests__/answer-screen.test.ts`, `__tests__/chat-orchestrate.test.ts`, `__tests__/voice.test.ts`, `src/lib/chat/orchestrate.ts` and `src/lib/voice.ts`. `BACKLOG.md` follows at close. It is re-run at the merge fork. |
-
 **Gate:** passed (typecheck, lint, test). The one lint warning is pre-existing, in
 `__tests__/supabase.test.ts`, which this story does not touch.
 
@@ -370,3 +358,17 @@ today.
 never handed the question or the history, and the builder does not widen its parameters to get
 them. The README states the entry's fields, the shortening rule, and the remaining exposure next to
 the audit-log note. It names the opening-length constant rather than restating its value.
+
+## Build note (2026-09-27)
+
+Where each criterion is met, at build commit 4b408ab.
+
+| AC | Where |
+|---|---|
+| 1, 7 | `refusalEntry` and `REFUSAL_OPENING_CHARS` in `src/lib/voice.ts` (the record and the option-B rule). `refuseQuotation` in `src/lib/chat/orchestrate.ts` logs it as one JSON string. |
+| 2 | Every quotation refusal goes through `refuseQuotation`. The grammar site builds its problem with `violationOf`, and the free-text `refuse` is gone. The only other refusal, `refuseImpersonation`, takes the impersonating form. |
+| 3, 4 | `verifyQuotedSpan` reports `candidates` as `citedAs`, which is now a required list, `[]` when no document was taken. |
+| 5 | `refusalEntry` is handed only the problem and the passage index. |
+| 6 | Unchanged reader path. The refusal still yields only `PROVENANCE_NOTICE`. |
+| 8 | README → *What a refused quotation leaves in the server log*, next to the audit-log note. |
+| 9 | Checked before the review: the diff outside `reviews/` is `README.md`, `__tests__/answer-screen.test.ts`, `__tests__/chat-orchestrate.test.ts`, `__tests__/voice.test.ts`, `src/lib/chat/orchestrate.ts` and `src/lib/voice.ts`. `BACKLOG.md` follows at close. It is re-run at the merge fork. |
