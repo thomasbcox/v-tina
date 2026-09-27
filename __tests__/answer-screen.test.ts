@@ -14,8 +14,13 @@ import {
   CADENCE_TARGET_WORDS,
   DISPLAY_FRAME,
   IMPERSONATION_FORMS,
+  REFUSAL_OPENING_CHARS,
   checkCadence,
+  normalise,
+  type RefusalEntry,
+  type UnverifiedQuotation,
 } from "../src/lib/voice";
+import { ANSWER_MAX_TOKENS } from "../src/lib/chat/deps";
 import captured from "./fixtures/answer-stream.json";
 
 const O = "“";
@@ -432,5 +437,169 @@ describe("AC9 — the reader-facing notices keep their load-bearing content", ()
     for (const text of [GROUNDED_DEFERRAL, PROVENANCE_NOTICE]) {
       expect(AVATAR_FRAME.some((f) => text.toLowerCase().includes(f))).toBe(true);
     }
+  });
+});
+
+/**
+ * FEAT-3 (story `refusal-diagnostics`): a refusal's server log entry is enough to tell
+ * what was wrong with the quotation. The line it replaced kept a quotation's first 60
+ * characters, so a quotation that left the record after them could not be diagnosed
+ * from a live run. Nothing here changes what the reader receives.
+ */
+describe("FEAT-3 — a refused quotation's log entry is enough to diagnose it", () => {
+  const REFUSED = "answer refused on provenance";
+  const SB = "SB 1537 (2024): An Act relating to housing";
+
+  function passage(documentTitle: string, content: string): RetrievedPolicyChunk {
+    return { ...PASSAGES[0], id: documentTitle, content, source: { ...PASSAGES[0].source, documentTitle } };
+  }
+  const TWO_DOCS = [
+    ...PASSAGES,
+    passage(SB, "The Department shall provide capacity and support for infrastructure planning."),
+  ];
+
+  /** Streams `pieces` through the screen; returns what the reader got and every log line. */
+  async function screened(pieces: string[], chunks: RetrievedPolicyChunk[] = TWO_DOCS) {
+    const events: ChatStreamEvent[] = [];
+    const logged: Array<[string, unknown]> = [];
+    for await (const e of screenedAnswer(from(pieces), chunks, (c, v) => logged.push([c, v]))) events.push(e);
+    return { events, logged };
+  }
+
+  /** The refusal's log entry — after checking there is exactly one, as one string on one
+   *  line — and parsed. The old free-text form does not parse, so it fails here. */
+  function entryOf(logged: Array<[string, unknown]>): RefusalEntry {
+    const refusals = logged.filter(([context]) => context === REFUSED);
+    expect(refusals, "one log entry per refusal").toHaveLength(1);
+    const [, value] = refusals[0];
+    expect(typeof value, "the entry reaches the logger as one string").toBe("string");
+    expect(value as string, "no line break splits the entry").not.toMatch(/[\r\n]/);
+    return JSON.parse(value as string) as RefusalEntry;
+  }
+
+  /** What the reader received must hold no refused words, in ANY event, and must carry
+   *  the provenance notice as before. */
+  function expectReaderUnaffected(events: ChatStreamEvent[], refused: string, label: string) {
+    expect(JSON.stringify(events), `${label}: no refused words reach the reader in any event`).not.toContain(refused);
+    expect(said(events), label).toContain(PROVENANCE_NOTICE);
+  }
+
+  /**
+   * A quotation the record's opening begins and the model then leaves, as long as an
+   * answer can be: sized from the answer's own token budget, so a cap below what an
+   * answer holds is caught — and past the console's 10,000-character cut, which an
+   * object logged to it would suffer.
+   */
+  const LONG_TAIL = "and a clause the record never had";
+  const LONG_RECORD = Array.from({ length: ANSWER_MAX_TOKENS / 4 }, (_, i) => `clause ${i} applies`).join(", ");
+  const LONG = `${LONG_RECORD.slice(0, ANSWER_MAX_TOKENS * 4 - LONG_TAIL.length - 1)} ${LONG_TAIL}`;
+  const LONG_PASSAGES = [passage(EO, LONG_RECORD)];
+
+  /** An opening the record does not hold, running past the kept opening to a marked tail. */
+  const INVENTED = "an opening sentence found nowhere in the record, which runs well past its opening to QX-TAIL-7";
+
+  it("AC1 — keeps the whole of a quotation that opens in the record and leaves it later, however long", async () => {
+    expect(LONG.length, "past the console's own 10,000-character cut").toBeGreaterThan(10_000);
+    expect(LONG_RECORD, "the quotation opens with the record's words").toContain(LONG.slice(0, REFUSAL_OPENING_CHARS));
+    const { logged } = await screened(
+      [`${frame}, the record is clear. `, `Under EO 23-02: ${O}`, LONG, `${C}. That is the position.`],
+      LONG_PASSAGES,
+    );
+    const entry = entryOf(logged);
+    expect(entry.quotation, "the whole quotation, to its last word").toBe(LONG);
+    expect(entry.quotation.endsWith(LONG_TAIL)).toBe(true);
+    expect(entry.shortened).toBeNull();
+  });
+
+  /**
+   * One refusal per reason the screen refuses on, each down both paths: a quotation in
+   * the opening, and one after it. **Keyed by the declared reason type**, so a reason
+   * added to the screen fails the typecheck until it has a case here.
+   */
+  type Refusing = Exclude<UnverifiedQuotation["reason"], "no-citation">;
+  const REFUSING: { readonly [R in Refusing]: { readonly text: string; readonly words: string } } = {
+    "not-in-cited-document": {
+      text: `Under SB 1537: ${O}do hereby order that the State address${C}. Done.`,
+      words: "do hereby order that the State address",
+    },
+    "not-in-any-passage": {
+      text: `Under EO 23-02: ${O}a 13% rise in unsheltered homelessness${C}. Done.`,
+      words: "a 13% rise",
+    },
+    elided: { text: `Under EO 23-02: ${O}NOW, THEREFORE … do hereby order${C}. Done.`, words: "do hereby order" },
+    "quote-mark-delimiter": { text: 'Under EO 23-02: "a 13% rise". Done.', words: "a 13% rise" },
+    unterminated: { text: `Under EO 23-02: ${O}a 13% rise that never closes`, words: "a 13% rise" },
+  };
+  const PATHS = {
+    "in the opening": (text: string) => [`${frame}, ${text}`],
+    "after the opening": (text: string) => [`${frame}, the record is clear. `, text],
+  };
+
+  it("AC2 — names the check that refused it, on every refusal path", async () => {
+    for (const [path, answer] of Object.entries(PATHS)) {
+      for (const [reason, { text }] of Object.entries(REFUSING)) {
+        const entry = entryOf((await screened(answer(text))).logged);
+        expect(entry.check, `${reason}, ${path}`).toBe(reason);
+      }
+    }
+  });
+
+  it("AC3 — names every document the quotation was checked against, and no other", async () => {
+    const quoted = `${O}a 13% rise in unsheltered homelessness${C}. Done.`;
+    // Both named in the quotation's sentence, and neither holds the words: both were tested.
+    const both = entryOf((await screened([`${frame}, the record is clear. `, `Unlike EO 23-02, Senate Bill 1537 provides: ${quoted}`])).logged);
+    expect([...both.citedAs].sort()).toEqual([EO, SB].sort());
+    // Named in an earlier sentence: that document was deliberately NOT tested.
+    const earlier = entryOf((await screened([`${frame}, the record is clear. `, `EO 23-02 declared it. Senate Bill 1537 provides: ${quoted}`])).logged);
+    expect(earlier.citedAs).toEqual([SB]);
+  });
+
+  it("AC4 — says no document was taken as the citation when none was", async () => {
+    for (const text of [
+      `It says ${O}a 13% rise in unsheltered homelessness${C}. Done.`, // nothing named
+      REFUSING.elided.text, // refused before any citation is read
+    ]) {
+      const entry = entryOf((await screened([`${frame}, the record is clear. `, text])).logged);
+      expect(entry, text).toHaveProperty("citedAs");
+      expect(entry.citedAs, text).toEqual([]);
+    }
+  });
+
+  it("AC6 — the reader receives the provenance notice and none of the refused words", async () => {
+    for (const [path, answer] of Object.entries(PATHS)) {
+      for (const [reason, { text, words }] of Object.entries(REFUSING)) {
+        const { events } = await screened(answer(text));
+        expectReaderUnaffected(events, words, `${reason}, ${path}`);
+      }
+    }
+    const long = await screened([`${frame}, the record is clear. `, `Under EO 23-02: ${O}${LONG}${C}. Done.`], LONG_PASSAGES);
+    expectReaderUnaffected(long.events, LONG_TAIL, "AC1's long quotation");
+    const invented = await screened([`${frame}, the record is clear. `, `Under EO 23-02: ${O}${INVENTED}${C}. Done.`]);
+    expectReaderUnaffected(invented.events, "QX-TAIL-7", "AC7's invented opening");
+  });
+
+  it("AC7 — keeps only the opening of a quotation whose opening is not the record's", async () => {
+    expect(INVENTED.length).toBeGreaterThan(REFUSAL_OPENING_CHARS);
+    const { logged } = await screened([`${frame}, the record is clear. `, `Under EO 23-02: ${O}${INVENTED}${C}. Done.`]);
+    const entry = entryOf(logged);
+    expect(entry.quotation).toBe(INVENTED.slice(0, REFUSAL_OPENING_CHARS));
+    expect(entry.shortened).toEqual({ fullLength: INVENTED.length, because: "opening-not-in-passages" });
+    const raw = logged.find(([context]) => context === REFUSED)?.[1] as string;
+    expect(raw, "nothing past the opening rides anywhere in the entry").not.toContain("QX-TAIL-7");
+    expect(raw).not.toContain(INVENTED.slice(REFUSAL_OPENING_CHARS));
+  });
+
+  it("AC7 — an opening the model line-wrapped is still the record's, and is kept whole", async () => {
+    const wrapped =
+      "NOW, THEREFORE, I, TINA KOTEK,\n   Governor of the State of Oregon, do hereby order that the State address a need the record never named";
+    // Closed: the verifier's span is already normalised.
+    const closed = entryOf((await screened([`${frame}, the record is clear. `, `Under EO 23-02: ${O}${wrapped}${C}. Done.`])).logged);
+    expect(closed.shortened).toBeNull();
+    expect(closed.quotation).toBe(normalise(wrapped));
+    // Never closed: the violation's text is as the model wrote it, line break and all.
+    const open = entryOf((await screened([`${frame}, the record is clear. `, `Under EO 23-02: ${O}${wrapped}`])).logged);
+    expect(open.check).toBe("unterminated");
+    expect(open.shortened).toBeNull();
+    expect(open.quotation).toBe(`${O}${wrapped}`);
   });
 });

@@ -1,7 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { ChatStreamEvent, RetrievedPolicyChunk } from "../src/types";
 import type { ChatMessage } from "../src/lib/fireworks";
-import { GROUNDED_DEFERRAL, OREGON_PORTAL_URL, ANSWER_SYSTEM_PROMPT } from "../src/lib/prompts";
+import {
+  GROUNDED_DEFERRAL,
+  OREGON_PORTAL_URL,
+  ANSWER_SYSTEM_PROMPT,
+  PROVENANCE_NOTICE,
+} from "../src/lib/prompts";
+import { DISPLAY_FRAME } from "../src/lib/voice";
 import { SAFETY_CLASSIFICATIONS, type ClassificationResult } from "../src/lib/safety";
 import { orchestrateChat, type ChatDeps } from "../src/lib/chat/orchestrate";
 import type { ChatRequestBody } from "../src/lib/chat/request";
@@ -389,5 +395,74 @@ describe("a reader who disconnects stops every call made for them", () => {
       expect(stage in seen, `${stage} must run for a connected reader`).toBe(true);
     }
     expect(kinds(events)).toContain("audit_log_status");
+  });
+});
+
+/**
+ * FEAT-3 (story `refusal-diagnostics`), through the whole exchange: what a refusal's log
+ * entry holds is decided here, where the reader's question and conversation exist. The
+ * screen-level criteria are in answer-screen.test.ts.
+ */
+describe("FEAT-3 — a refusal's log entry, through the whole exchange", () => {
+  const REFUSED = "answer refused on provenance";
+  const refusing = (quoted: string) => `${DISPLAY_FRAME}, the record is clear. Under EO 21-01: \u201c${quoted}\u201d. Done.`;
+  const provenanceRefused = (events: ChatStreamEvent[]) =>
+    events.some((e) => e.type === "streamed_tokens" && e.text === PROVENANCE_NOTICE);
+
+  it("AC5 — holds none of the question, its rewrite, or the conversation", async () => {
+    const MARK = "ZEBRA-7741";
+    const REWRITE = "a neutral restatement QUOKKA-5512";
+    const history: ChatRequestBody["messages"] = [
+      { role: "user", content: `Earlier I asked about ${MARK}.` },
+      { role: "assistant", content: `An earlier reply that repeats ${MARK}.` },
+    ];
+    for (const classification of ["IN-BOUNDS", "PARTISAN-TRAP"] as const) {
+      const logged: Array<[string, unknown]> = [];
+      const r = recorder({
+        classify: async () => ({ ok: true, classification }),
+        rewrite: async () => REWRITE,
+        answer: async function* () {
+          yield refusing("a clause the record never had");
+        },
+        logError: (context, value) => logged.push([context, value]),
+      });
+      const events = await collect(r.deps, ask(`What about ${MARK}?`, history));
+      expect(provenanceRefused(events), classification).toBe(true);
+      if (classification === "PARTISAN-TRAP") expect(events[0]).toMatchObject({ neutralisedQuestion: REWRITE });
+
+      const refusals = logged.filter(([context]) => context === REFUSED);
+      expect(refusals, classification).toHaveLength(1);
+      const entry = refusals[0][1] as string;
+      expect(entry, `${classification}: the question and conversation`).not.toContain(MARK);
+      expect(entry, `${classification}: the rewrite`).not.toContain("QUOKKA-5512");
+      // The fields the README documents, and no others: a "context" field added later
+      // would carry the reader's words past the marker checks above.
+      expect(Object.keys(JSON.parse(entry)).sort(), classification).toEqual(["check", "citedAs", "quotation", "shortened"]);
+    }
+  });
+
+  it("AC1 — the real default logger receives the whole record as one string", async () => {
+    const tail = "and a clause the record never had";
+    const record = Array.from({ length: 700 }, (_, i) => `clause ${i} applies`).join(", ");
+    const quoted = `${record} ${tail}`;
+    expect(quoted.length, "past the console's own 10,000-character cut").toBeGreaterThan(10_000);
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const r = recorder({
+        retrieve: async () => [chunk(1, record)],
+        answer: async function* () {
+          yield refusing(quoted);
+        },
+        logError: undefined,
+      });
+      await collect(r.deps, ask("What does the order say?"));
+      const calls = spy.mock.calls.filter(([context]) => context === REFUSED);
+      expect(calls).toHaveLength(1);
+      expect(calls[0], "the context label and one value").toHaveLength(2);
+      expect(typeof calls[0][1], "a string, which the console prints as it is").toBe("string");
+      expect(JSON.parse(calls[0][1] as string).quotation, "the whole quotation, to its last word").toBe(quoted);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

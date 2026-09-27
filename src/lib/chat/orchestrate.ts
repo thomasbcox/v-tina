@@ -14,14 +14,17 @@ import {
   indexPassages,
   lex,
   rawOf,
+  refusalEntry,
   scanCadence,
   screenOpening,
   verifyQuotations,
   verifyQuotedSpan,
+  violationOf,
   type CadenceState,
   type OpeningVerdict,
   type LexResult,
   type LexResume,
+  type UnverifiedQuotation,
 } from "../voice";
 import type { ClassificationResult } from "../safety";
 import type { ChatMessage } from "../fireworks";
@@ -355,10 +358,28 @@ export async function* screenedAnswer(
     yield { type: "streamed_tokens", text };
   }
 
-  function* refuse(why: string): Generator<ChatStreamEvent> {
+  /** Stops the answer with the provenance notice. Called only through the two refusals
+   *  below, so a quotation refusal cannot log anything but its record. */
+  function* stop(logged: string): Generator<ChatStreamEvent> {
     refused = true;
-    log("answer refused on provenance", why);
+    log("answer refused on provenance", logged);
     yield { type: "streamed_tokens", text: PROVENANCE_NOTICE };
+  }
+
+  /**
+   * Refuses on a quotation, logging `refusalEntry`'s record — what failed, the quotation,
+   * the documents it was checked against — as **one JSON string**. Not an object: the
+   * default logger is `console.error`, which prints a string as it is but formats an
+   * object with `util.inspect`, cutting any string past 10,000 characters — the
+   * truncation this record replaced, at a larger size. JSON also escapes line breaks,
+   * so a line-based log collector keeps the record as one entry.
+   */
+  function* refuseQuotation(problem: UnverifiedQuotation): Generator<ChatStreamEvent> {
+    yield* stop(JSON.stringify(refusalEntry(problem, passages)));
+  }
+
+  function* refuseImpersonation(form: string, when: string): Generator<ChatStreamEvent> {
+    yield* stop(`opening impersonated ("${form}") ${when}`);
   }
 
   /** Releases an opening that has ALREADY screened clean — `ok`, or `missing-frame`,
@@ -368,7 +389,7 @@ export async function* screenedAnswer(
     const text = verdict.kind === "missing-frame" ? framed(opening) : opening;
     const bad = verifyQuotations(text, passages).filter((b) => b.reason !== "no-citation");
     if (bad.length > 0) {
-      yield* refuse(`quotation ${bad[0].reason}: ${bad[0].text.slice(0, 60)}`);
+      yield* refuseQuotation(bad[0]);
       return false;
     }
     cadence = cadenceAfter(text);
@@ -447,7 +468,7 @@ export async function* screenedAnswer(
       const verdict = screenOpening(candidate);
       if (verdict.kind === "impersonates") {
         if (final && released + split >= buf.length) {
-          yield* refuse(`opening impersonated ("${verdict.form}") and could not be repaired`);
+          yield* refuseImpersonation(verdict.form, "and could not be repaired");
           return;
         }
         log("impersonating opening dropped", verdict.form);
@@ -468,12 +489,12 @@ export async function* screenedAnswer(
         released = yield* releaseProse(start, end, final);
         if (released < end) return;
       } else if (t.kind === "violation") {
-        yield* refuse(`grammar: ${t.reason}`);
+        yield* refuseQuotation(violationOf(t));
         return;
       } else {
         const problem = verifyQuotedSpan(t.text, context, passages);
         if (problem && problem.reason !== "no-citation") {
-          yield* refuse(`quotation ${problem.reason}: ${problem.text.slice(0, 60)}`);
+          yield* refuseQuotation(problem);
           return;
         }
         if (problem) log("quotation released without a detected citation", problem.text.slice(0, 60));
@@ -512,7 +533,7 @@ export async function* screenedAnswer(
       if (verdict === undefined) {
         // Nothing screened clean before the failure; the notice stands alone.
       } else if (verdict.kind === "impersonates") {
-        yield* refuse(`opening impersonated ("${verdict.form}") when generation failed`);
+        yield* refuseImpersonation(verdict.form, "when generation failed");
       } else {
         yield* releaseOpening(candidate, verdict);
       }
