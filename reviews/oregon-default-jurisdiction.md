@@ -518,3 +518,16 @@ reverse mislabel lands in "no verdict", a miss everywhere — the strict directi
 
 Trial closed; nothing ran.
 
+
+## Decisions (2026-09-26, round 371ef32)
+
+Thomas: "fix 1, 2 and 4, reject 3".
+
+1. Correctness NIT, `expect` trusted — **fix**: compare question and expectation pairs with the code's list.
+2. Correctness NIT, `runs` not tied to `runsPerQuestion` — **fix**: a receipt-level refinement.
+3. Correctness NIT, timeout inferred from elapsed time — **reject**. The hidden-failure critic found the
+   clock can err only in the strict direction, and the alternative changes the production classifier's
+   result type, outside this story's shape.
+4. Correctness NIT, "a test holds three things" — **fix**: name the kinds, drop the number.
+
+Hidden-failure: no findings. Doc-drift shadow: trial closed.
