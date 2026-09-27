@@ -223,7 +223,7 @@ regression was rejected. AC8 (reviewer) and AC9 (manual) are judged by a person.
 
 - frame/6 — ran (codex on kimi-latest, 3 findings, 10 regressions) → reviews/refusal-diagnostics.design.655b822.json
 - frame/9 — demonstrated red: every ratified regression on a sized criterion (AC1–AC7), 12 runs, each red on its named test and reverted; build commit 4b408ab
-- review/6 — stopped twice, round c5252f4, no artifact: codex on glm-latest, "cannot read codex's event stream" (a format stop, not a fabrication) — 8 unreadable lines, then 2 on the one rerun; put to Thomas 2026-09-27
+- review/6 — stopped three times, round c5252f4, no artifact: codex on glm-latest, "cannot read codex's event stream" (a format stop, not a fabrication) — 8 unreadable lines, then 2 on the one rerun, then 8 on a third run at Thomas's request; a trivial probe of the same slug answered with a readable stream, so it fails only on full runs; put to Thomas 2026-09-27
 - review/8 — not yet reached
 - close/3b — not yet reached
 - close/4 — not yet reached
