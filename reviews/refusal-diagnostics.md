@@ -224,7 +224,7 @@ regression was rejected. AC8 (reviewer) and AC9 (manual) are judged by a person.
 - frame/6 — ran (codex on kimi-latest, 3 findings, 10 regressions) → reviews/refusal-diagnostics.design.655b822.json
 - frame/9 — demonstrated red: every ratified regression on a sized criterion (AC1–AC7), 12 runs, each red on its named test and reverted; build commit 4b408ab
 - review/6 — ran (codex on deepseek-flash-latest by Thomas's session-only override of the glm-latest route, 3 findings, 21 commands, 0 REACH) → reviews/refusal-diagnostics.approach.c5252f4.json. Before it, glm-latest stopped three times on round c5252f4 with "cannot read codex's event stream" (a format stop, not a fabrication: 8, 2 and 8 unreadable lines), while a trivial probe of glm-latest answered with a readable stream
-- review/8 — not yet reached
+- review/8 — round c5252f4 incomplete: correctness STOPPED (codex on deepseek-flash-latest by Thomas's session-only override; "cannot read codex's event stream", 2 unreadable lines — a format stop, no artifact); hidden-failure ran (codex on kimi-latest, 0 findings, 22 commands) → reviews/refusal-diagnostics.hidden-failure.c5252f4.json; doc-drift shadow: trial closed. Put to Thomas 2026-09-27
 - close/3b — not yet reached
 - close/4 — not yet reached
 
