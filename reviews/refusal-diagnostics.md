@@ -223,7 +223,7 @@ regression was rejected. AC8 (reviewer) and AC9 (manual) are judged by a person.
 
 - frame/6 — ran (codex on kimi-latest, 3 findings, 10 regressions) → reviews/refusal-diagnostics.design.655b822.json
 - frame/9 — demonstrated red: every ratified regression on a sized criterion (AC1–AC7), 12 runs, each red on its named test and reverted; build commit 4b408ab
-- review/6 — stopped three times, round c5252f4, no artifact: codex on glm-latest, "cannot read codex's event stream" (a format stop, not a fabrication) — 8 unreadable lines, then 2 on the one rerun, then 8 on a third run at Thomas's request; a trivial probe of the same slug answered with a readable stream, so it fails only on full runs; put to Thomas 2026-09-27
+- review/6 — ran (codex on deepseek-flash-latest by Thomas's session-only override of the glm-latest route, 3 findings, 21 commands, 0 REACH) → reviews/refusal-diagnostics.approach.c5252f4.json. Before it, glm-latest stopped three times on round c5252f4 with "cannot read codex's event stream" (a format stop, not a fabrication: 8, 2 and 8 unreadable lines), while a trivial probe of glm-latest answered with a readable stream
 - review/8 — not yet reached
 - close/3b — not yet reached
 - close/4 — not yet reached
@@ -372,3 +372,43 @@ Where each criterion is met, at build commit 4b408ab.
 | 6 | Unchanged reader path. The refusal still yields only `PROVENANCE_NOTICE`. |
 | 8 | README → *What a refused quotation leaves in the server log*, next to the audit-log note. |
 | 9 | Checked before the review: the diff outside `reviews/` is `README.md`, `__tests__/answer-screen.test.ts`, `__tests__/chat-orchestrate.test.ts`, `__tests__/voice.test.ts`, `src/lib/chat/orchestrate.ts` and `src/lib/voice.ts`. `BACKLOG.md` follows at close. It is re-run at the merge fork. |
+
+## Codex (deepseek-flash-latest) approach review (2026-09-27, base main, HEAD ed31215)
+
+**Ran below the loop's normal strength, by Thomas's choice.** The approach route (`glm-latest`) stopped
+three times on this round with an unreadable event stream, and Thomas chose to run this review on
+`deepseek-flash-latest` for this session only, through the runner's per-shell override. The routing
+file is unchanged. It is the only model outside the Kimi and GLM families that answers on this
+account. On 2026-09-26 Thomas judged it too small for line-level review, and this is its first full
+review here. HEAD `ed31215` differs from the round's `c5252f4` only in this file's loop record.
+
+**Verdict:** it would build it this way.
+- One pure record builder, beside the verifier it depends on.
+- One refusal helper per kind, funnelling through a single `stop`.
+- The privacy rule as one predicate and one named constant.
+- One serialisation point, whose reason (the console cutting strings past 10,000 characters) is real
+  and smoke-tested.
+
+Nothing reinvents a dependency, and the declined logging library is declined for a stated cost. None
+of the findings blocks.
+
+**IMPORTANT — the privacy rule's "is this in the record" test is a second copy of the verifier's**
+(two-way × nonstandard). `refusalEntry` re-writes, inline, the passage walk that `verifyQuotedSpan`
+defines as its `inSome`/`inAny` closures. Nothing binds the two copies. If they ever disagree, the
+failure is silent in both of R7's directions:
+- the reader's words are logged whole;
+- a diagnosable refusal is cut.
+
+That is against this module's own doctrine of one definition. *Alternative:* one shared predicate, on
+the passage index or beside it, called by both. *Win:* the privacy boundary and the verifier cannot
+disagree about what "in the record" means.
+
+**NIT — the record builder undoes the lexer's raw form for a violation** (two-way × nonstandard).
+`refusalEntry` strips an unterminated violation's opening mark itself (`problem.text.slice(1)`), which
+is grammar knowledge living outside the grammar. It is correct, commented and tested. *Alternative:*
+give the violation token its words alongside `raw`, as the quotation token already has. *Win:* no
+reason-keyed branch in the record builder.
+
+**NIT — "the two refusals below" is a count in living text** (two-way × standard). The comment on
+`stop` in `src/lib/chat/orchestrate.ts` states how many refusal helpers there are, which goes false
+when one is added. *Alternative:* "the refusal helpers below". *Win:* the comment cannot decay.
