@@ -1,0 +1,37 @@
+{
+  "summary": "Round b912bb7's six fixes are implemented as approved and the load-bearing claims hold up under independent checking: I recomputed the fingerprint from the code (reproducing the previous published value 755072b1b3ea from the pre-fix inputs and the new a8674e61d746 from the fixed ones), rendered the latest receipt and confirmed the README block between `<!-- classifier-receipt:start -->` and `<!-- classifier-receipt:end -->` equals it exactly, confirmed every line of `measurements/classifier-routing.jsonl` parses under the tightened schema with correct+misses equal to runs and causes equal to the non-verdicts, and confirmed scope containment is exact (no path beyond the enumerated set and the review trail). The hidden-failure fix does what it claims — the cause of each non-verdict is now persisted and only deadline misses earn decline credit on a control — and the narrowed start-up claim matches the behaviour. I found no BLOCKER or IMPORTANT defect; the four items below are NIT-level gaps in evidence handling, test derivation and one living-text count. Reviewed at 2026-09-25 20:11 PDT (measured with `date` in this turn).",
+  "findings": [
+    {
+      "severity": "NIT",
+      "title": "A result's own `expect` label is trusted, so a control can be judged at a milder bar",
+      "file": "__tests__/readme-classifier-eval.test.ts",
+      "line": 40,
+      "claim": "The coverage check derives only the question strings from the authoritative list; each result's `expect` — the field that selects PASS_AT, 19 of 20 for `must-answer` versus 20 of 20 for a control — is read from the receipt itself, and nothing else compares it against the code's `EXPECTED_LABEL`. A receipt that relabels a control as `must-answer` therefore passes the fingerprint check, coverage, the threshold recomputation and the README-equality check while the control ships below its ratified bar, which is the same 'trust the artifact rather than derive from the code' gap the round was closing (it is visible in the receipt diff and in the README's Must-be column, so it is not a silent forgery).",
+      "suggestion": "Compare the pair, not just the question: `expect(latest?.results.map((r) => [r.question, r.expect])).toEqual(QUESTIONS.map((q) => [q.question, q.expect]))`."
+    },
+    {
+      "severity": "NIT",
+      "title": "A result's `runs` is never tied to the receipt's `runsPerQuestion`",
+      "file": "scripts/classifier-questions.ts",
+      "line": 197,
+      "claim": "The new refinements tie `correct` plus `misses` to `runs`, and the recorded causes to the non-verdicts, but nothing ties `runs` to the receipt's `runsPerQuestion`. A receipt can declare 20 runs per question and record a result with 25 correct out of 25, which meets its threshold and passes every check — impossible evidence of exactly the kind the round's own docblock says the refinements make unrepresentable.",
+      "suggestion": "Add a receipt-level refinement requiring `r.results.every((q) => q.runs === r.runsPerQuestion)`."
+    },
+    {
+      "severity": "NIT",
+      "title": "The deadline/non-deadline split is inferred from elapsed wall time rather than from the failure itself",
+      "file": "scripts/classifier-eval.ts",
+      "line": 76,
+      "claim": "The bucket (TIMEOUT versus NO_VERDICT) is decided by comparing `Date.now()` around `classify()`, while the cause string is captured independently from the error message, so the two halves of one fact are produced by two mechanisms that can disagree — and the credit rule, which decides whether a control passes, hangs on the clock half. The platform already names the answer: the deadline is this code's own `AbortSignal.timeout(CLASSIFY_DEADLINE_MS)` inside `classify`, so a deadline abort surfaces as an error whose identity distinguishes it without any elapsed-time comparison.",
+      "suggestion": "Have `classify` return a structured failure reason (deadline / transport / unparseable) and derive both the miss bucket and the persisted cause from it; failing that, test the abort error's identity rather than the clock."
+    },
+    {
+      "severity": "NIT",
+      "title": "Living-text count: 'a test holds three things' now undercounts and is the copy the protocol says to delete",
+      "file": "scripts/classifier-questions.ts",
+      "line": 18,
+      "claim": "The module docblock says 'a test holds three things', but the test it names asserts more about the receipt than the three listed — the coverage check, the recomputed threshold check and the 'claim is limited to the listed questions' check are not in the list, and this round added a second describe block to the same file. The number is thus already inaccurate, and it is a count of a set defined elsewhere and free to grow, which the builder protocol's 'Counts are copies' rule (Stated once, assembled per call) places in a dated record only.",
+      "suggestion": "Delete the number and name the kinds, as the surrounding prose already does: a test holds the receipt's fingerprint, that it passed, and the README's publication of it."
+    }
+  ]
+}

@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "gate": "node scripts/gate.mjs",
-    "ingest": "tsx scripts/ingest-corpus.ts"
+    "ingest": "tsx scripts/ingest-corpus.ts",
+    "eval:classifier": "tsx scripts/classifier-eval.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.115.0",

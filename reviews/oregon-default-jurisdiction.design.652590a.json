@@ -1,0 +1,73 @@
+{
+  "verdict": "Yes — I would build it this way: prompt-only change on the request path, the production classifier exercised by an operator script rather than a copied harness, and a fingerprint gate holding the published claim to the code, all matching this repo's own conventions (the readme-* tests, the latency measurement kept out of the gate). Two things keep it from being clean: the gate can go green without any measurement having run (a fresh hash over stale numbers is self-consistent), and the fingerprint covers the prompt and model but not the question set the published numbers depend on. Both are fixable inside the proposed shape.",
+  "findings": [
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "one-way",
+      "standing": "nonstandard",
+      "title": "The gate can pass with no measurement behind it",
+      "locus": "Design sketch — 'Holding the claim to the code'",
+      "claim": "The contract obliges me to ask of this new workflow step: what records that the measurement ran, and what happens if it did not? The sketch's answer is a fingerprint test, but that test compares the README's hash against the code's hash — both of which an operator can regenerate in seconds after a prompt edit without ever running `eval:classifier`. The README's dated numbers are hand-copied from script output, so a fresh fingerprint over stale pass rates is fully self-consistent and the gate goes green while the published reliability describes a router that no longer ships. R4 is the story's own named risk and the proposed mechanism does not close it. I note this matches the repo's existing latency-measurement pattern (readme-latency.test.ts also holds hand-copied figures), so internal consistency argues for it — but this story's measurement is the load-bearing one the backlog demanded be 'measured, not asserted', and it is the second instance of a pattern every future measurement story (the scheduled re-run, User Story 5's suite) will copy, which is what makes it one-way.",
+      "alternative": "Have the eval script emit a dated results artifact (a committed file it writes, not console output a person transcribes), and have the gate test hold the README's result table equal to that artifact's contents — snapshot-style, the standard idiom for 'published text must match generated output'. The script becomes the source of the numbers; editing the prompt and refreshing only the hash can no longer self-consist, because the numbers in the README must equal the numbers the script last wrote.",
+      "win": "Eliminates the measurement-shopping / stale-numbers-with-fresh-hash failure mode entirely — one error path gone, and the 'what records that it ran' question gains a mechanical answer instead of an honour-system one."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "kludgy",
+      "title": "Fingerprint omits the question set it measures",
+      "locus": "Design sketch — 'Holding the claim to the code' (the SHA-256 of CLASSIFIER_MODEL and CLASSIFIER_SYSTEM_PROMPT)",
+      "claim": "The published pass rates depend on three things: the prompt, the model, and the membership of the question set in scripts/classifier-questions.ts. The fingerprint covers the first two only. An operator can drop a flaky control or swap a hard must-answer question for an easy one, re-run, publish improved numbers, and the gate stays green because the fingerprint is unchanged — the invariant is blind to exactly the edit most tempting when a measurement is red. The README test holds the stated thresholds equal to the constants, so thresholds are protected; set membership is the unprotected input.",
+      "alternative": "Fold the question set itself (and the run count) into the fingerprint input — hash the serialised set alongside the prompt and model. One hash then covers everything the published numbers are a function of.",
+      "win": "One invariant centralised instead of two mechanisms (a hash for prompt/model, nothing for the set); the tempting edit becomes a loud gate failure rather than an invisible one, for the cost of one more input to an existing SHA-256."
+    },
+    {
+      "severity": "QUESTION",
+      "reversibility": "two-way",
+      "standing": "standard",
+      "title": "Does the published claim describe the router or fifteen phrasings?",
+      "locus": "Design sketch — 'Proposed questions' and README 'Classifier reliability' section",
+      "claim": "Fixed question sets are standard practice, but the README section will publish pass rates that a reader will naturally take as a property of the classifier ('questions like these are answered 19/20'), while the measurement is strictly a property of these fifteen exact phrasings — the six must-answer questions are the probe's six, iterated against. Nothing in the sketch says how the README frames that, and whether paraphrase variants of the same intents belong in the set is a scope call Thomas should make consciously at the consult, alongside the thresholds in Open question 1.",
+      "alternative": "Either state plainly in the README section that the rates describe the fixed set as listed, or add a small number of held-out paraphrases per intent so the number means something closer to the class. The first costs a sentence; the second costs a few more classifier calls per run.",
+      "win": "The published claim cannot over-read its own evidence — a reader (and a future re-measurer) knows exactly what the number is about, and the decision is made once at consult rather than discovered in a later review round."
+    }
+  ],
+  "regressions": [
+    {
+      "criterion": "R1",
+      "regression": "The controls are a fixed list of seven phrasings. A prompt rule tuned until those exact sentences decline — effectively memorising them — passes 20/20 while a semantically identical rephrasing the operator never tried ('What is the national opioid strategy?') is read as jurisdiction-free and answered as Oregon's. The letter (every listed control declines) holds; the intent (that class of question declines) is unmeasured."
+    },
+    {
+      "criterion": "R2",
+      "regression": "The six must-answer questions are the probe's six, iterated against. A rule broad enough to catch their phrasing — say, treating any question containing a pillar keyword as in-bounds regardless of framing — hits 19/20 on the set while a differently-worded neutral in-pillar question still declines. The published rate describes reliability on the questions that were tuned for, not on neutral in-pillar questions."
+    },
+    {
+      "criterion": "R3",
+      "regression": "The disclosure lands where the letter puts no constraint: the answer opens in the declared frame, answers at length, and only a closing parenthetical mentions the record is Oregon's — or the frame sentence appears but the screen prepends its own, so the reader meets the avatar frame twice. 'The answer says it is Oregon's record' is satisfied while the reader's actual up-front understanding is not."
+    },
+    {
+      "criterion": "R4",
+      "regression": "The prompt is edited, the operator recomputes the fingerprint and pastes it into the README without re-running the measurement, and the gate passes — fresh hash, stale numbers. The letter (fingerprint matches code) holds while the intent (the published rates describe the shipping router) is silently broken, and nothing in the mechanism can see it."
+    },
+    {
+      "criterion": "R5",
+      "regression": "A no-jurisdiction question outside the pillars is read as Oregon's, retrieval returns weakly-related Oregon chunks that clear the similarity threshold, and the answering model composes an answer from them that is genuinely quoted from the record but does not address what was asked. Every grounding rule's letter is honoured — real quotations, real citations — while the reader who should have met the deferral gets a confident non-answer in the Governor's avatar's voice."
+    },
+    {
+      "criterion": "AC1",
+      "regression": "The threshold is met by widening rather than repairing: the reworded tie-break now reads nearly everything without an explicit non-Oregon jurisdiction as in-bounds, so the must-answer set passes trivially — and so do individual-advice or private-life questions that happen not to name a place. The routing counts satisfy the criterion while the change has done far more than move neutral in-pillar questions."
+    },
+    {
+      "criterion": "AC2",
+      "regression": "Twenty-of-twenty is noisy by design, so a control that routes correctly 95% of the time produces a green run about a third of the time. An operator who re-runs the command until it passes and publishes the green run satisfies the letter — a measured result at threshold exists — while the published number describes the luckiest run, not the router."
+    },
+    {
+      "criterion": "AC3",
+      "regression": "The classifier learns 'negative sentiment toward the Governor means PARTISAN-TRAP'. Both attack questions route to the rewrite 20/20, but so does every sincerely critical policy question — the prompt's own 'a critical or sceptical question is still IN-BOUNDS' — which is then silently neutralised rather than answered as asked. No must-answer question in the set is critical, so nothing in the measurement sees it."
+    },
+    {
+      "criterion": "AC6",
+      "regression": "The question set is edited — a flaky control dropped, an easy must-answer swapped in — and the measurement re-run and republished. The fingerprint covers only the prompt and model, so it is unchanged, the gate stays green, and the README's improved numbers describe a set that no longer matches what was originally measured. The letter (fingerprint current, thresholds equal) holds; the intent (the published result is comparable to and as demanding as the claim) does not."
+    }
+  ]
+}

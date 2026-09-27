@@ -1,0 +1,36 @@
+{
+  "verdict": "Local date/time measured with `date`: Thu Sep 24 21:42:32 PDT 2026. The core shape is sound and I would build it the same way: a prompt-only change on the request path, an operator measurement that exercises the production classifier, zod-validated append-only receipts, and a gate that binds the published claim to code. I would not add an eval framework or change the orchestrator. The highest-leverage corrections are to make the evidence invariant match its own claim: fingerprint the full classifier configuration, make the receipt schema prove its arithmetic, and make the README oracle exact rather than containment.",
+  "regressions": [],
+  "findings": [
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "one-way",
+      "standing": "nonstandard",
+      "title": "The reliability fingerprint omits inputs that change routing behavior",
+      "locus": "scripts/classifier-questions.ts:127-137; src/lib/chat/deps.ts:97-115; src/lib/safety.ts:44-56; src/lib/retry.ts:13-18",
+      "claim": "The fingerprint claims to cover everything the receipt's numbers depend on, but the measured classifier also depends on `CLASSIFY_MAX_TOKENS`, the retry attempt count, and the retry backoff base. The repo's own safety comment says a too-small token cap can prevent the label from arriving, and retry timing affects whether a call meets the deadline. Changing those settings can therefore change measured routing while the fingerprint, receipt, and README remain green. This weakens AC6/R4 and establishes an incomplete fingerprint pattern that later measurement stories would copy.",
+      "alternative": "Export one declarative `CLASSIFIER_CONFIG` containing the model, system prompt, deadline, token cap, retry attempts and backoff, question set, run count, concurrency, thresholds, and timeout rule. Have both `createChatDeps().classify` and `classifierFingerprint()` consume that same object, or otherwise include every non-injected classifier setting in the fingerprint.",
+      "win": "Closes a silent staleness path with no new dependency and centralizes the classifier invariant; a token-cap or retry-policy change can no longer ship under old measured rates."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The receipt schema can bless impossible counts",
+      "locus": "scripts/classifier-questions.ts:144-175",
+      "claim": "The zod schema validates field types but not the evidence's basic arithmetic. A result such as `correct: 20`, `runs: 20`, and `misses: { \"no verdict\": 20 }` is self-contradictory, yet it parses and can meet its threshold. The gate recomputes the threshold from counts, but it does not prove that the counts describe the same run. This lets a corrupted or lazily edited receipt pass as valid measurement evidence, contrary to the design's own standard that a lazy shortcut must fail.",
+      "alternative": "Add a zod refinement to each result requiring `correct + sum(Object.values(misses)) === runs`, or store the outcome list itself and derive `correct`, `runs`, and `misses` from it. The refinement keeps the invariant declarative and beside the schema that already defines a valid receipt.",
+      "win": "One centralized invariant makes impossible evidence unrepresentable in the gate, without changing the measurement command or adding a dependency."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "README equality is enforced only as containment",
+      "locus": "__tests__/readme-classifier-eval.test.ts:44-48; scripts/classifier-questions.ts:192-209",
+      "claim": "The test is named and commented as publishing the latest receipt exactly, but it uses `SECTION.toContain(renderReceipt(latest))`. A stale receipt table before or after the current table, or extra rows beside it, still passes. The README can therefore present more than the latest measured result while the gate says it differs from the receipt only when it changes.",
+      "alternative": "Mark the generated block in the README, for example with `<!-- classifier-receipt:start -->` and `<!-- classifier-receipt:end -->`, and have the test extract that block and assert it equals `renderReceipt(latest)` exactly. Explanatory prose can remain outside the markers and evolve independently.",
+      "win": "The oracle enforces AC6's equality claim literally; stale tables and extra rows can no longer coexist unnoticed with the current published receipt."
+    }
+  ]
+}
