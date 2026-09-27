@@ -203,7 +203,7 @@ Separately: the classification deadline is not in the fingerprint, though every 
 - frame/9 — AC6, AC1, AC3 demonstrated red; AC2 not demonstrable red — its ratified regression, the ratified replacement and the ratified combined break all failed to bite, because the classifier's remaining instructions still decline every control (reasons in Build results); final real run passed at the 10 s deadline, gate green
 - review/6 — n/a — round 371ef32 is a re-review verifying approved fixes (base 641f45c, no redesign last round): correctness only. Round b912bb7's approach pass → reviews/oregon-default-jurisdiction.approach.b912bb7.json
 - review/8 — ran round 371ef32 (codex: deepseek-flash-latest correctness — routed deepseek-pro-latest did not answer, twice, and failed `--probe-codex-routes`; overridden for this shell via CLAUDE_CODEX_ROUTE_CORRECTNESS — / kimi-latest hidden-failure, 4 / 0 findings; doc-drift shadow: trial closed) → reviews/oregon-default-jurisdiction.correctness.371ef32.json, reviews/oregon-default-jurisdiction.hidden-failure.371ef32.json
-- close/3b — no activation — `./install.sh --check` n/a (this repo ships none); no guard-hook block observed this session; the review runner refused no result this session (it promoted every artifact; the approach pass's one REACH line was a reported read-only false alarm, and the doc-drift trial's closure is its expected cap, not a refusal). `.aar/rejected-lessons.md` does not exist; searched, none.
+- close/3b — activation, nothing new — `./install.sh --check` n/a (this repo ships none); no guard-hook block observed this session. The review runner refused to promote the round 371ef32 correctness critic twice (codex exited 1: the routed model deepseek-pro-latest was not answering, confirmed by `--probe-codex-routes`). Not novel: a flaky route and its remedy are documented (the `CLAUDE_CODEX_ROUTE_<PURPOSE>` override and `--probe-codex-routes`, `BACKLOG.md` OPS-64 in the workflow's backlog per the review skill), and re-running only the refused critic is this repo's AAR-1, already filed. `.aar/rejected-lessons.md` does not exist; searched, none. No proposal.
 - close/4 — presented: re-review or merge after the round b912bb7 fixes (no redesign). Thomas chose **re-review** (invoked `/review`).
 
 ## Open questions
@@ -531,3 +531,16 @@ Thomas: "fix 1, 2 and 4, reject 3".
 4. Correctness NIT, "a test holds three things" — **fix**: name the kinds, drop the number.
 
 Hidden-failure: no findings. Doc-drift shadow: trial closed.
+
+## Fixes (2026-09-26, round 371ef32)
+
+1. **`expect` trusted.** The coverage check compares each result's question and expectation with the
+   code's list. Checked: relabelling a control as must-answer in the latest receipt fails it.
+2. **`runs` vs `runsPerQuestion`.** A receipt-level refinement requires every result's runs to equal the
+   receipt's runs per question; a test feeds it 25 of 25 under 20 per question and it is refused.
+3. **Rejected** — no change.
+4. **Count in living text.** The module comment now names what the gate test holds instead of
+   counting it.
+
+No fingerprint input changed, so no new measurement run; gate green (373 tests).
+

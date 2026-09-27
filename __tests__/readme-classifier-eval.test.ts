@@ -34,10 +34,13 @@ describe("AC6 — the published routing reliability is a real measurement of the
     expect(latest?.fingerprint, "re-measure: npm run eval:classifier").toBe(classifierFingerprint());
   });
 
-  it("the latest receipt covers every question in the set, once", () => {
+  it("the latest receipt covers every question in the set, once, with its expectation", () => {
     // Derived from the authoritative list, not from the receipt's own copy, so a
-    // receipt that silently skipped a question cannot pass.
-    expect(latest?.results.map((r) => r.question)).toEqual(QUESTIONS.map((q) => q.question));
+    // receipt that silently skipped a question — or relabelled a control as
+    // must-answer, judging it at the milder bar — cannot pass.
+    expect(latest?.results.map((r) => [r.question, r.expect])).toEqual(
+      QUESTIONS.map((q) => [q.question, q.expect]),
+    );
   });
 
   it("the latest receipt met every threshold", () => {
@@ -75,6 +78,11 @@ describe("AC6 — a receipt cannot carry impossible or mis-credited evidence", (
   it("refuses a result whose outcomes do not add up to its runs", () => {
     const impossible = { question: "q", expect: "must-decline", correct: 20, runs: 20, misses: { [NO_VERDICT]: 20 } };
     expect(() => parseReceipts(line(impossible))).toThrow(/correct plus misses must equal runs/);
+  });
+
+  it("refuses a result whose runs differ from the receipt's runs per question", () => {
+    const r = { question: "q", expect: "must-decline", correct: 25, runs: 25, misses: {} };
+    expect(() => parseReceipts(line(r))).toThrow(/runs per question/);
   });
 
   it("refuses causes that do not add up to the runs with no verdict", () => {

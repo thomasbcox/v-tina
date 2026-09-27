@@ -10,13 +10,13 @@
  * the code rather than transcribed by hand.
  *
  * **How it is held.** `scripts/classifier-eval.ts` is the only writer of
- * `RECEIPT_LOG`. Every run that measures appends a receipt — pass or fail — so a failed run
- * cannot be quietly replaced by a later pass: the history shows both. Each
- * receipt carries a fingerprint of everything its numbers depend on (the
+ * `RECEIPT_LOG`. Every run that measures appends a receipt — pass or fail — so a
+ * failed run cannot be quietly replaced by a later pass: the history shows both.
+ * Each receipt carries a fingerprint of everything its numbers depend on (the
  * instruction, the model, this question set, the run count, the concurrency, the
- * thresholds, the timeout rule and the classifier's call settings),
- * and a test holds three things: the latest receipt's fingerprint is the code's,
- * that receipt passed, and the README publishes exactly that receipt. Thomas's
+ * thresholds, the timeout rule and the classifier's call settings), and the gate
+ * test holds the latest receipt to the code — its fingerprint, its questions and
+ * their expectations, that it passed — and the README's publication of it. Thomas's
  * stated standard, at this story's consult: a lazy shortcut must fail the gate; a
  * deliberate fake need only be visible in the history.
  */
@@ -189,14 +189,18 @@ const questionResultSchema = z
     { message: "recorded causes must add up to the runs with no verdict" },
   );
 
-export const receiptSchema = z.object({
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  fingerprint: z.string().regex(/^[0-9a-f]{12}$/),
-  model: z.string(),
-  runsPerQuestion: z.number().int().positive(),
-  results: z.array(questionResultSchema),
-  passed: z.boolean(),
-});
+export const receiptSchema = z
+  .object({
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    fingerprint: z.string().regex(/^[0-9a-f]{12}$/),
+    model: z.string(),
+    runsPerQuestion: z.number().int().positive(),
+    results: z.array(questionResultSchema),
+    passed: z.boolean(),
+  })
+  .refine((r) => r.results.every((q) => q.runs === r.runsPerQuestion), {
+    message: "every result must have the receipt's runs per question",
+  });
 
 export type QuestionResult = z.infer<typeof questionResultSchema>;
 export type Receipt = z.infer<typeof receiptSchema>;
