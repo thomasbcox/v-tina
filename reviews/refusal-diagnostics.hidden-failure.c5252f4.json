@@ -1,0 +1,4 @@
+{
+  "summary": "2026-09-27 16:23:24 PDT (-0700), measured with `date` this turn. I found no hidden failure introduced by this diff: the existing generation-error catch still rethrows after its deliberate screened-release step; refusal logging is explicit and surfaces shortening through the `shortened` field; the new `citedAs: []` state distinguishes “no citation checked” from an omitted field; and none of the changed code adds a blind catch, catch-log-continue path, silent fallback, or removed safety assertion.",
+  "findings": []
+}

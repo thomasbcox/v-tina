@@ -239,6 +239,35 @@ specification defines what an audit log would record, and building one means sto
 public's questions — a retention and privacy decision that deserves its own story rather than being
 settled as a detail inside this one. It is reported rather than omitted so the absence is visible.
 
+**What a refused quotation leaves in the server log.** When the quotation screen refuses a quotation
+(see *How V-Tina speaks*), the reader gets the provenance notice and none of the refused words. The
+server log gets one entry, labelled `answer refused on provenance`, holding one JSON object. JSON is
+used so a long quotation is never cut by the console and a line break never splits the entry. The
+same label also marks the refusal of an opening that speaks as the Governor; that line is a plain
+sentence, not JSON, so a quotation refusal is the labelled line that holds these fields:
+
+| Field | What it holds |
+|---|---|
+| `check` | Which check refused it: a verifying reason such as `not-in-any-passage`, or a grammar violation such as `unterminated` |
+| `quotation` | The quotation as the check compared it, whole unless `shortened` says otherwise |
+| `citedAs` | Every document the quotation was checked against as its citation. Empty when none was: nothing was named, or the check failed before reading one |
+| `shortened` | `null` when `quotation` is whole; otherwise the quotation's full length and why it was cut |
+
+**The entry never holds the reader's question, its rewrite, or the conversation.** The quotation
+itself is another matter. A refused quotation is text the record does not contain, and the
+answering model is given the reader's question and conversation. So a refused quotation can be the
+reader's own words quoted back. To limit that, **a refused quotation is kept whole only when its
+opening is the record's own words**: its first `REFUSAL_OPENING_CHARS` characters (declared in
+`src/lib/voice.ts`) must appear in a passage retrieved for the answer. Otherwise only that opening
+is kept, and `shortened` says so. Diagnosis loses nothing either way:
+
+- **The opening is in the record:** the quotation leaves the record later, and the whole text shows
+  where.
+- **The opening is not in the record:** it leaves the record within the opening that is kept.
+
+**What remains:** a quotation that opens with the record's words and then goes on to repeat the
+reader's is logged whole. Where the log is kept, and for how long, is undecided: nothing is deployed.
+
 ### How a question is routed
 
 1. **Classify** — a fast model labels the question `IN-BOUNDS`, `PARTISAN-TRAP`, or `OUT-OF-BOUNDS`.

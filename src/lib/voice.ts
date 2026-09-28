@@ -469,9 +469,24 @@ export function indexPassages(chunks: readonly RetrievedPolicyChunk[]): PassageI
   return { byTitle, citations: citationPatterns([...byTitle.keys()]) };
 }
 
+/**
+ * Whether `text` (already normalised) is verbatim in a passage of `documentTitle`, or of
+ * any retrieved document when none is named. **The one definition of "in the record":**
+ * the verifier asks it of a quotation, and the refusal record's privacy rule asks it of a
+ * refused quotation's opening, so the two cannot disagree about what the record holds. A
+ * second copy of this walk once sat in `refusalEntry` (approach review, round c5252f4).
+ */
+function inRecord(passages: PassageIndex, text: string, documentTitle?: string): boolean {
+  const pools = documentTitle === undefined ? [...passages.byTitle.values()] : [passages.byTitle.get(documentTitle) ?? []];
+  return pools.some((pool) => pool.some((p) => p.includes(text)));
+}
+
 export interface UnverifiedQuotation {
   readonly text: string;
-  readonly citedAs?: string;
+  /** Every document the quotation was checked against as its citation, nearest first.
+   *  Empty when none was: nothing was named, or the check failed before a citation was
+   *  read. Always present, so "none" cannot be confused with "never filled in". */
+  readonly citedAs: readonly string[];
   readonly reason:
     | "no-citation"
     | "not-in-cited-document"
@@ -499,14 +514,13 @@ export function verifyQuotedSpan(
 ): UnverifiedQuotation | null {
   const text = normalise(quoted);
   if (text === "") return null;
-  if (/\.\.\.|…/.test(text)) return { text, reason: "elided" };
+  if (/\.\.\.|…/.test(text)) return { text, citedAs: [], reason: "elided" };
 
-  const inSome = (pool: readonly string[]) => pool.some((p) => p.includes(text));
-  const inAny = () => [...passages.byTitle.values()].some(inSome);
+  const inAny = () => inRecord(passages, text);
 
   const named = citationsIn(context, passages.citations);
   if (named.length === 0) {
-    return inAny() ? { text, reason: "no-citation" } : { text, reason: "not-in-any-passage" };
+    return { text, citedAs: [], reason: inAny() ? "no-citation" : "not-in-any-passage" };
   }
   /**
    * **When one sentence names several documents, the one that holds the words is the
@@ -518,10 +532,13 @@ export function verifyQuotedSpan(
    */
   const inSentence = named.filter((c) => c.end > sentenceStartIn(context.slice(-CITATION_WINDOW)));
   const candidates = inSentence.length > 0 ? inSentence : named.slice(0, 1);
-  if (candidates.some((c) => inSome(passages.byTitle.get(c.title) ?? []))) return null;
+  if (candidates.some((c) => inRecord(passages, text, c.title))) return null;
   return {
     text,
-    citedAs: named[0].title,
+    // The documents the check tested, not every one named nearby: a document named in
+    // an earlier sentence was deliberately NOT tested, and reporting it would send
+    // whoever diagnoses the refusal to the wrong record (story `refusal-diagnostics`).
+    citedAs: candidates.map((c) => c.title),
     reason: inAny() ? "not-in-cited-document" : "not-in-any-passage",
   };
 }
@@ -537,7 +554,7 @@ export function verifyQuotations(
   let before = "";
   for (const token of lex(answer, true).tokens) {
     if (token.kind === "violation") {
-      bad.push({ text: token.raw, reason: token.reason });
+      bad.push(violationOf(token));
     } else if (token.kind === "quotation") {
       const problem = verifyQuotedSpan(token.text, before, index);
       if (problem) bad.push(problem);
@@ -545,6 +562,68 @@ export function verifyQuotations(
     before += citationTextOf(token);
   }
   return bad;
+}
+
+/** A grammar violation as a quotation problem. Nothing was verified, so no document
+ *  was taken as its citation: the grammar alone refused it. */
+export function violationOf(token: Extract<Token, { kind: "violation" }>): UnverifiedQuotation {
+  return { text: token.raw, citedAs: [], reason: token.reason };
+}
+
+// ---------------------------------------------------------------------------
+// Refusals, as the server log records them
+// ---------------------------------------------------------------------------
+
+/**
+ * How much of a refused quotation's opening is tested against the record — and, when
+ * the test fails, all of the quotation the log keeps.
+ *
+ * **A privacy boundary, not a display limit.** A refused quotation is text the record
+ * does not contain, and the answering model's input includes text the reader wrote —
+ * their question, and the conversation their browser sends — so a refused quotation
+ * can be the reader's own words quoted back. Thomas chose at the frame consult of
+ * `refusal-diagnostics` (option B) to log a refusal whole only when its opening is the
+ * record's words, and this much of it otherwise, as the log always kept. Diagnosis
+ * loses nothing either way: an opening in the record puts the divergence later, where
+ * the whole text shows it; an opening outside the record puts the divergence inside
+ * what is kept.
+ */
+export const REFUSAL_OPENING_CHARS = 60;
+
+/** A refused quotation as the server log records it. It holds nothing about the
+ *  reader's question or conversation: `refusalEntry` is never handed them. */
+export interface RefusalEntry {
+  /** The check that refused it: a verifying reason, or a grammar violation. */
+  readonly check: UnverifiedQuotation["reason"];
+  /** What the check compared — the normalised span, or a violation's text as written —
+   *  whole, or cut to its normalised opening when `shortened` says so. */
+  readonly quotation: string;
+  readonly citedAs: readonly string[];
+  /** `null` when `quotation` is whole; otherwise how long it was, and why it was cut. */
+  readonly shortened: null | { readonly fullLength: number; readonly because: "opening-not-in-passages" };
+}
+
+/**
+ * The log entry for a refusal (story `refusal-diagnostics`). The line it replaced kept
+ * a quotation's first 60 characters whatever they were, so a quotation that left the
+ * record after them could not be diagnosed from a live run — twice, during the voice
+ * story's live verification.
+ */
+export function refusalEntry(problem: UnverifiedQuotation, passages: PassageIndex): RefusalEntry {
+  // An unterminated quotation's text starts with the mark that opened it; the words
+  // the record might hold follow it.
+  const words = problem.reason === "unterminated" ? problem.text.slice(1) : problem.text;
+  const tested = normalise(words);
+  const opening = tested.slice(0, REFUSAL_OPENING_CHARS);
+  const keepWhole = tested.length <= REFUSAL_OPENING_CHARS || inRecord(passages, opening);
+  const { reason: check, citedAs } = problem;
+  if (keepWhole) return { check, quotation: problem.text, citedAs, shortened: null };
+  return {
+    check,
+    quotation: opening,
+    citedAs,
+    shortened: { fullLength: tested.length, because: "opening-not-in-passages" },
+  };
 }
 
 // ---------------------------------------------------------------------------

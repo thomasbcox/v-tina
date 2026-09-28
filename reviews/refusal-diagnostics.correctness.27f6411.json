@@ -1,0 +1,21 @@
+{
+  "summary": "2026-09-28 08:05 PDT (-0700), measured by running `date` this turn. I read the re-review diff against 6552848 (README.md, src/lib/voice.ts, src/lib/chat/orchestrate.ts, plus the workflow records) and judged it against `reviews/refusal-diagnostics.md`. The three approved fixes landed cleanly: `inRecord` in `src/lib/voice.ts` is now the only passage walk, and I traced both callers against the closures it replaced (`verifyQuotedSpan`'s `inAny` and the per-candidate `inSome` walk, and `refusalEntry`'s option-B opening test) and found the behaviour identical in every branch, including the `byTitle.get(title) ?? []` fallback and the all-pools case, so the shared predicate closes the approach IMPORTANT without moving any criterion; the `stop` comment at `src/lib/chat/orchestrate.ts:362-364` now names the helpers rather than counting them and states the routing is a convention, which is the reword Thomas approved; and `README.md` now says the `answer refused on provenance` label is shared with the impersonating-opening line, which I confirmed against the only two callers of `stop` (`refuseQuotation`, `refuseImpersonation`) and the README's four documented fields still match the emitted `RefusalEntry`. Scope containment holds (non-`reviews/` paths are exactly the six the story allows), no hidden-failure path was introduced by a pure refactor, and no criterion moves. What remains are two minor bookkeeping inconsistencies in the story's own record, neither of which touches product behaviour.",
+  "findings": [
+    {
+      "severity": "NIT",
+      "title": "The correctness artifact's summary names a function that does not exist (`stopper`)",
+      "file": "reviews/refusal-diagnostics.correctness.c5252f4.json",
+      "line": 2,
+      "claim": "The committed correctness artifact says every quotation refusal funnels through \"`refuseQuotation` → `stopper`\". No `stopper` exists in this repository, at the reviewed HEAD or now: the function is `stop` (`src/lib/chat/orchestrate.ts:365`), which `git show 6552848:src/lib/chat/orchestrate.ts` also shows. The story's own transcription of the same pass (`reviews/refusal-diagnostics.md`, \"Correctness (deepseek-flash-latest) — 2 findings\") names `stop(logged: string)` correctly, so the two records of one pass disagree about the code they describe. This is the audit trail a later reader opens to find where a refusal is logged; a name that resolves to nothing sends them hunting.",
+      "suggestion": "Correct the artifact's summary to name `stop` (a dated correction in the story file, or a fixed summary when the artifact is next regenerated), so the artifact and the story agree."
+    },
+    {
+      "severity": "NIT",
+      "title": "The R5 regression row still asserts the mitigation is \"structural\", with no pointer to the decision that corrected it",
+      "file": "reviews/refusal-diagnostics.md",
+      "line": 189,
+      "claim": "The proposed-regressions table's R5/AC2 row still reads \"The mitigation is structural: the free-text refusal is narrowed to the impersonating opening, so a new quotation refusal has to build the record.\" The `## Decisions (2026-09-27, round c5252f4)` entry for the correctness NIT explicitly says this is wrong — \"**Correction to this story's regressions table:** the R5 mitigation it calls 'structural' is a convention\" — and the code agrees with the decision, not the row: `stop(logged: string)` is a free-text seam any future call site can bypass. A reader who takes the regressions table at face value meets a claim the story elsewhere marks false, and nothing in the row points to the correction; the table is the artifact later test authors key off, so a stale disposition there is the one that gets reused.",
+      "suggestion": "Add a dated inline correction to the R5/AC2 row (as the story's other amended rows already do), or a pointer from it to the Decisions entry, so the row cannot be read as a live claim about enforcement."
+    }
+  ]
+}

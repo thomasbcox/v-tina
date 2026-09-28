@@ -1,0 +1,36 @@
+{
+  "verdict": "2026-09-27 12:11:42 PDT (measured with `date` this turn). If I built this from the spec, I would build it this way. The shape is small and idiomatic: one pure record builder (`refusalEntry`) beside the verifier it depends on, one shared refusal helper per kind (`refuseQuotation` / `refuseImpersonation`) funnelling through a single `stop`, three refusal sites collapsed onto one path so no quotation refusal can keep the old form, the privacy rule (option B) expressed as one predicate plus one named constant, and one serialisation point (a `JSON.stringify`'d string) whose reason — `console.error`'s `util.inspect` cutting strings past 10,000 characters and collapsing depth > 2 — is real, verified, and smoke-tested against the real console. Nothing here reinvents a dependency: the record is constructed, not parsed, so zod/JSON-schema would add nothing; the declined logging library is declined with a specific cost (one call site, one record shape); and no per-case table is warranted for a rule with one predicate. The two-way risk postures check out: a quotation of no more than the opening length is still logged exactly as today (no widening of exposure), and the whole-kept branch is provably reachable only when the verifier could itself have matched the span, so the rule cannot silently keep a fabrication it should have cut. Findings below are the residual structural items; none of them blocks.",
+  "findings": [
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The privacy predicate is a second implementation of the verifier's passage scan",
+      "locus": "src/lib/voice.ts:607-609 (`refusalEntry`) vs src/lib/voice.ts:507-508 (`verifyQuotedSpan`)",
+      "claim": "The design rests on one rule applied twice: the shortening rule's test (“the opening appears in a passage retrieved for the answer”) is meant to be the verifier's own membership test, and the story says it is “searched in the same normalised index the verifier uses”. In code it is a second implementation: `verifyQuotedSpan` defines the walk as `inSome`/`inAny` closures (`[...passages.byTitle.values()].some((pool) => pool.some((p) => p.includes(text)))`) and `refusalEntry` re-writes the same walk inline for `opening`. Nothing binds the two, yet their agreement is what the whole record's meaning hangs on: if they ever disagree, the failure is silent in both directions R7 names — reader's words logged whole (the privacy boundary absorbs the divergence), or a quotation whose opening is in the record cut anyway, losing the diagnosis FEAT-3 exists to restore. This is against the module's own stated doctrine (“Everything here derives from one grammar”; one verifier, defined once), so it is the local standard, not just the ecosystem's.",
+      "alternative": "Give `PassageIndex` the predicate — e.g. `holds(text: string): boolean` built once in `indexPassages`, or a module-level `passageContains(passages, text)` — and have both callers use it: `verifyQuotedSpan` replaces its `inSome`/`inAny` closures with one call, and `refusalEntry` calls it with `opening` instead of re-walking `byTitle`.",
+      "win": "One definition of “in the record” instead of two, removing the two closures and the inline walk (~3 lines); the privacy boundary and the verifier become mechanically incapable of disagreeing, so a future change to membership (whitespace folding, cross-passage matching) cannot silently leak reader text into the log or cut a diagnosable refusal."
+    },
+    {
+      "severity": "NIT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "The record builder reaches into the grammar's raw form to get a violation's words",
+      "locus": "src/lib/voice.ts:602-604",
+      "claim": "`refusalEntry` carries the only per-reason branch in the record builder, and it exists to undo the lexer's representation: `problem.reason === \"unterminated\" ? problem.text.slice(1) : problem.text`, on the assumption that a violation's text begins with the mark that opened it. `Token` already distinguishes the words from the marks for quotations (`text` beside `raw`) and does not for violations, so the log builder — not the grammar — encodes what a violation's raw form looks like. The assumption is correct, commented and test-covered, but it is grammar knowledge living outside the grammar, and it is the thing a third `GrammarViolation` reason would have to think about.",
+      "alternative": "Mirror the quotation token: give the violation token its words alongside `raw` (and have `violationOf` build the problem from them), so a violation problem carries `text` = the words and the raw form is a lexer-only concern. `refusalEntry` then has no reason-keyed branch at all.",
+      "win": "Removes the record builder's only per-reason branch; the mark-handling assumption lives where it is true, and adding a violation reason cannot silently mis-slice the logged text."
+    },
+    {
+      "severity": "NIT",
+      "reversibility": "two-way",
+      "standing": "standard",
+      "title": "A set's size is written into living text in the new `stop` comment",
+      "locus": "src/lib/chat/orchestrate.ts:361-362 (“Called only through the two refusals below”)",
+      "claim": "“The two refusals below” is a second statement of an enumerable set's length: the refusal helpers that call `stop` sit immediately below it and are free to grow, which is the case the builder protocol's *Counts are copies* rule names outright (“sits beside the number and is free to grow … the number is a copy: delete it”; living text “names the kind … or points at the file that *is* the list”). The comment is living text, and a third refusal helper would leave it wrong with nothing able to notice — while the narrowing it describes (“never bypasses the record”) is exactly a claim the file must keep true.",
+      "alternative": "Name the kind rather than the count: “Called only through the refusal helpers below.”",
+      "win": "The comment stops being a copy that decays — one word, and no future edit has to remember to renumber it."
+    }
+  ],
+  "regressions": []
+}

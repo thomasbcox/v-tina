@@ -382,7 +382,7 @@ describe("AC3 — a quotation must be verbatim in the document it cites", () => 
   it("rejects a span that is real but cited to the wrong document", () => {
     const bad = verifyQuotations(`Under ${SB}: ${q("do hereby order that the State address")}.`, PASSAGES);
     expect(bad).toHaveLength(1);
-    expect(bad[0]).toMatchObject({ reason: "not-in-cited-document", citedAs: SB });
+    expect(bad[0]).toMatchObject({ reason: "not-in-cited-document", citedAs: [SB] });
   });
 
   it("rejects a span in no passage at all", () => {

@@ -1,0 +1,77 @@
+{
+  "verdict": "The sketch is the right shape and I would build it this way. One record type ({check, quotation, citedAs}), one shared builder at the three refusal sites, one serialisation point through the existing injected logError seam — this is the minimal declarative move, not bespoke per-case code. The two load-bearing claims check out against the code: the three sites at orchestrate.ts:371/473/476 really do each hand-build a string with .slice(0, 60), and verifyQuotedSpan (voice.ts:524) really does report named[0].title while testing candidates, so widening citedAs to the tested set is a correction, not a refactor. JSON.stringify as the transport is the standard answer to util.inspect's 10,000-char cut and depth-2 [Object] folding, and it buys newline-escaping (single-entry survival through line-based collectors) for free; the spec's explicit refusal of a logging library is correct at one record and one call site (a dependency rejection that names its cost: surface area for zero consumers beyond this seam — revisit only if a second structured record type appears). Changing UnverifiedQuotation.citedAs from optional string to required readonly string[] is internal and two-way, and 'always present, [] means none' is better than the current optionality. Two cautions rather than objections: Open question 1 is still open while the sketch builds option A — that privacy decision is the one one-way door here and must be ratified at the step-7 consult before implementation; and the AC1 oracle's 'formats the spied arguments exactly as the console does' re-implements the delivery mechanism inside the test, which the oracle should not do. The risk list itself is clean: all five risks reach a person (operator or reader) and none is a disguised scope statement; AC7 (reviewer) and AC8 (manual) are appropriately person-judged — a README-versus-code consistency read and a one-time path listing at the merge fork would gain nothing from a running test.",
+  "findings": [
+    {
+      "severity": "QUESTION",
+      "reversibility": "one-way",
+      "standing": "standard",
+      "title": "Sketch builds option A while Open question 1 (how much of a reader's own words a log may hold) is still undecided",
+      "locus": "Design sketch → 'Privacy boundary' / Open questions → 1",
+      "claim": "The sketch's record carries the whole quotation always (option A), but the backlog item FEAT-3 explicitly puts this decision first, and it is the one decision in this story that is expensive to reverse: once a log host is chosen and entries are retained, reader words already written to logs cannot be un-written. Option B (whole quotation only when its opening matches a retrieved passage) covers both diagnoses that motivated the story, and option C (match-offset, no text) is more private and points at the divergence directly. The spec's own privacy section concedes a refused quotation can be the reader's words quoted back, so this is a real exposure, not a theoretical one. The sketch's shape is agnostic between A and B (B adds one predicate at record-build time), so this does not block the design — but it must be decided at the step-7 consult, not by the sketch's default.",
+      "alternative": "Put the A/B/C decision to Thomas as the lead item of the frame consult, with the sketch's costings (B: one more matching rule in the screen; C: new matching logic, most private, points straight at the divergence). Implement only the chosen option.",
+      "win": "A privacy posture for server logs gets decided deliberately once, instead of being ratified by accident through an implementation default that a future log host then makes permanent."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "kludgy",
+      "title": "AC1's oracle re-implements console formatting inside the test instead of asserting on the record",
+      "locus": "Test notes → Oracles → AC 1",
+      "claim": "The criterion is 'the one server log entry holds the whole quotation'; the mechanism says the test 'formats the spied arguments exactly as the console does'. That is an oracle derived from the delivery mechanism, not the criterion: it embeds a second implementation of Node's console formatting in the test, which can drift from the real console (the thing AC1 exists to catch) and which will silently keep passing if the formatting semantics change. It also re-tests what the sketch has already reasoned about (a string value prints as-is) rather than what the criterion promises (the entry holds the tail).",
+      "alternative": "Assert on what the seam receives: the suite already injects logError, so the primary test asserts the single record string handed to the seam contains the quotation's final words and contains no literal newline. Keep exactly one thin smoke test that runs the real default logger with console.error spied and asserts the captured argument is one string containing the tail past 10,000 characters — capturing the console's actual behaviour rather than re-implementing it.",
+      "win": "Removes a duplicated console-formatting implementation from the suite and makes the test fail when the criterion fails (tail missing, record split), not when the test's private console-replica disagrees with Node."
+    },
+    {
+      "severity": "NIT",
+      "reversibility": "two-way",
+      "standing": "standard",
+      "title": "Helper contract says it takes 'the UnverifiedQuotation the verifier already returns', but the grammar-violation site has no verifier result",
+      "locus": "Design sketch → 'Where'",
+      "claim": "In the streaming path (orchestrate.ts:473) the violation branch holds a lexer token, not an UnverifiedQuotation — verifyQuotedSpan is never called there. The sketch elsewhere says the record's quotation for a grammar violation is the token's raw text, so the intent is clear, but 'takes the UnverifiedQuotation the verifier already returns' misdescribes one of the three call sites and invites an implementer to contrive a verifier call that does not belong there.",
+      "alternative": "State the helper's contract as taking the record fields ({check, quotation, citedAs}), with the two verifier-backed sites passing the UnverifiedQuotation through and the violation site constructing the record from the token ({check: t.reason, quotation: t.raw, citedAs: []}).",
+      "win": "One sentence of precision in the sketch prevents a spurious verifyQuotedSpan call (with its passage lookups) appearing in the violation path."
+    }
+  ],
+  "regressions": [
+    {
+      "criterion": "R1 / AC1",
+      "regression": "An implementation can satisfy the letter — 'no character cap' — while violating 'one entry': JSON.stringify with an indent argument (or a template literal joining fields) emits real newlines, so a 10,000+ character quotation is logged in full, uncut, yet split across dozens of log lines that a line-based collector interleaves with other entries. The divergence point is present in the log and unrecoverable in practice, which is exactly the failure FEAT-3 exists to fix."
+    },
+    {
+      "criterion": "R1 / AC1",
+      "regression": "The test drives one size — 'longer than 10,000 characters' — so an implementation with a larger cap (say 100,000, or a slice at some generous constant) passes it while still truncating the next live refusal that exceeds the new cap. The letter (this quotation survives) is met; the intent ('however long', no cap at all) is untestable at a single size and the suite will never challenge a moved ceiling."
+    },
+    {
+      "criterion": "R2 / AC3",
+      "regression": "The check's tested set is `candidates` (documents named in the quotation's own sentence, else the nearest), but an implementation can log `named` — every citation in the context window. In the two-documents-in-one-sentence case the two sets coincide, so that test passes; in the earlier-sentence case the entry then names a document the check never tested, and the operator investigates a document whose attribution the verifier explicitly rejected. Naming more documents than were tested violates 'and no other' while looking like fuller reporting."
+    },
+    {
+      "criterion": "R2 / AC4",
+      "regression": "'States that no document was taken as its citation' can be satisfied in letter by an empty `citedAs: []` while failing the intent — an operator reading raw JSON cannot distinguish 'the check deliberately recorded no citation' from 'the citation field was never populated on this path' (a serialisation bug and a true statement read identically). A test asserting only that no title appears passes both the honest record and the broken one."
+    },
+    {
+      "criterion": "R3 / AC5",
+      "regression": "The marker test proves absence of one exact string. An implementation can pass it while still leaking the question's content in a form the marker does not cover — for example logging the retrieval query or prompt fragment that embeds the reader's wording verbatim, or a future field added alongside the record that carries 'context'. The letter (marker absent, rewrite text absent) holds; the intent (nothing of the question or conversation reaches the entry beyond the quotation's own words) is decided by accident, which is precisely the audit-log privacy question this story is forbidden to settle."
+    },
+    {
+      "criterion": "R4 / AC6",
+      "regression": "The never-reaches-the-reader tests watch the streamed answer. An implementation can keep the refused quotation out of `streamed_tokens` while surfacing its words through a different reader-visible channel — an error event payload, a status field, or the receipt block — none of which the existing tests inspect. Letter: the refused text is not in the tested stream; intent: the reader sees none of it anywhere."
+    },
+    {
+      "criterion": "R5 / AC2",
+      "regression": "The fixture table is keyed by the declared reason type, so the typecheck fires only when a *reason* is added. A future refusal *site* reusing an existing reason (a new grammar rule, a new refusal path in the opening logic) typechecks clean while logging the old hand-built 60-character form — the tested cases all pass because every reason still has a case, and the untested call site carries the truncation forward. The letter (every reason has a fixture) is met; the intent (every path that refuses writes the full record) has a hole exactly where the next live refusal will find it."
+    },
+    {
+      "criterion": "AC2",
+      "regression": "'Names which check refused the quotation' can be satisfied by logging the reason string alone, but for a grammar violation the reason names the violated rule (e.g. a token-level form), not which *check* — quotation verification versus grammar screening — refused it. Two different subsystems' refusals can then read alike in the log, sending the operator to the wrong code. Letter: a reason is present; intent: the entry distinguishes the checks."
+    },
+    {
+      "criterion": "AC1 (oracle-mode critique)",
+      "regression": "As assigned, the AC1 test couples its pass condition to a re-implementation of console formatting ('formats the spied arguments exactly as the console does'). If Node's formatting changes, or the replica drifts from it, the test can go red with the product behaving correctly — or stay green while the real console mangles the record in a way the replica does not model. The oracle then measures the test's private console, not the criterion's 'holds the whole quotation'."
+    },
+    {
+      "criterion": "risk list (missing risk)",
+      "regression": "No listed risk covers the unbounded-entry hazard this story creates: raising the limit from 60 characters to 'however long' means a pathological or adversarial quotation of megabytes is written to the server log in full, per refusal. That reaches a person — the operator's log storage and the future host whose per-line cap the non-goals defer — and it is a risk the story itself introduces, not one it inherits. The risk list should either bound it (a very large cap, documented) or record it as a consciously accepted exposure."
+    }
+  ]
+}
