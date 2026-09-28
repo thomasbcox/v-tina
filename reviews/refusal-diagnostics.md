@@ -224,7 +224,7 @@ regression was rejected. AC8 (reviewer) and AC9 (manual) are judged by a person.
 - frame/6 — ran (codex on kimi-latest, 3 findings, 10 regressions) → reviews/refusal-diagnostics.design.655b822.json
 - frame/9 — demonstrated red: every ratified regression on a sized criterion (AC1–AC7), 12 runs, each red on its named test and reverted; build commit 4b408ab
 - review/6 — ran (codex on deepseek-flash-latest by Thomas's session-only override of the glm-latest route, 3 findings, 21 commands, 0 REACH) → reviews/refusal-diagnostics.approach.c5252f4.json. Before it, glm-latest stopped three times on round c5252f4 with "cannot read codex's event stream" (a format stop, not a fabrication: 8, 2 and 8 unreadable lines), while a trivial probe of glm-latest answered with a readable stream
-- review/8 — round c5252f4 incomplete: correctness STOPPED (codex on deepseek-flash-latest by Thomas's session-only override; "cannot read codex's event stream", 2 unreadable lines — a format stop, no artifact); hidden-failure ran (codex on kimi-latest, 0 findings, 22 commands) → reviews/refusal-diagnostics.hidden-failure.c5252f4.json; doc-drift shadow: trial closed. Put to Thomas 2026-09-27
+- review/8 — ran (codex: deepseek-flash-latest correctness, by Thomas's session-only override, rerun alone after one format stop ["cannot read codex's event stream", 2 lines] — the narrow recovery AAR-1 describes; kimi-latest hidden-failure; 2 / 0 findings; doc-drift shadow: trial closed) → reviews/refusal-diagnostics.correctness.c5252f4.json, reviews/refusal-diagnostics.hidden-failure.c5252f4.json
 - close/3b — not yet reached
 - close/4 — not yet reached
 
@@ -412,3 +412,49 @@ reason-keyed branch in the record builder.
 **NIT — "the two refusals below" is a count in living text** (two-way × standard). The comment on
 `stop` in `src/lib/chat/orchestrate.ts` states how many refusal helpers there are, which goes false
 when one is added. *Alternative:* "the refusal helpers below". *Win:* the comment cannot decay.
+
+## Codex correctness pass (2026-09-27, round c5252f4, base main)
+
+**How the round ran.** The critics ran concurrently at HEAD `572d4b4`.
+- **Hidden-failure** (`kimi-latest`, 22 commands) completed.
+- **Correctness** (`deepseek-flash-latest`, Thomas's session-only override of `glm-latest`) stopped:
+  "cannot read codex's event stream", 2 unreadable lines. At Thomas's choice it was rerun **alone**,
+  with the same round, prompt and base, at HEAD `6552848`. That is the narrow recovery `BACKLOG.md`
+  AAR-1 describes, and it completed (33 commands). The only change between the two HEADs was this
+  file's loop record and the hidden-failure artifact. The rerun could therefore see hidden-failure's
+  empty result, a small breach of the two critics' blindness to each other, accepted with the choice.
+- **Doc-drift shadow:** trial closed; nothing ran.
+
+**REACH on the correctness rerun: 4 commands reported, all false positives.** They were sed address
+patterns (`/function …/,/^}/p`, `/export …/`) and one Python `//` floor division, read by the check as
+absolute paths. Each command changed into the review worktree first and only read files there.
+
+### Correctness (deepseek-flash-latest) — 2 findings
+
+**Summary:** no correctness defect against the spec, criterion by criterion. Every quotation refusal
+site funnels through `refuseQuotation`. `refusalEntry` applies option B exactly. `citedAs` reports the
+documents actually tested. The record reaches the console as one unbroken string, the reader path is
+untouched, and the README matches the fields the code emits. The reviewer also checked:
+- the arithmetic the AC1 and AC7 tests rest on;
+- that the reason fixture fails the typecheck when a reason is added;
+- that nothing outside `src/lib/voice.ts` and the tests reads `citedAs`.
+
+**NIT — the README identifies the entry by a label that also marks a non-JSON line**
+(`README.md:244`). The label `answer refused on provenance` is shared with the impersonating-opening
+refusal, which by this story's non-goal still logs free text. An operator who searches for the label
+can land on a line with none of the documented fields. *Suggestion:* say the label is shared, and that
+a quotation refusal's line is the JSON one.
+
+**NIT — `stop` is still a free-text seam, so the R5 mitigation is convention, not enforcement**
+(`src/lib/chat/orchestrate.ts:363`). `stop(logged: string)` has the shape of the `refuse(why)` it
+replaced. The comment says a quotation refusal "cannot" log anything but its record, and nothing
+enforces that. *Suggestion:* have `stop` take the record, or word the comment as what is true of
+today's call sites.
+
+### Hidden-failure (kimi-latest) — no findings
+
+No hidden failure introduced:
+- the generation-error catch still rethrows after its screened release;
+- refusal logging is explicit, and surfaces shortening through `shortened`;
+- `citedAs: []` distinguishes "no citation checked" from an omitted field;
+- no blind catch, catch-log-continue, silent fallback or removed safety check was added.
