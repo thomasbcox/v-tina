@@ -549,3 +549,14 @@ table's other amended rows carry.
 The diff is a pure refactor plus comment and README edits. No catch, fallback or assertion was added,
 removed or weakened. `?? []` in `inRecord` preserves the old behaviour and degrades toward refusal,
 which surfaces rather than hides.
+
+## Decisions (2026-09-28, round 27f6411)
+
+Thomas: "as recommended".
+
+| Finding | Critic | Decision |
+|---|---|---|
+| NIT — round c5252f4's correctness artifact names a nonexistent `stopper` | Correctness | **Fix,** by a dated correction in this file. The artifact is the reviewer's own output and is not edited. |
+| NIT — the R5 regression row still says "structural" | Correctness | **Fix,** by a dated inline correction in the row. |
+| Hidden-failure | Hidden-failure | No findings. |
+| Doc-drift shadow | — | Trial closed; nothing ran. |
