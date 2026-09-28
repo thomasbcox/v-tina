@@ -26,28 +26,6 @@ accurate, since the corpus is Oregon executive orders and bills. Keep the claim 
 **Sequencing.** Touches `src/lib/voice.ts` and `src/lib/prompts.ts`, which `answer-voice-screen` also
 edits — start after that story merges.
 
-### FEAT-3 — Keep enough of a refused quotation to diagnose it
-
-**Want (Thomas, 2026-09-19).** When the screen refuses a quotation, what it records is enough to tell
-what was wrong with it.
-
-**Why it does not work today.** The refusal log keeps only a quotation's first 60 characters, and the
-refused text never reaches the reader by design — so when the visible prefix matches the record, the
-divergence lies past the cut and the refusal cannot be diagnosed from a live run. It cost two
-diagnoses during round-4 live verification of `answer-voice-screen`; both had to be reasoned out
-indirectly, by re-running retrieval and searching the corpus.
-
-**Shape to consider — not decided.** Record the whole quoted span, which check failed, and which
-document was taken as the citation. Server-side only; nothing reader-facing changes.
-
-**Owed by the story that builds it.** Decide what a server log may hold before widening it. The
-quotation is model output about public records, but the reader's question sits beside it in the same
-log, and whether the public's questions are stored at all is deliberately unresolved
-(`reviews/answer-voice-screen.md` → Non-goals, the audit-log stub). Keep those two decisions apart.
-
-**Sequencing.** Independent of FEAT-1 and FEAT-2. Touches `src/lib/chat/orchestrate.ts`, which
-`answer-voice-screen` also edits — start after that story merges.
-
 ### FEAT-4 — Tell the reader an answer can take a while
 
 **Want (Thomas, 2026-09-24).** A reader is told that an answer can take a while to begin.
@@ -163,3 +141,4 @@ sampled, is a later story through the workflow's own loop.
 ## Done
 
 - **FEAT-1** — Read a question that names no jurisdiction as being about Oregon — PR #8 / merge: oregon-default-jurisdiction (story: `reviews/oregon-default-jurisdiction.md`).
+- **FEAT-3** — Keep enough of a refused quotation to diagnose it — PR #9 / merge: refusal-diagnostics (story: `reviews/refusal-diagnostics.md`).
