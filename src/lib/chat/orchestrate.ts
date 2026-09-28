@@ -358,8 +358,10 @@ export async function* screenedAnswer(
     yield { type: "streamed_tokens", text };
   }
 
-  /** Stops the answer with the provenance notice. Called only through the two refusals
-   *  below, so a quotation refusal cannot log anything but its record. */
+  /** Stops the answer with the provenance notice. Called through the refusal helpers
+   *  below, and every quotation refusal today goes through `refuseQuotation` and logs its
+   *  record. That is a convention, not a guarantee: this takes any text (correctness
+   *  review, round c5252f4). */
   function* stop(logged: string): Generator<ChatStreamEvent> {
     refused = true;
     log("answer refused on provenance", logged);

@@ -242,7 +242,9 @@ settled as a detail inside this one. It is reported rather than omitted so the a
 **What a refused quotation leaves in the server log.** When the quotation screen refuses a quotation
 (see *How V-Tina speaks*), the reader gets the provenance notice and none of the refused words. The
 server log gets one entry, labelled `answer refused on provenance`, holding one JSON object. JSON is
-used so a long quotation is never cut by the console and a line break never splits the entry:
+used so a long quotation is never cut by the console and a line break never splits the entry. The
+same label also marks the refusal of an opening that speaks as the Governor; that line is a plain
+sentence, not JSON, so a quotation refusal is the labelled line that holds these fields:
 
 | Field | What it holds |
 |---|---|

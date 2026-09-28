@@ -487,3 +487,19 @@ was even. That is a lead, not a finding: the rejected lines are not kept, so it 
 
 Deciding these findings is not a merge decision. `/close` applies the fixes and stops at its merge
 fork.
+
+## Fixes (2026-09-27, round c5252f4)
+
+Only the findings Thomas approved. The lexer change stays out, as decided.
+
+- **Approach IMPORTANT — one definition of "in the record."** `inRecord(passages, text,
+  documentTitle?)` in `src/lib/voice.ts` is now the only passage walk.
+  - `verifyQuotedSpan` asks it about the cited documents, and about any document.
+  - `refusalEntry` asks it about a refused quotation's opening.
+  - The `inSome`/`inAny` closures and the inline copy in `refusalEntry` are gone.
+- **Approach NIT (count) and Correctness NIT (overstated guarantee), one edit.** The comment on
+  `stop` in `src/lib/chat/orchestrate.ts` names the helpers rather than counting them. It also says
+  what is true today: every quotation refusal logs its record by convention, not by guarantee.
+- **Correctness NIT — shared label.** The README's server-log section now says the
+  `answer refused on provenance` label also marks the impersonating-opening refusal, whose line is
+  plain text, and that a quotation refusal is the labelled line holding the documented fields.

@@ -469,6 +469,18 @@ export function indexPassages(chunks: readonly RetrievedPolicyChunk[]): PassageI
   return { byTitle, citations: citationPatterns([...byTitle.keys()]) };
 }
 
+/**
+ * Whether `text` (already normalised) is verbatim in a passage of `documentTitle`, or of
+ * any retrieved document when none is named. **The one definition of "in the record":**
+ * the verifier asks it of a quotation, and the refusal record's privacy rule asks it of a
+ * refused quotation's opening, so the two cannot disagree about what the record holds. A
+ * second copy of this walk once sat in `refusalEntry` (approach review, round c5252f4).
+ */
+function inRecord(passages: PassageIndex, text: string, documentTitle?: string): boolean {
+  const pools = documentTitle === undefined ? [...passages.byTitle.values()] : [passages.byTitle.get(documentTitle) ?? []];
+  return pools.some((pool) => pool.some((p) => p.includes(text)));
+}
+
 export interface UnverifiedQuotation {
   readonly text: string;
   /** Every document the quotation was checked against as its citation, nearest first.
@@ -504,8 +516,7 @@ export function verifyQuotedSpan(
   if (text === "") return null;
   if (/\.\.\.|…/.test(text)) return { text, citedAs: [], reason: "elided" };
 
-  const inSome = (pool: readonly string[]) => pool.some((p) => p.includes(text));
-  const inAny = () => [...passages.byTitle.values()].some(inSome);
+  const inAny = () => inRecord(passages, text);
 
   const named = citationsIn(context, passages.citations);
   if (named.length === 0) {
@@ -521,7 +532,7 @@ export function verifyQuotedSpan(
    */
   const inSentence = named.filter((c) => c.end > sentenceStartIn(context.slice(-CITATION_WINDOW)));
   const candidates = inSentence.length > 0 ? inSentence : named.slice(0, 1);
-  if (candidates.some((c) => inSome(passages.byTitle.get(c.title) ?? []))) return null;
+  if (candidates.some((c) => inRecord(passages, text, c.title))) return null;
   return {
     text,
     // The documents the check tested, not every one named nearby: a document named in
@@ -604,9 +615,7 @@ export function refusalEntry(problem: UnverifiedQuotation, passages: PassageInde
   const words = problem.reason === "unterminated" ? problem.text.slice(1) : problem.text;
   const tested = normalise(words);
   const opening = tested.slice(0, REFUSAL_OPENING_CHARS);
-  const keepWhole =
-    tested.length <= REFUSAL_OPENING_CHARS ||
-    [...passages.byTitle.values()].some((pool) => pool.some((p) => p.includes(opening)));
+  const keepWhole = tested.length <= REFUSAL_OPENING_CHARS || inRecord(passages, opening);
   const { reason: check, citedAs } = problem;
   if (keepWhole) return { check, quotation: problem.text, citedAs, shortened: null };
   return {
