@@ -223,8 +223,8 @@ regression was rejected. AC8 (reviewer) and AC9 (manual) are judged by a person.
 
 - frame/6 — ran (codex on kimi-latest, 3 findings, 10 regressions) → reviews/refusal-diagnostics.design.655b822.json
 - frame/9 — demonstrated red: every ratified regression on a sized criterion (AC1–AC7), 12 runs, each red on its named test and reverted; build commit 4b408ab
-- review/6 — ran (codex on deepseek-flash-latest by Thomas's session-only override of the glm-latest route, 3 findings, 21 commands, 0 REACH) → reviews/refusal-diagnostics.approach.c5252f4.json. Before it, glm-latest stopped three times on round c5252f4 with "cannot read codex's event stream" (a format stop, not a fabrication: 8, 2 and 8 unreadable lines), while a trivial probe of glm-latest answered with a readable stream
-- review/8 — ran (codex: deepseek-flash-latest correctness, by Thomas's session-only override, rerun alone after one format stop ["cannot read codex's event stream", 2 lines] — the narrow recovery AAR-1 describes; kimi-latest hidden-failure; 2 / 0 findings; doc-drift shadow: trial closed) → reviews/refusal-diagnostics.correctness.c5252f4.json, reviews/refusal-diagnostics.hidden-failure.c5252f4.json
+- review/6 — n/a — round 27f6411 is a re-review verifying approved fixes (base 6552848, no redesign last round): correctness only. Round c5252f4's approach pass (deepseek-flash-latest by Thomas's session-only override, after three glm-latest format stops) → reviews/refusal-diagnostics.approach.c5252f4.json
+- review/8 — ran round 27f6411 (codex: deepseek-flash-latest correctness, by Thomas's session-only override of glm-latest / kimi-latest hidden-failure, 2 / 0 findings; doc-drift shadow: trial closed) → reviews/refusal-diagnostics.correctness.27f6411.json, reviews/refusal-diagnostics.hidden-failure.27f6411.json. Round c5252f4's pass → reviews/refusal-diagnostics.correctness.c5252f4.json, reviews/refusal-diagnostics.hidden-failure.c5252f4.json
 - close/3b — activation, nothing new — review_runner.py refused to promote four results this session (approach ×3 on glm-latest, correctness ×1 on deepseek-flash-latest: "cannot read codex's event stream"); the loss of the rejected stream is already claude-light-workflow BACKLOG.md OPS-71 (filed 2026-09-10 from the same stop class on the same route), and the partial-round recovery used is this repo's AAR-1; the U+2028/splitlines lead is unconfirmed, so no novelty can be cited. Searched: this repo's BACKLOG.md (no item), .aar/rejected-lessons.md (absent here), claude-light-workflow BACKLOG.md and .aar/rejected-lessons.md (OPS-71). No guard-hook block observed. Drift check n/a: this repo carries no install.sh. The doc-drift TRIAL CLOSED stop is the trial's cap, expected.
 - close/4 — presented 2026-09-27: re-review (recommended, as a fix touched the quotation checker) or merge; Thomas chose re-review by invoking /review
 
@@ -513,3 +513,39 @@ Only what moved since the last-reviewed HEAD `6552848`.
 | 1, 3, 7 | `inRecord` in `src/lib/voice.ts` is the one passage walk. `verifyQuotedSpan` (the documents a quotation is checked against, and any document) and `refusalEntry` (option B's opening test) both call it. |
 | 2 | The comment on `stop` in `src/lib/chat/orchestrate.ts` names the refusal helpers without counting them, and states that routing every quotation refusal through the record is a convention. |
 | 8 | README → *What a refused quotation leaves in the server log*: the label is shared with the impersonating-opening refusal, whose line is plain text. |
+
+## Codex correctness re-review (2026-09-28, round 27f6411, base 6552848, HEAD 27f6411)
+
+**Routing and CI.** Correctness ran on `deepseek-flash-latest`, carrying forward Thomas's session-only
+override of `glm-latest` (16 commands). Hidden-failure ran on `kimi-latest` (5 commands). Doc-drift
+shadow: trial closed. CI `gate` passed on `27f6411`.
+
+**REACH, 2 reported.**
+- **One real, and read-only.** The correctness critic read `~/.claude/skills/close/SKILL.md`, the
+  deployed close skill, outside the review worktree. It wrote nothing.
+- **One false positive.** A grep pattern's `\|` was read as a path.
+
+### Correctness (deepseek-flash-latest) — 2 findings
+
+**Summary:** the approved fixes landed cleanly, and no criterion moves.
+- **`inRecord`:** the critic traced both callers against the closures it replaced, including the
+  missing-title fallback and the all-documents case, and found identical behaviour in every branch.
+- **The `stop` comment** names the helpers and states the convention.
+- **The README's shared-label note** matches `stop`'s only two callers.
+- **Scope containment holds.**
+
+**NIT — the round c5252f4 correctness artifact names a function that does not exist**
+(`reviews/refusal-diagnostics.correctness.c5252f4.json:2`). Its summary says refusals funnel through
+"`refuseQuotation` → `stopper`". The function is `stop`. *Suggestion:* a dated correction in the story
+file, since the artifact is the reviewer's own output and is not edited.
+
+**NIT — the R5 regression row still says the mitigation is "structural"**
+(`reviews/refusal-diagnostics.md`, the R5 / AC2 row). The round c5252f4 decisions corrected that to
+"a convention", but nothing in the row points there. *Suggestion:* a dated inline correction, as the
+table's other amended rows carry.
+
+### Hidden-failure (kimi-latest) — no findings
+
+The diff is a pure refactor plus comment and README edits. No catch, fallback or assertion was added,
+removed or weakened. `?? []` in `inRecord` preserves the old behaviour and degrades toward refusal,
+which surfaces rather than hides.
