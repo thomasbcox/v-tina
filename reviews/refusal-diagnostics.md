@@ -458,3 +458,32 @@ No hidden failure introduced:
 - refusal logging is explicit, and surfaces shortening through `shortened`;
 - `citedAs: []` distinguishes "no citation checked" from an omitted field;
 - no blind catch, catch-log-continue, silent fallback or removed safety check was added.
+
+## Decisions (2026-09-27, round c5252f4)
+
+Thomas decided each critic's findings separately. On the approach findings, the correctness
+findings, and the model choices before them, his answer was "as recommended" each time.
+
+| Finding | Critic | Decision |
+|---|---|---|
+| IMPORTANT — the privacy rule's "in the record" test copies the verifier's | Approach | **Fix.** One shared predicate, called by both `verifyQuotedSpan` and `refusalEntry`. |
+| NIT — the record builder strips a violation's opening mark itself | Approach | **Leave.** Reopening the lexer, which took four review rounds, to remove one commented, tested line costs more risk than it saves. |
+| NIT — "the two refusals below" is a count in living text | Approach | **Fix.** Name the kind, not the count. |
+| NIT — the README's log label is shared with the impersonation refusal | Correctness | **Fix.** Say the label is shared, and that a quotation refusal's line is the JSON one. |
+| NIT — `stop` is a free-text seam, so the comment overstates the guarantee | Correctness | **Reword** the comment to what is true of today's call sites, folded into the approach count fix. Not enforced: code in the same closure can always call the logger directly, so enforcement would add code without closing the gap. **Correction to this story's regressions table:** the R5 mitigation it calls "structural" is a convention, as the reviewer says. The stated gap is unchanged. |
+| Hidden-failure | Hidden-failure | No findings. |
+| Doc-drift shadow | — | Trial closed; nothing ran. |
+
+**Model routing this round, also Thomas's.**
+- After three `glm-latest` format stops, the approach and correctness passes ran on
+  `deepseek-flash-latest`, by a session-only override. The routing file is unchanged.
+- After one format stop, the correctness critic was rerun alone.
+
+**What the stops suggest, for the tooling fix.** Unreadable lines appeared on full runs by both GLM
+and DeepSeek in this repository, and never on Kimi's runs here or on trivial probes. Thomas reports
+GLM working in other repositories. The runner reads the event stream with Python's `splitlines()`,
+which also breaks on U+0085, U+2028 and U+2029. JSON may carry those unescaped, and every stop's count
+was even. That is a lead, not a finding: the rejected lines are not kept, so it is unconfirmed.
+
+Deciding these findings is not a merge decision. `/close` applies the fixes and stops at its merge
+fork.
