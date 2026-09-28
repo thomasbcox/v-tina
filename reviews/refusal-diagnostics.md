@@ -186,7 +186,7 @@ They are flagged to Thomas with the approval record, and not reviewed by the des
 | R2 / AC4 | Small | An empty citation list cannot be told apart from a field no path ever filled in. A test that only checks that no title appears passes both. | **Amended.** The list must be present and exactly empty. A path that read a citation but wrote an empty list is caught by AC3's cases. |
 | R3 / AC5 | Small | The marker test proves one exact string is absent. A leak in another form passes it, such as a new "context" field or a prompt fragment carrying the reader's wording. | **Amended.** AC5 is also red when the entry holds any field beyond the documented ones. |
 | R4 / AC6 | Small | The refused words stay out of the answer text but reach the reader through another channel, such as an error event's payload or a status field, which the existing tests do not inspect. | **Accepted.** AC6 checks every event the reader receives. |
-| R5 / AC2 | Small | A future refusal site reuses an existing reason and hand-builds the old 60-character string. The typecheck fires only on a new *reason*, so it stays green. | **Accepted as a stated gap.** No test can list refusal sites that do not exist yet. The mitigation is structural: the free-text refusal is narrowed to the impersonating opening, so a new quotation refusal has to build the record. |
+| R5 / AC2 | Small | A future refusal site reuses an existing reason and hand-builds the old 60-character string. The typecheck fires only on a new *reason*, so it stays green. | **Accepted as a stated gap.** No test can list refusal sites that do not exist yet. The mitigation is structural: the free-text refusal is narrowed to the impersonating opening, so a new quotation refusal has to build the record. *Corrected 2026-09-28 (round 27f6411):* not structural but a convention, because `stop` still takes any text. See *Decisions (2026-09-27, round c5252f4)*. |
 | AC2 | Small | A grammar refusal and a verification refusal read alike in the log, so the operator goes to the wrong code. | **Rejected.** Every reason value belongs to exactly one check, so no two checks' refusals can read alike. |
 | AC1 (oracle mode) | Small | The test's copy of console formatting drifts from Node's. It goes red while the product is correct, or stays green while the real console mangles the record. | **Accepted.** It is the same point as the IMPORTANT finding, and AC1's mechanism now follows it. |
 | New risk | — | Lifting the 60-character limit to "however long" means a pathological quotation is written to the log in full on every refusal, and nothing in the risk list bounds that. | **Amended.** Added as R6, a stated limit with its bound. No check. |
@@ -431,6 +431,10 @@ absolute paths. Each command changed into the review worktree first and only rea
 
 ### Correctness (deepseek-flash-latest) — 2 findings
 
+*Correction (2026-09-28, round 27f6411):* this pass's artifact summary says refusals funnel through
+"`refuseQuotation` → `stopper`". No `stopper` exists: the function is `stop`
+(`src/lib/chat/orchestrate.ts`). The artifact is left as the reviewer wrote it.
+
 **Summary:** no correctness defect against the spec, criterion by criterion. Every quotation refusal
 site funnels through `refuseQuotation`. `refusalEntry` applies option B exactly. `citedAs` reports the
 documents actually tested. The record reaches the console as one unbroken string, the reader path is
@@ -560,3 +564,12 @@ Thomas: "as recommended".
 | NIT — the R5 regression row still says "structural" | Correctness | **Fix,** by a dated inline correction in the row. |
 | Hidden-failure | Hidden-failure | No findings. |
 | Doc-drift shadow | — | Trial closed; nothing ran. |
+
+## Fixes (2026-09-28, round 27f6411)
+
+- **The nonexistent `stopper`.** A dated correction heads *Correctness (deepseek-flash-latest)* in the
+  round c5252f4 pass. The artifact is unchanged.
+- **The "structural" R5 row.** A dated inline correction in the row's Disposition cell points to the
+  round c5252f4 decisions.
+
+Both fixes are to this file only. No product code, test or README line changed.
