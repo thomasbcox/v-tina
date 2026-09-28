@@ -226,7 +226,7 @@ regression was rejected. AC8 (reviewer) and AC9 (manual) are judged by a person.
 - review/6 — ran (codex on deepseek-flash-latest by Thomas's session-only override of the glm-latest route, 3 findings, 21 commands, 0 REACH) → reviews/refusal-diagnostics.approach.c5252f4.json. Before it, glm-latest stopped three times on round c5252f4 with "cannot read codex's event stream" (a format stop, not a fabrication: 8, 2 and 8 unreadable lines), while a trivial probe of glm-latest answered with a readable stream
 - review/8 — ran (codex: deepseek-flash-latest correctness, by Thomas's session-only override, rerun alone after one format stop ["cannot read codex's event stream", 2 lines] — the narrow recovery AAR-1 describes; kimi-latest hidden-failure; 2 / 0 findings; doc-drift shadow: trial closed) → reviews/refusal-diagnostics.correctness.c5252f4.json, reviews/refusal-diagnostics.hidden-failure.c5252f4.json
 - close/3b — activation, nothing new — review_runner.py refused to promote four results this session (approach ×3 on glm-latest, correctness ×1 on deepseek-flash-latest: "cannot read codex's event stream"); the loss of the rejected stream is already claude-light-workflow BACKLOG.md OPS-71 (filed 2026-09-10 from the same stop class on the same route), and the partial-round recovery used is this repo's AAR-1; the U+2028/splitlines lead is unconfirmed, so no novelty can be cited. Searched: this repo's BACKLOG.md (no item), .aar/rejected-lessons.md (absent here), claude-light-workflow BACKLOG.md and .aar/rejected-lessons.md (OPS-71). No guard-hook block observed. Drift check n/a: this repo carries no install.sh. The doc-drift TRIAL CLOSED stop is the trial's cap, expected.
-- close/4 — not yet reached
+- close/4 — presented 2026-09-27: re-review (recommended, as a fix touched the quotation checker) or merge; Thomas chose re-review by invoking /review
 
 ## Open questions
 
@@ -503,3 +503,13 @@ Only the findings Thomas approved. The lexer change stays out, as decided.
 - **Correctness NIT — shared label.** The README's server-log section now says the
   `answer refused on provenance` label also marks the impersonating-opening refusal, whose line is
   plain text, and that a quotation refusal is the labelled line holding the documented fields.
+
+## Build note (2026-09-28, re-review of the round c5252f4 fixes)
+
+Only what moved since the last-reviewed HEAD `6552848`.
+
+| AC | Where |
+|---|---|
+| 1, 3, 7 | `inRecord` in `src/lib/voice.ts` is the one passage walk. `verifyQuotedSpan` (the documents a quotation is checked against, and any document) and `refusalEntry` (option B's opening test) both call it. |
+| 2 | The comment on `stop` in `src/lib/chat/orchestrate.ts` names the refusal helpers without counting them, and states that routing every quotation refusal through the record is a convention. |
+| 8 | README → *What a refused quotation leaves in the server log*: the label is shared with the impersonating-opening refusal, whose line is plain text. |
