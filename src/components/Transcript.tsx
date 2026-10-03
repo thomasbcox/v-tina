@@ -1,3 +1,4 @@
+import type { Ref } from "react";
 import type { Turn } from "../lib/chat/client";
 import {
   ANSWER_LABEL,
@@ -20,9 +21,9 @@ import { Sources } from "./Sources";
  * visible mark at their end when they did not complete; any notice, as its own
  * block; the sources.
  */
-export function Transcript({ turns }: { turns: readonly Turn[] }) {
+export function Transcript({ turns, listRef }: { turns: readonly Turn[]; listRef?: Ref<HTMLDivElement> }) {
   return (
-    <div className="space-y-8">
+    <div ref={listRef} className="space-y-8">
       {turns.map((turn, i) => (
         <article key={turn.id} aria-label={`Exchange ${i + 1}`} className="space-y-3">
           <div aria-label={QUESTION_LABEL} className="rounded bg-neutral-100 px-4 py-3 dark:bg-neutral-800">

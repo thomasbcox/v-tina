@@ -163,6 +163,23 @@ describe("AC3 — the waiting line, until the first record", () => {
     const waiting = screen.getByRole("status", { name: WAITING_LABEL });
     for (const answer of screen.getAllByLabelText(ANSWER_LABEL)) expect(answer.contains(waiting)).toBe(false);
   });
+
+  it("the new exchange is brought into view when it is sent", async () => {
+    // Found live: a second question rendered below the fold, behind the input, and
+    // "appears in the transcript" was true only of the markup. jsdom has no
+    // scrollIntoView, so the call is observed rather than its effect.
+    const scrolled = vi.fn();
+    Element.prototype.scrollIntoView = scrolled;
+    const service = fakeService();
+    vi.stubGlobal("fetch", service.fetch);
+    render(<ChatScreen />);
+    ask("A question?");
+    await waitFor(() => expect(scrolled).toHaveBeenCalled());
+    const target = scrolled.mock.contexts[scrolled.mock.contexts.length - 1] as Element;
+    expect(target.getAttribute("aria-label")).toBe("Exchange 1");
+    service.close();
+    vi.unstubAllGlobals();
+  });
 });
 
 describe("AC5 — the sources list names each document once, linked, dated, passages readable", () => {

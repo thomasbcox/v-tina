@@ -39,8 +39,17 @@ export function ChatScreen({ initialTurns = [] }: { initialTurns?: Turn[] }) {
   const nextId = useRef(initialTurns.reduce((max, t) => Math.max(max, t.id), 0) + 1);
   const inFlight = useRef<AbortController | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
+  const transcriptRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => () => inFlight.current?.abort(), []);
+
+  // A new exchange is brought to the top of the view when it is added. Found live
+  // (2026-10-03): the second question of a conversation rendered below the fold,
+  // behind the input, and the reader saw nothing happen. The call is optional
+  // because jsdom does not implement it.
+  useEffect(() => {
+    transcriptRef.current?.lastElementChild?.scrollIntoView?.({ block: "start" });
+  }, [turns.length]);
 
   const ready = canSend(turns);
   const question = draft.trim();
@@ -98,7 +107,7 @@ export function ChatScreen({ initialTurns = [] }: { initialTurns?: Turn[] }) {
     <div className="mx-auto flex min-h-full max-w-prose flex-col px-4 py-6">
       <h1 className="mb-6 text-2xl font-semibold">{PAGE_HEADING}</h1>
       <div className="flex-1">
-        <Transcript turns={turns} />
+        <Transcript turns={turns} listRef={transcriptRef} />
       </div>
       <form
         ref={formRef}
