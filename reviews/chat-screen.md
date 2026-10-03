@@ -271,7 +271,7 @@ after approval.
 
 - frame/6 — ran (codex on kimi-latest, 4 findings, 14 regressions) → reviews/chat-screen.design.23a18c3.json
 - frame/9 — demonstrated red: every ratified regression on a sized criterion (12 cases over AC3, AC5–AC12) plus 4 builder's-own cases for checks added at the build (AC1, AC3, AC4 ×2), each applied on a clean tree, red on its named test, and reverted; the two ratified entries that are live observations (R1/AC1, AC4's paint) were observed and are recorded in the build note; build commits 3809f72 and c7a5657
-- review/6 — not yet reached
+- review/6 — ran (codex on glm-latest, 3 findings) → reviews/chat-screen.approach.d2e7d11.json
 - review/8 — not yet reached
 - close/3b — not yet reached
 - close/4 — not yet reached
@@ -614,3 +614,58 @@ Thomas's dispositions at the frame consult, binding on the build.
 | Risk list (D) | **Ratified as listed.** | R1–R5. |
 | Regressions (D) | **Ten accepted, four amended, none rejected**, as the table's Disposition column records. | The amended mechanisms of AC3, AC6, AC8 and AC11; the live checklist. |
 | Open questions 4–8 (E) | **The recommended options:** the Sources list is the footer; a conversation; commit `.claude/launch.json`; no "working" record; the notice wording as proposed. | As recorded under *Open questions*. |
+
+## Codex (glm-latest) approach review (2026-10-03, base main, HEAD d2e7d11)
+
+Artifact: `reviews/chat-screen.approach.d2e7d11.json`. The reviewer ran 20 read-only commands over
+the spec, the whole changed files and the dependency manifest. PR #10's check was green on this
+HEAD.
+
+**Verdict.** "If I built this from the approved spec, I would keep the ratified shape: a pure
+client module validated by the shared zod event schema, thin presentational components, no runtime
+dependency, and an AbortController threaded to the endpoint. I would not ship the history builder
+as-is, because it enforces only the message-count half of the request schema and can therefore
+turn a normal long answer into a refused follow-up. I would also close the fetch when a
+client-side failure ends a turn, and use real landmark semantics for the repeated question and
+answer labels."
+
+### IMPORTANT
+
+**1. History trimming enforces the message count but not the per-message length limit** —
+*two-way · kludgy*. Locus: `src/lib/chat/client.ts`, `buildRequest`.
+*Claim.* The loop trims only while the message count exceeds `MAX_HISTORY_MESSAGES`, but
+`chatRequestSchema` also limits every message to 2000 characters, assistant messages included. An
+answer may run to several thousand characters, so the follow-up after one long answer carries an
+assistant message the service refuses with 400 — and the screen then shows the connection notice
+for the reader's next question. That misses "within the limits the service accepts" and AC12's
+claim that the schema accepts the built body; the test used short answers and could not see it.
+*Alternative.* Let the request schema be the single authority: build from whole turns, validate
+with `chatRequestSchema.safeParse`, and drop or shorten until it accepts; or apply the per-message
+limit, imported from the authority, to the prior answers before the count loop.
+*Win.* One schema owns every acceptance limit; a normal long answer no longer turns the next
+question into a connection notice.
+
+**2. A locally unreadable stream is shown as lost but never disconnected** — *two-way ·
+nonstandard*. Locus: `src/components/ChatScreen.tsx`, the submit handler; `src/lib/chat/client.ts`,
+`readChatStream`.
+*Claim.* On a malformed record `readChatStream` throws and releases its reader lock but does not
+cancel the body; `ChatScreen` catches, marks the turn incomplete, and never aborts the request —
+the only abort is unmount. So the one failure path the client owns can end the exchange on screen
+while the fetch stays open and the server keeps generating for nobody, which undercuts the
+cancellation design the rest of the screen follows.
+*Alternative.* Make cancellation part of every terminal path: after `endTurn` on a client-side
+failure, abort the controller (or cancel the body); keep the unmount abort and its
+"do not update after an unmount" rule separate.
+*Win.* One abort call closes the only client-owned path that can orphan model work and billing.
+
+**3. Question and answer labels are `aria-label`s on generic `div`s** — *two-way · nonstandard*.
+Locus: `src/components/Transcript.tsx`, the question and answer containers.
+*Claim.* The containers are generic `div`s carrying `aria-label`, with the visible labels in
+separate, unassociated `p` elements. Generic roles do not reliably expose an accessible name, so a
+screen-reader user may not hear where the question ends and the answer begins. Testing Library
+finds the attribute, so the tests pass while the who-is-speaking distinction is weaker for
+non-visual readers.
+*Alternative.* `section` elements (landmark regions) labelled by their visible label through
+`aria-labelledby`, with ids derived per turn; keep the visible labels exactly as they are.
+*Win.* The labels become regions assistive technology actually exposes, and the oracle checks a
+name the browser exposes; a few lines, no dependency.
