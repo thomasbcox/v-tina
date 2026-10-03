@@ -57,8 +57,14 @@ describe("AC6 — the response is a sequence of self-describing records", () => 
       { type: "safety_status", classification: "PARTISAN-TRAP", neutralisedQuestion: "q?" },
       { type: "retrieved_chunks", chunks: [] },
       { type: "streamed_tokens", text: "some words" },
+      { type: "notice", kind: "provenance", text: "a notice" },
+      { type: "error", reason: "generation", notice: "a failure notice" },
       { type: "audit_log_status", recorded: false },
     ];
+    // "Every" is held against the schema, not this list: a kind declared there and
+    // missing here fails, so the list cannot quietly fall behind the contract.
+    const declared = chatStreamEventSchema.options.map((o) => o.shape.type.value).sort();
+    expect([...new Set(events.map((e) => e.type))].sort()).toEqual(declared);
     const records = await readRecords(toSseStream(from(events), TERMINATOR));
     records.forEach(assertDeclaredEvent);
     expect(records).toEqual(events);

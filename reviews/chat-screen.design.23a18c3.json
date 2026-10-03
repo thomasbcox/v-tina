@@ -1,0 +1,103 @@
+{
+  "verdict": "The shape is sound and modern: one pure client module (`readChatStream` / `reduceTurn` / `sourcesOf` / `buildRequest`) that reuses the server's own zod schema as the parse authority, thin presentational components tested by static render, cancellation threaded through `AbortController` exactly as the server threads `request.signal`, and no new dependencies. That is the design I would build from this spec. Two decisions in the sketch deserve Thomas's attention before implementation: (1) Open question 2's option A carries the notice as an *optional field* on `streamed_tokens`, which fails open — a consumer that ignores it renders the provenance stop as answer text, re-enabling R2 — where this repo's own declared idiom (a discriminated union with no catch-all, so omission is a type error) argues for a distinct record kind; since the record contract is declared one-way, that choice is his. (2) The sketch itself asks whether screen copy belongs in `src/lib/prompts.ts`'s reader-facing partition; it should — the avatar notice is the product's first safety rule and the existing README↔prompts drift test should cover it. On the Regressions rule: risks R1–R5 each reach a person and none is a scope statement, so the risk list is complete as labelled; AC2, AC12, AC13 and AC14 are person-judged and owe no running test, which is correct for all four. Every remaining criterion is falsifiable and every named oracle can fail.",
+  "findings": [
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "one-way",
+      "standing": "nonstandard",
+      "title": "The provenance marker is an optional field that fails open, in a codebase whose declared idiom is exhaustive narrowing",
+      "locus": "Open question 2, option A / Design sketch — 'Option A of Open question 2'",
+      "claim": "Option A adds `notice: z.enum([\"provenance\"]).optional()` to the existing `streamed_tokens` record. The sketch's justification is 'every existing consumer still works' — but there is no existing consumer to protect: this screen is the first client, and the only other readers are the server's own tests. The cost is real and specific: the distinction between answer text and stop notice becomes a convention inside one record kind, so any consumer — including this screen after a refactor — that reads `text` and ignores `notice` renders the provenance stop as the answer's final sentence, which is exactly the R2 failure observed live on 2026-09-28, now silently re-enabled with every test green. That is a shape flaw by the contract's own definition: the error model cannot surface its own failure. The repo's declared wire idiom, stated in `src/lib/chat/events.ts`'s header comment, is a discriminated union with no catch-all member precisely so that consumers narrow exhaustively and a new record kind fails the typecheck rather than falling through — the sketch's `reduceTurn` bullet relies on that same property.",
+      "alternative": "Make the stop its own member of the discriminated union — e.g. `z.object({ type: z.literal(\"notice\"), kind: z.enum([\"provenance\"]), text: z.string() })` — emitted by `stop()` in place of the marked `streamed_tokens`. A client that has not handled it fails the typecheck in an exhaustive reducer instead of misrendering; a non-exhaustive client renders nothing rather than misattributing the notice to the record, which is the safe direction for a safety notice.",
+      "win": "R2's failure mode becomes unrepresentable rather than convention-guarded: the guard moves from 'every consumer remembers to check an optional field' to the compiler, which is the invariant-centralisation the union was built for. One field and one conditional rendering branch are removed; the exhaustive-narrowing test the sketch already plans gains a second case for free."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "Screen copy in `src/components/copy.ts` splits the reader-facing prose authority away from its drift guard",
+      "locus": "Design sketch — 'Screen copy'",
+      "claim": "`src/lib/prompts.ts` declares itself the home of 'prose a member of the public reads', partitions it into `READER_FACING_PROMPTS`, and a test holds the README's list equal to the code so the wording cannot drift from the documentation. The avatar notice is the product's first safety rule, its wording is a ratified product decision (Open question 8), and the waiting/failure/label texts are equally reader-facing — yet the sketch places them in a new `src/components/copy.ts` that no existing registry or drift test covers. The sketch itself flags this as open; the answer should be settled now, because the reasoning it gives ('that module's lists are the prompts the service runs on') describes what the module *emits*, not what it *declares*: the README documents the reader-facing list as the place such prose lives.",
+      "alternative": "Keep the avatar notice, waiting text, and labels as named constants in `src/lib/prompts.ts`, added to `READER_FACING_PROMPTS` (or to a parallel declared list the same README-equality test pattern covers), and import them into the components. `copy.ts` disappears.",
+      "win": "One authority for every word the public reads, and the safety notice's wording comes under the existing README↔code drift test instead of being the one piece of reader-facing prose nothing watches; one module and one layer boundary removed."
+    },
+    {
+      "severity": "QUESTION",
+      "reversibility": "two-way",
+      "standing": "standard",
+      "title": "What does the reader see when client-side parsing fails?",
+      "locus": "Design sketch — `readChatStream` bullet",
+      "claim": "The sketch says a payload that fails `chatStreamEventSchema` 'ends the turn as incomplete rather than being skipped silently', which is the right error model — but it never says what is *shown*. AC9's notice copy (`FAILURE_NOTICE`) is a server-emitted record; a client-side parse failure has no record to display, and `Turn`'s status gains an `incomplete` value with no stated visible consequence. As sketched, the criterion-9 oracle ('the failure record arrives') cannot exercise this path, so the one failure mode the client owns has no specified rendering and no oracle.",
+      "alternative": "State in the sketch which copy a client-side parse failure shows (reusing the same set-apart notice component and incomplete marking as AC9, with its own sentence of copy in the reader-facing registry), and add one line to AC9's mechanism or a new row feeding a malformed payload to `readChatStream` and asserting the rendered notice.",
+      "win": "The client's only owned failure path gets the same visible-notice treatment as the server's, and the sketch's claim 'rather than being skipped silently' becomes checkable rather than aspirational — one additional render case in the existing static-render test."
+    },
+    {
+      "severity": "NIT",
+      "reversibility": "two-way",
+      "standing": "standard",
+      "title": "Hand-rolled SSE framing reinvents what `eventsource-parser` already does",
+      "locus": "Design sketch — `readChatStream` bullet",
+      "claim": "The buffer-across-chunks, split-on-blank-line, `data:`-line framing is the exact job of `eventsource-parser` (small, zero-dependency, the de-facto standard for fetch-streamed SSE). Nothing installed does this today. The rejection is defensible and I would not change the recommendation: the bespoke part is ~20 lines, the substantive risk is payload validation which zod owns regardless of who splits the frames, and the chunk-boundary oracle in AC4 covers the framing directly — but per the dependency-rejection guardrail the candidate should be named so the choice is a trade and not an omission.",
+      "alternative": "Either take `eventsource-parser` and keep zod validation on its output, or record in the sketch (one sentence) that it was considered and rejected on the grounds above — mirroring the server side's recorded SSE-without-a-library decision in `reviews/chat-safety-routing.md`, Open question 5.",
+      "win": "The rejection becomes a documented trade against a named candidate (as the server-side transport decision already is) rather than an invisible default; if a second framing edge case ever appears, the answer to 'what would change this' is already written."
+    }
+  ],
+  "regressions": [
+    {
+      "criterion": "R1 / AC1",
+      "regression": "The notice text is present in the static markup above and below the transcript in all three rendered states, but on the live page the transcript's own scrolling container clips or covers one of them (overflow, stacking, or a flex child that shrinks the fixed region away) — every Small test asserting presence in markup stays green while a reader in some state never sees the notice. The intent is that a person always sees it; the letter is that the string exists in the tree."
+    },
+    {
+      "criterion": "AC3 / R4",
+      "regression": "The waiting text is rendered inside the transcript in the same type, colour and spacing as answer text, so it reads as the answer's first sentence ('the answer is on its way…' as though V-Tina said it). Presence-before-first-record and absence-after are both satisfied; the intent — the reader can tell a system notice from the avatar's words — is violated. This is the R2 confusion applied to the one notice the client writes itself."
+    },
+    {
+      "criterion": "AC4 / R4",
+      "regression": "The reducer holds the exact concatenation after every token event, but the paint loop applies state updates in batches (or accumulates into a buffer flushed per frame), so the reader sees the answer appear in two or three large jumps rather than as it is generated. The letter — text equals concatenation after each event — holds in the pure-function test; the intent — a person watches it arrive — fails, and only the one-off step-9 observation stands between this and ship."
+    },
+    {
+      "criterion": "AC4 / R4 (stream reader)",
+      "regression": "The reader yields exactly the events encoded for the fixture's split points, but treats stream termination as end-of-turn, so a connection that drops mid-answer (no terminating record) renders as a *complete* answer — the truncation the wire contract's always-terminates rule exists to make detectable, silently re-hidden on the client side. Every chunk-splitting test passes; the intent — the reader can tell a finished answer from a cut one — fails."
+    },
+    {
+      "criterion": "AC5 / R3",
+      "regression": "Grouping de-duplicates by document *title* rather than by URL, so two distinct documents sharing a title (two executive orders cited by short name, or a bill and its amendment) collapse into one entry, and the second document's passages render under the first's link. One entry per title satisfies 'naming each document once' in a fixture whose titles are unique; the intent — the reader reaches every document the answer drew on — fails exactly when two documents share a name."
+    },
+    {
+      "criterion": "AC5 / R3",
+      "regression": "Each document is listed once with its date and link, but only its first retrieved passage is rendered (the rest dropped or truncated without affordance). 'The retrieved passage(s) readable' is satisfied for a fixture with one passage per document; with two passages from one document — the case the risk names — the reader cannot read the second, and verifies against an incomplete excerpt."
+    },
+    {
+      "criterion": "AC6 / R5",
+      "regression": "The rewording is shown, labelled, and before the answer on the partisan turn — but the label or the rewording is held in state that is keyed to the screen rather than the turn, so it leaks onto the next, in-bounds turn (or persists after the partisan turn scrolls). The Small test renders one partisan turn and one in-bounds turn as separate renders and both pass; the intent — the reader is told *their* question was reworded and no other — fails on the transition between them."
+    },
+    {
+      "criterion": "AC7 / R3",
+      "regression": "The Sources *list* is suppressed on a deferral, but an empty Sources *section* still renders — a 'Sources' heading over nothing — implying to the reader that sources exist and failed to load, on the one answer whose whole meaning is 'the record does not answer this'. The letter ('no Sources list') holds with an empty list element; the intent (nothing suggests the deferral is grounded) fails."
+    },
+    {
+      "criterion": "AC8 / R2",
+      "regression": "The notice renders in a separate element and the turn is 'marked as stopped' only in machine-readable form — a state flag, a data attribute, or aria text — with no visible indication. The letter (notice apart from the answer's element; marking present) passes a markup assertion that queries the attribute; the intent (a person *sees* the answer was stopped before completing) fails for every sighted reader."
+    },
+    {
+      "criterion": "AC8 / R2",
+      "regression": "The notice is a separate element but styled identically to the answer and placed flush against its final line with no heading, rule, or spacing change, so it reads as the answer's concluding paragraph — the 2026-09-28 run-on reproduced one DOM level down. 'Inside the answer's element' is false, so the red condition never fires; 'set apart' as a person experiences it is unmet."
+    },
+    {
+      "criterion": "AC9 / R2",
+      "regression": "On a mid-stream failure the notice is set apart and the turn flips to incomplete, but the partial answer keeps its dangling final half-sentence with no visible sign it was cut — the 'incomplete' marking appears only on the failure notice itself, which a reader can scroll past while the truncated sentence above still reads as a finished thought. Letter: notice apart, turn marked. Intent: the reader cannot mistake the partial text for the whole answer."
+    },
+    {
+      "criterion": "AC10 / R4",
+      "regression": "The send *button* is disabled while a turn is in progress, but the form still submits on Enter in the input (or the input's own submission path is not gated), so a second question dispatches mid-answer. The letter — 'the send control is unavailable' — passes a rendered-disabled assertion; the intent — the reader cannot send another question until the answer ends — fails through the keyboard path no static render exercises."
+    },
+    {
+      "criterion": "AC11 / R4",
+      "regression": "Trimming drops the oldest *messages* by count, so the cut can sever a question from its answer — the body passes `chatRequestSchema` (which requires only roles, lengths, and a final user message, not alternation) with the new question last, while the answering model receives an orphaned assistant reply or two user turns in a row. The letter (schema-valid, oldest dropped first) holds; the intent (the conversation the model sees is the one the reader had) is violated at every odd boundary."
+    },
+    {
+      "criterion": "AC11 / R4",
+      "regression": "A prior assistant turn's content is sent as the raw concatenation of everything that rendered in the transcript — including a provenance or failure notice — because the stored turn does not distinguish answer text from notice text at request-build time. The schema accepts the body and the new question is last; the intent (the model's history is what the *avatar* said, never a system notice speaking in its voice) fails, and the notice's words quietly enter the next answer's context."
+    }
+  ]
+}

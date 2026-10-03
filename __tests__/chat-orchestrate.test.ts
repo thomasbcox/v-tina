@@ -406,8 +406,11 @@ describe("a reader who disconnects stops every call made for them", () => {
 describe("FEAT-3 — a refusal's log entry, through the whole exchange", () => {
   const REFUSED = "answer refused on provenance";
   const refusing = (quoted: string) => `${DISPLAY_FRAME}, the record is clear. Under EO 21-01: \u201c${quoted}\u201d. Done.`;
+  // The notice is its own record kind (story `chat-screen`): a refusal that arrived
+  // as answer text would be the mid-sentence run-on the screen exists to prevent.
   const provenanceRefused = (events: ChatStreamEvent[]) =>
-    events.some((e) => e.type === "streamed_tokens" && e.text === PROVENANCE_NOTICE);
+    events.some((e) => e.type === "notice" && e.kind === "provenance" && e.text === PROVENANCE_NOTICE) &&
+    !events.some((e) => e.type === "streamed_tokens" && e.text.includes(PROVENANCE_NOTICE));
 
   it("AC5 — holds none of the question, its rewrite, or the conversation", async () => {
     const MARK = "ZEBRA-7741";
