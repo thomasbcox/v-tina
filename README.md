@@ -8,18 +8,21 @@ original, so a reader can verify it directly.
 
 ## Status
 
-**The service answers questions; there is no user interface yet.** The repository holds the
+**The service answers questions, and a first chat screen shows them.** The repository holds the
 Next.js skeleton, the shared boundary types, startup environment validation, the gate and CI
 (story `technology-foundation`), the vector schema and ingestion pipeline (`policy-chunks-ingest`),
 a real seed corpus ingested into the hosted store (`seed-corpus-ingest`), the `/api/chat`
-endpoint with its safety routing (`chat-safety-routing`), and the voice it answers in
-(`answer-voice-screen`): a virtual avatar of the Governor that quotes the record rather than
-speaking for her. *How V-Tina speaks* has the rules and what enforces them.
+endpoint with its safety routing (`chat-safety-routing`), the voice it answers in
+(`answer-voice-screen`) — a virtual avatar of the Governor that quotes the record rather than
+speaking for her; *How V-Tina speaks* has the rules and what enforces them — and the first pass of
+the reader's screen (`chat-screen`): the avatar notice, the answer as it streams, and the sources
+it drew on, each linked to its official original. *The chat screen* describes it.
 
-What the endpoint does **not** have, deliberately. It does not write in Governor Kotek's personal
-idiom: nothing in the corpus records how she talks, so her lexicon and pacing wait on a later story
-with a corpus of her own speech. And there is no chat screen — the endpoint is exercised directly.
-Everything under *Intended stack* not named here is still planned, not built.
+What it does **not** have, deliberately. It does not write in Governor Kotek's personal idiom:
+nothing in the corpus records how she talks, so her lexicon and pacing wait on a later story with a
+corpus of her own speech. The screen is a first pass: the inline citation badges and the side panel
+the specification describes are a second pass. And nothing is deployed — the screen runs locally
+with `npm run dev`. Everything under *Intended stack* not named here is still planned, not built.
 
 ## Purpose
 
@@ -50,7 +53,9 @@ test suite.
 | `src/lib/embeddings.ts` | Fireworks embeddings, and the one declared vector dimension |
 | `src/lib/supabase.ts` | Retrieval (`queryPolicyChunks`) and the Supabase-backed chunk store |
 | `src/app/api/chat/route.ts` | The public chat endpoint: Node runtime, request-path environment contract |
-| `src/lib/chat/` | The routing decision, the request contract, and the stream framing |
+| `src/lib/chat/` | The routing decision, the request contract, the stream framing, and the screen's own logic (`client.ts`) |
+| `src/lib/copy.ts` | The screen copy registry: every word the screen shows that the server does not send |
+| `src/components/` | The chat screen: the avatar notice, the transcript, the sources, the notices |
 | `src/lib/fireworks.ts` | The chat client, completions and streaming; `src/lib/retry.ts` is the shared transient-failure policy |
 | `src/lib/voice.ts` | The one quotation grammar, the opening screen, quote verification and the frame cadence |
 | `src/lib/prompts.ts` | The classifier and rewrite prompts, and the reader-facing ones — nothing is provisional now |
@@ -58,6 +63,7 @@ test suite.
 | `AGENTS.md` | Repo-local reviewer guidance |
 | `reviews/` | Story specifications and review artifacts |
 | `.claude/workflow.json` | Configuration for the review workflow |
+| `.claude/launch.json` | Starts the dev server for the Claude desktop app's in-app browser, which is how the screen's manual checks are run |
 
 Acceptance criteria for product behaviour are written as numbered Given/When/Then prose;
 workflow bookkeeping criteria stay as numbered property assertions. See `AGENTS.md`.
@@ -228,6 +234,7 @@ what the server emits:
 | `safety_status` | The verdict. **Always first.** On the partisan path it also carries `neutralisedQuestion` — the rephrasing that was actually searched on |
 | `retrieved_chunks` | The passages retrieved, with the source metadata needed to cite them. May be empty |
 | `streamed_tokens` | Text for the reader — either the generated answer, or the fixed deferral |
+| `notice` | The service speaking *about* the answer, not the answer: `kind` says why. `provenance` — the quotation screen stopped the answer (*How V-Tina speaks*). Its own record kind, so no client can show it as answer text by forgetting to check a field; the screen shows it apart, and the answer is then incomplete |
 | `audit_log_status` | How the exchange ended. **Always last on a successful path** |
 | `error` | A failure after the response began, carrying a coarse `reason` and a fixed notice — never the underlying provider or database error text |
 
@@ -459,6 +466,91 @@ Prompts that produce a label or a rephrased question and are never read by anyon
 Nothing is provisional any more. `PROVISIONAL_PROMPTS` is empty, and the declared lists still partition
 every prompt the module exports — a new one classified into none of them fails the suite.
 
+
+## The chat screen
+
+The home page is the reader's screen (story `chat-screen`, the first pass of User Story 4). It runs
+locally with `npm run dev`; nothing is deployed. `src/components/` holds the components,
+`src/lib/chat/client.ts` the logic they render — every decision there is a pure function with no
+React and no DOM in it.
+
+### What a reader sees
+
+- **The avatar notice, at the top and at the bottom, always.** The body is exactly the height of
+  the viewport and only the middle region scrolls, so no length of transcript can scroll a notice
+  away or cover it. Black on white in the light scheme, white on black in the dark. Its wording
+  is `AVATAR_NOTICE`.
+- **The question, then a waiting line** from the moment it is sent until the answer's first
+  words arrive — not its first record: the verdict and the passages arrive seconds before the
+  answering model's first word, and a reader cannot see a record. Classification alone may take up
+  to 10 seconds (*Classification latency*), and the answering model thinks for several more before
+  it writes (*Models*); silence that long reads as a broken page (`BACKLOG.md` FEAT-4, closed by
+  this story). The line is labelled as the screen's status so it does not read as the avatar's
+  first sentence.
+- **The answer as it is generated.** State is set once per record, with no buffering.
+- **The Sources list under every grounded answer** — the response's footer. One entry per
+  document, grouped by address rather than title (two documents can share a short name), its title
+  linked to the official original, its as-of date and kind, and every passage retrieved from it,
+  readable in place behind a toggle. A declined question shows the deferral and no Sources list,
+  not even a heading.
+- **The neutral rewording, on the partisan path**, labelled, before the answer — the promise made
+  under *How a question is routed*.
+- **Notices, apart from the answer.** The quotation screen's stop (the `notice` record) is shown
+  under the heading *Answer stopped*; a failure after the answer began (the `error` record) under
+  *Answer failed*; and the screen's own notice, *Connection lost*, when the stream ends without its
+  final record or a record arrives that is not a declared record. In every case the answer's own
+  words end with a visible mark, `INCOMPLETE_MARK`, so a dangling half-sentence cannot read as a
+  finished thought. **A notice is told apart by its record kind, never by its wording.**
+- **Nothing** for the classification label or the audit status.
+
+### How it behaves
+
+- **A conversation.** Earlier turns go to the service as history: each contributes its question
+  and the answer text the reader saw — never a notice — and whole turns are dropped, oldest first,
+  to fit the service's limit. A turn with no answer text is left out entirely, so the roles
+  alternate. The hole described under *What it accepts* is unchanged: classification judges the
+  latest question alone. A reload starts a new conversation.
+- **One question at a time.** The form's single submit path — the button and the Enter key both
+  arrive there; Shift+Enter keeps a line break — is gated by one function, `canSend`, which also
+  disables the button, so no path can send a second question while one is being answered.
+- **Leaving stops the work.** Each exchange holds one `AbortController`, aborted when the screen
+  unmounts; the server stops the model on disconnect (*What it streams back*).
+- **Reading the stream.** `readChatStream` decodes the body as it arrives, splits records at the
+  blank line, and validates every payload with `chatStreamEventSchema`. A payload that is not a
+  declared record ends the turn as incomplete rather than being skipped: a skipped record is a
+  truncation nothing reports. `eventsource-parser` was considered and rejected; the reason is in
+  the story's design sketch.
+
+### How it is tested
+
+Component tests use Testing Library under jsdom, declared per file, so the suite's default stays
+node. One exception: the notice-above-and-below check renders the real root layout to static
+markup, because a document element cannot be mounted inside a jsdom container. What no markup test
+can see — the notices staying in view while a long answer scrolls, the answer arriving
+progressively, the look of a notice — is a live checklist in `reviews/chat-screen.md`, run in the
+in-app browser and recorded there.
+
+### Screen copy
+
+Every word the screen shows a reader that the server does not send, declared in `src/lib/copy.ts`.
+A test holds this list equal to the module's exports in both directions, the pattern the prompts,
+the pillars and the source domains use.
+
+- `AVATAR_NOTICE`
+- `WAITING_NOTICE`
+- `WAITING_LABEL`
+- `CONNECTION_NOTICE`
+- `NOTICE_HEADINGS`
+- `INCOMPLETE_MARK`
+- `REWORDING_LABEL`
+- `SOURCES_HEADING`
+- `PASSAGE_TOGGLE`
+- `KIND_LABELS`
+- `PAGE_HEADING`
+- `QUESTION_LABEL`
+- `ANSWER_LABEL`
+- `QUESTION_PLACEHOLDER`
+- `SEND_LABEL`
 
 ## Ingesting the corpus
 

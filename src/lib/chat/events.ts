@@ -61,6 +61,24 @@ export const FAILURE_REASONS = [
 export type FailureReason = (typeof FAILURE_REASONS)[number];
 
 /**
+ * What the service itself has to say about an answer, from a closed vocabulary.
+ *
+ * A notice is the service speaking *about* the answer, not the answer. It travels
+ * as its own record kind rather than as a marker on `streamed_tokens`, so no client
+ * can show it as answer text by forgetting to check a field: an exhaustive consumer
+ * does not compile until it handles the kind, and a non-exhaustive one shows nothing
+ * rather than the wrong thing. The first version of the chat screen's design put an
+ * optional field on the token record; the design review called that "fails open",
+ * and it was — the mid-sentence run-on seen live on 2026-09-28 would have come back
+ * with every test green (`reviews/chat-screen.md`, finding 1).
+ *
+ * Today there is one kind: the quotation screen stopped the answer.
+ */
+export const NOTICE_KINDS = ["provenance"] as const;
+
+export type NoticeKind = (typeof NOTICE_KINDS)[number];
+
+/**
  * Every record `/api/chat` can emit. A discriminated union on `type`, with no
  * catch-all member, so consumers narrow exhaustively rather than falling through
  * to an untyped branch.
@@ -80,6 +98,14 @@ export const chatStreamEventSchema = z.discriminatedUnion("type", [
     chunks: z.array(retrievedChunkSchema),
   }),
   z.object({ type: z.literal("streamed_tokens"), text: z.string() }),
+  /** The service speaking about the answer rather than the answer itself. Shown
+   *  apart from the answer text, never appended to it. The text is fixed prose a
+   *  reader sees (`PROVENANCE_NOTICE`), not the cause. */
+  z.object({
+    type: z.literal("notice"),
+    kind: z.enum(NOTICE_KINDS),
+    text: z.string(),
+  }),
   z.object({
     type: z.literal("audit_log_status"),
     recorded: z.boolean(),
