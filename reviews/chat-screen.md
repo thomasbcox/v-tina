@@ -485,6 +485,23 @@ passed — typecheck, lint (the one warning is pre-existing, in `__tests__/supab
 tests in 30 files. Three test packages added as development dependencies: `jsdom` 30.1.1,
 `@testing-library/react` 16.3.3, `@testing-library/dom` 10.4.2.
 
+### Where each criterion lives
+
+| AC | Files |
+|---|---|
+| 1, 2 | `src/app/layout.tsx`, `src/components/AvatarNotice.tsx`, `src/lib/copy.ts` (`AVATAR_NOTICE`); test `__tests__/chat-screen.test.tsx` (AC1), `__tests__/readme-copy.test.ts` (the notice's three facts) |
+| 3 | `src/lib/chat/client.ts` (`reduceTurn`: `waiting` until the first words), `src/components/Transcript.tsx` (the waiting line), `src/components/ChatScreen.tsx` (scroll into view); tests `__tests__/chat-screen.test.tsx`, `__tests__/chat-client.test.ts` |
+| 4 | `src/lib/chat/client.ts` (`readChatStream`, `reduceTurn`), `src/components/ChatScreen.tsx` (one state update per record); test `__tests__/chat-client.test.ts` |
+| 5, 7 | `src/lib/chat/client.ts` (`sourcesOf`), `src/components/Sources.tsx`, `src/components/Transcript.tsx` (shown once the answer has begun); test `__tests__/chat-screen.test.tsx` |
+| 6 | `src/components/Transcript.tsx` (the rewording line); test `__tests__/chat-screen.test.tsx` |
+| 8 | `src/lib/chat/events.ts` (`NOTICE_KINDS`, the `notice` member), `src/lib/chat/orchestrate.ts` (`stop`), `src/lib/chat/client.ts` (`reduceTurn`), `src/components/Notice.tsx`, `src/components/Transcript.tsx` (`INCOMPLETE_MARK`); tests `__tests__/chat-screen.test.tsx`, `__tests__/chat-orchestrate.test.ts`, `__tests__/answer-screen.test.ts`, `__tests__/chat-stream.test.ts` |
+| 9, 10 | `src/lib/chat/client.ts` (`reduceTurn` on `error`, `endTurn`, the reader's refusal of an undeclared record), `src/components/ChatScreen.tsx` (`endTurn` in `finally`), `src/lib/copy.ts` (`CONNECTION_NOTICE`); tests `__tests__/chat-client.test.ts`, `__tests__/chat-screen.test.tsx` |
+| 11 | `src/lib/chat/client.ts` (`canSend`), `src/components/ChatScreen.tsx` (the form's single submit path); tests `__tests__/chat-client.test.ts`, `__tests__/chat-screen.test.tsx` |
+| 12 | `src/lib/chat/client.ts` (`buildRequest`); test `__tests__/chat-client.test.ts` against `chatRequestSchema` |
+| 13 | Tailwind utilities in the components; the live checklist |
+| 14 | `README.md` (*Status*, *Repository map*, the `notice` row, *The chat screen*, *Screen copy*); test `__tests__/readme-copy.test.ts` |
+| 15 | `vitest.config.mts`, `package.json`, `package-lock.json`, `.claude/launch.json`; the loop check at the merge fork |
+
 ### Built as approved, with three things the live run changed
 
 The shape is the ratified sketch: the `notice` record kind in `events.ts`, emitted by the
