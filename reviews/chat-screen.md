@@ -207,7 +207,7 @@ criterion is about the real layout, not a stand-in.
 |---|---|---|
 | 1 | Small | **R1.** The real root layout, with the screen inside it, rendered to static markup in three states: no question asked, a turn mid-answer, a turn ended. Red when the notice's text is missing from the element before the transcript or from the one after it, or when either renders empty. |
 | 2 | manual | **R1.** The live checklist, in the in-app browser at desktop and phone widths, in the light and the dark scheme: a question whose answer is longer than the screen, looked at mid-stream and after. Red when either notice scrolls out of view, is clipped or covered by the transcript's own scrolling, or its text is hard to read against its background. The structure that prevents it: the notices are fixed siblings of the transcript, outside the region that scrolls. |
-| 3 | Small | **R4.** The transcript rendered from a turn in the waiting state shows the waiting text, outside the answer's element, under its own visible label; rendered from the same turn after its first record, the waiting text is gone. Red when the text is absent before the first record, persists after it, sits inside the answer's element, or has no label. Its look (type, colour, spacing distinct from answer text) is on the live checklist. |
+| 3 | Small | **R4.** The transcript rendered from a turn in the waiting state shows the waiting text, outside the answer's element, under its own visible label; rendered from the same turn after the answer's **first words**, the waiting text is gone — and it is still there after the verdict and the passages alone. Red when the text is absent before the first words, persists after them, goes with the first record, sits inside the answer's element, or has no label. Also: the new exchange is scrolled into view when it is sent. Red when nothing is scrolled, or the wrong element is. Its look (type, colour, spacing distinct from answer text) is on the live checklist. *Corrected at the build (2026-10-03): this row said "after its first record". The live run showed the verdict arriving at about one second and the first word after twenty; a wait that ended with the first record left the reader looking at nothing. The check was strengthened, not loosened — see the build note.* |
 | 4 | Small | **R4.** Two checks. The stream reader is fed the bytes of a known event sequence split at arbitrary boundaries — inside a multi-byte character, and inside the blank line between records — and must yield exactly the events encoded, each passing the declared schema. Red when an event is dropped, merged, duplicated or mis-decoded. And the reducer, given token records one at a time, holds the answer text as their concatenation after each one with the turn still in progress. Red when text is dropped or reordered, or appears only after the end record. State is set once per record with no buffering; the progressive arrival itself is on the live checklist. |
 | 5 | Small | **R3.** The transcript rendered from a turn holding passages from three documents: two of them share a title and differ in URL; one has two passages. Red when a document is listed twice or not at all, when the two same-titled documents collapse into one entry, when a link's target is not that document's URL, when a date is missing, or when any passage's text is absent. A second case renders two turns, the later one holding no passages yet. Red when the earlier turn's sources appear under the later one. |
 | 6 | Small | **R5.** One transcript holding a partisan turn and then an in-bounds turn. Red when the rewording is absent or unlabelled, when the label appears more than once, or when it appears on the in-bounds turn. The rewording precedes the first turn's answer text. |
@@ -270,7 +270,7 @@ after approval.
 ## Loop record
 
 - frame/6 — ran (codex on kimi-latest, 4 findings, 14 regressions) → reviews/chat-screen.design.23a18c3.json
-- frame/9 — not yet reached
+- frame/9 — demonstrated red: every ratified regression on a sized criterion (12 cases over AC3, AC5–AC12) plus 4 builder's-own cases for checks added at the build (AC1, AC3, AC4 ×2), each applied on a clean tree, red on its named test, and reverted; the two ratified entries that are live observations (R1/AC1, AC4's paint) were observed and are recorded in the build note; build commits 3809f72 and c7a5657
 - review/6 — not yet reached
 - review/8 — not yet reached
 - close/3b — not yet reached
@@ -477,6 +477,110 @@ is a trade, as the server side's SSE-without-a-library decision is recorded
 *Alternative.* Take the dependency, or record the rejection in one sentence.
 *Win.* A documented trade against a named candidate; if a second framing edge case appears, "what
 would change this" is already written.
+
+## Build note (2026-10-03)
+
+**Commits.** `3809f72` (the build) and `c7a5657` (three fixes the live run found, below). **Gate:**
+passed — typecheck, lint (the one warning is pre-existing, in `__tests__/supabase.test.ts`), 426
+tests in 30 files. Three test packages added as development dependencies: `jsdom` 30.1.1,
+`@testing-library/react` 16.3.3, `@testing-library/dom` 10.4.2.
+
+### Built as approved, with three things the live run changed
+
+The shape is the ratified sketch: the `notice` record kind in `events.ts`, emitted by the
+orchestrator's `stop`; the pure module `src/lib/chat/client.ts`; the copy registry
+`src/lib/copy.ts` with its README list and equality test; `AvatarNotice`, `ChatScreen`,
+`Transcript`, `Sources`, `Notice`; Testing Library under a per-file jsdom environment, with AC1's
+static render of the real layout as the one exception. Driving the screen in the in-app browser
+changed three things, all two-way, all recorded here rather than silently:
+
+1. **The waiting line lasts until the answer's first words, not its first record.** The verdict and
+   the passages arrived at about one second; the answering model's first word arrived after twenty
+   (its time to first token is the README's *Models* section). With the wait ending at the first
+   record, the reader looked at a Sources list and no answer for nineteen seconds — R4's failure in
+   a window the oracle had not named. The reducer now keeps `waiting` through `safety_status` and
+   `retrieved_chunks`; AC3's test holds that, and its oracle row is corrected above. AC3's text
+   ("until the first part of the response arrives") is read as the first part the reader can see;
+   a record is not that.
+2. **The Sources list is not shown before the answer has begun.** Same cause: the passages arrive
+   long before the words, and AC5 says the list *follows* the answer. `Transcript` renders it only
+   once the answer has text or the turn has ended.
+3. **The new exchange is scrolled into view when it is sent.** The second question of a conversation
+   rendered below the fold, behind the sticky input, and nothing visibly happened. `ChatScreen`
+   scrolls the newest exchange to the top of the view when one is added; a test observes the call
+   on the right element (jsdom has no `scrollIntoView`, so the effect itself is seen live).
+
+### Demonstrate-red
+
+Each case applied on a clean tree (checked by path before each), the named test run, the change
+reverted; the tree was clean after the last. Every case went red on exactly the test its row names.
+
+| Regression (ratified list) | Applied as | Red on |
+|---|---|---|
+| AC3 / R4 — waiting text styled as answer text | The waiting line's label removed | AC3, all three tests |
+| AC4 → AC10 — the stream ending read as done | `endTurn` marks a cut stream `done` | AC10: both client cases, both mounted-screen cases |
+| AC5 / R3 — grouping by title | `sourcesOf` keyed by title | AC5 (client) and AC5 (screen): the amended order's passages collapsed into the original's entry |
+| AC5 / R3 — only the first passage | `Sources` renders `passages.slice(0, 1)` | AC5 (screen): "the second passage of the order" absent |
+| AC6 / R5 — rewording held screen-wide | `Transcript` reads the rewording from the first turn for every turn | AC6: the label appeared twice |
+| AC7 / R3 — an empty Sources heading | `Sources` renders without its empty guard | AC7 |
+| AC8 / R2 — the marking machine-readable only | The mark replaced by a `data-incomplete` attribute | AC8, AC9 and both AC10 screen cases |
+| AC8 / R2 — a notice without its own heading | `Notice` renders no heading | AC8 |
+| AC9 / R2 — the mark only on the notice | The mark moved from the answer's end into `Notice` | AC9 |
+| AC11 / R4 — the handler ungated | `onSubmit` sends whenever the box is non-empty; the button still disabled | AC11: Enter mid-answer sent a second request |
+| AC12 / R4 — trimming by message count | The history flattened, then the oldest messages dropped | AC12: an assistant message at the head |
+| AC12 / R4 — a notice's text in the history | A prior turn's content is its answer plus its notice | AC12: the provenance notice's text in the body |
+| **Builder's own, for checks added at the build** | | |
+| AC1 — the test can go red | The bottom notice removed from the layout | AC1, all three states |
+| AC3 — the wait ends with the first record (the state the live run found) | The reducer's `safety_status` case sets `answering` | AC3 "stays through the verdict"; the client's "verdict" case |
+| AC4 — the reader drops a partial record at a chunk end | The buffer cleared after every read | AC4 at one byte per chunk |
+| AC4 — the reducer replaces instead of appending | `answer: event.text` | AC4 concatenation |
+
+**Not demonstrated, by decision:** R1/AC1's regression (a notice clipped on the live page) is AC2's
+manual case, and AC4's paint-in-batches regression is the live observation; both are in the
+checklist below. AC2, AC13 (manual), AC14 (reviewer) and AC15 (manual) are judged by a person.
+
+### Live checklist — what was seen in the in-app browser
+
+Dev server `npm run dev`, desktop width and the 375×812 phone preset, dark and light schemes.
+
+1. **Notices stay in view and legible** — a long grounded answer (about 25 lines) scrolled from top to
+   bottom at desktop width: both bars fixed, the transcript scrolling between them, the input
+   sticky above the bottom bar. Dark scheme: white on black. Light: black on white. Phone: the same,
+   measured — each bar 96 px tall at 375 px wide, the top one at 0–96 and the bottom at 716–812.
+   **Stated cost:** on a phone the two bars take 192 of 812 px, a quarter of the screen, for the
+   wording Thomas approved. The second pass can shorten the phone wording if that is too much; this
+   story does not.
+2. **The waiting line reads as the screen's status** — dashed border, italic, its label "Please
+   wait." in upright type, visibly unlike the answer's prose below the "V-Tina's answer" label.
+   Seen for the full nineteen-second window on the housing question after fix 1.
+3. **The answer arrives progressively** — two screenshots three seconds apart during the housing
+   answer: four lines, then twenty. The granularity is the network chunk, which is where the server
+   releases text; nothing on the screen buffers.
+4. **The stop and failure notices** — **not observed live.** The housing question that stopped on
+   2026-09-28 completed on both of today's runs, and nothing failed. Their rendering is held by the
+   mounted tests against the real orchestrator (AC8, AC9) and the fake service (AC10); their look
+   (amber block, left rule, its own heading, the mark in amber at the answer's end) was checked by
+   rendering the same fixtures and reading the markup, not on a live stop. Recorded as the gap it is.
+5. **Enter mid-answer sends nothing** — a second question typed and entered while the partisan
+   answer streamed: it stayed in the box, the Ask button greyed, no new exchange; when the answer
+   ended the button returned with the question still waiting.
+6. **Phone width** — a grounded question asked at 375 px: no horizontal scrollbar; measured
+   `scrollWidth` equal to `clientWidth` (375) for the document and the scrolling region, empty and
+   with a full answer; nothing clipped.
+
+**Also seen.** The rewording line on the partisan exchange sits between the question and the
+answer, labelled, in smaller type. The Sources list under the partisan answer grouped three
+passages under EO 23-02 ("Show the passage (1 of 3)…"), with EO 23-04 and EO 24-02 as their own
+entries. Next.js's development badge overlaps the bottom-left of the bottom notice; it is the dev
+server's overlay, not the page.
+
+**One finding for Thomas, not this story.** "What help is there for people with mental illness?"
+— a question the routing measurement counts as answerable, 20 of 20 — got the deferral. Asked of
+the endpoint twice: classified `IN-BOUNDS` both times; retrieval returned **no passage above the
+threshold**. Not classifier drift: the corpus and the 0.73 threshold (README, *Retrieval
+threshold*, which already calls the margin thin). The routing measurement measures routing only;
+nothing measures whether an in-bounds question finds anything. The screen shows the deferral
+correctly; whether to measure retrieval coverage is a backlog decision.
 
 ## Design decisions (2026-10-03)
 
