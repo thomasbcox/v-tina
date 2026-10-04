@@ -7,7 +7,10 @@
 At `/review` step 8 the correctness and hidden-failure critics were dispatched concurrently from
 one background shell. The hidden-failure critic (kimi-latest) promoted its artifact in about nine
 minutes. The correctness critic (glm-latest) was still running when the caller's background time
-cap — ten minutes, the harness's maximum — killed the shell. It first became visible as a task
+cap — ten minutes, the desktop app's maximum for a backgrounded command; not anything in the
+reviewer harness, which has no cap — killed the shell. *(Wording corrected after the independent
+check, `reviews/chat-screen.lesson.d2e7d11.json`, its one NIT: "harness" is the loop's term for
+the reviewer runner, and the cap is the caller's.)* It first became visible as a task
 notification reading "stopped after reaching its background time limit", with no stop line from
 `run_codex`, no artifact, and one review worktree left behind at
 `/private/var/folders/…/claude-review-vrpjsk_g` (`git worktree list` showed it; it was removed by
