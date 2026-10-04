@@ -681,6 +681,19 @@ runs in the same round and the fixes land at `/close`.
 | 2 — a client-side failure leaves the request open | **Fix.** | The request aborted on the client-side failure path, after `endTurn`; the unmount abort and its no-update rule unchanged; the AC10 test asserts the request's signal is aborted. |
 | 3 — labels on generic containers | **Fix.** | The question and answer containers become labelled regions tied to their visible labels (`aria-labelledby`, ids per turn); the tests query regions by name. |
 
+**Correctness and hidden-failure passes.** Thomas: "as recommended, run /close". The correctness
+critic's findings 1, 2 and 4 restate the approach findings above and were not re-asked.
+
+| Finding | Decision | What `/close` applies |
+|---|---|---|
+| C3 — the send gate opens between a notice and the final record | **Fix.** | `canSend` gates on every turn having ended; a regression submits in that interval. |
+| C5 — an answer stopped before its first word shows no answer region or mark | **Fix.** (Recommended as a consistency fix; the notice already carries the fact.) | The answer region renders whenever the turn is incomplete, mark included; before-first-words cases for a provenance stop and an unreadable record. |
+| C6 — generated accessible names outside the registry | **Accept: fix.** | "About V-Tina" and "Exchange" labels move into `src/lib/copy.ts`, `SCREEN_COPY` and the README list, applied with approach fix 3. |
+| C7 — comments saying the wait ends at the first record | **Accept: fix.** | `WAITING_NOTICE`'s comment and the AC3 `describe` title say "first words". |
+| C8 — a count in the `NOTICE_KINDS` comment | **Accept: fix.** | The comment names the kind without numbering the list. |
+| H1 — the submit handler's blind `catch` | **Fix.** | The error is logged to the console (`chat request failed`); nothing the reader sees changes; a test asserts the log on an unreadable record. |
+| H2 — rethrows without `cause` | **Accept: fix.** | Both `parseRecord` throws carry `{ cause }`. |
+
 ## Codex (kimi-latest) hidden-failure pass (2026-10-04, round d2e7d11, base main)
 
 Artifact: `reviews/chat-screen.hidden-failure.d2e7d11.json`; 8 read-only commands. Second attempt
