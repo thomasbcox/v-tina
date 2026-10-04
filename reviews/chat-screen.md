@@ -272,7 +272,7 @@ after approval.
 - frame/6 — ran (codex on kimi-latest, 4 findings, 14 regressions) → reviews/chat-screen.design.23a18c3.json
 - frame/9 — demonstrated red: every ratified regression on a sized criterion (12 cases over AC3, AC5–AC12) plus 4 builder's-own cases for checks added at the build (AC1, AC3, AC4 ×2), each applied on a clean tree, red on its named test, and reverted; the two ratified entries that are live observations (R1/AC1, AC4's paint) were observed and are recorded in the build note; build commits 3809f72 and c7a5657
 - review/6 — ran (codex on glm-latest, 3 findings) → reviews/chat-screen.approach.d2e7d11.json
-- review/8 — round d2e7d11, first attempt (2026-10-04): **stopped — codex exited 1** for both the correctness and the hidden-failure critic; nothing promoted. Cause, confirmed by a direct `codex exec` call outside the runner and then by direct calls to Fireworks: the `FIREWORKS_API_KEY` this machine uses — codex's bearer token is the same key — was answered `401 Unauthorized` for every real model, the routed aliases (`glm-latest`, `kimi-latest`, `deepseek-flash-latest`) and the product's own `gpt-oss-120b` and `deepseek-v4p1-flash` alike, on both the chat-completions and the responses endpoints; a non-existent model name still drew `404`, so the key reaches the service and is refused. The same key had answered the approach pass at 09:21 and the live checklist's questions the day before. Not a format stop and not a fabrication: codex never reached a model, and neither would the app have. Doc-drift shadow: **trial closed** (its 20 runs used). Recovery: once codex answers again, re-run only these two critics with the same round id and base (`BACKLOG.md` AAR-1's narrower recovery); the approach pass and its decisions stand.
+- review/8 — ran, round d2e7d11, second attempt (2026-10-04): codex glm-latest correctness / kimi-latest hidden-failure, 8 / 2 findings; doc-drift shadow: trial closed → reviews/chat-screen.correctness.d2e7d11.json, reviews/chat-screen.hidden-failure.d2e7d11.json. The hidden-failure critic promoted on the first concurrent run after the key was fixed; the correctness critic was cut off by the harness's background time cap at ten minutes with no artifact and was re-run alone (AAR-1's narrower recovery), finishing in about eleven minutes. **First attempt, earlier that morning: stopped — codex exited 1** for both the correctness and the hidden-failure critic; nothing promoted. Cause, confirmed by a direct `codex exec` call outside the runner and then by direct calls to Fireworks: the `FIREWORKS_API_KEY` this machine uses — codex's bearer token is the same key — was answered `401 Unauthorized` for every real model, the routed aliases (`glm-latest`, `kimi-latest`, `deepseek-flash-latest`) and the product's own `gpt-oss-120b` and `deepseek-v4p1-flash` alike, on both the chat-completions and the responses endpoints; a non-existent model name still drew `404`, so the key reaches the service and is refused. The same key had answered the approach pass at 09:21 and the live checklist's questions the day before. Not a format stop and not a fabrication: codex never reached a model, and neither would the app have. Doc-drift shadow: **trial closed** (its 20 runs used). Recovery: once codex answers again, re-run only these two critics with the same round id and base (`BACKLOG.md` AAR-1's narrower recovery); the approach pass and its decisions stand.
 - close/3b — not yet reached
 - close/4 — not yet reached
 
@@ -680,3 +680,98 @@ runs in the same round and the fixes land at `/close`.
 | 1 — history trimmed by count, not length | **Fix.** | Prior answers shortened to the service's per-message limit (imported from `request.ts`, not copied); the built body validated with `chatRequestSchema` before sending, dropping the oldest turn while it refuses; a test with an answer longer than the limit. |
 | 2 — a client-side failure leaves the request open | **Fix.** | The request aborted on the client-side failure path, after `endTurn`; the unmount abort and its no-update rule unchanged; the AC10 test asserts the request's signal is aborted. |
 | 3 — labels on generic containers | **Fix.** | The question and answer containers become labelled regions tied to their visible labels (`aria-labelledby`, ids per turn); the tests query regions by name. |
+
+## Codex (kimi-latest) hidden-failure pass (2026-10-04, round d2e7d11, base main)
+
+Artifact: `reviews/chat-screen.hidden-failure.d2e7d11.json`; 8 read-only commands. Second attempt
+of the round: the first was the key stop recorded in the loop record. The correctness critic ran
+beside it and is recorded in its own section.
+
+**Summary.** "The change's failure model mostly surfaces its failures: a dropped connection, a
+refused request, or an undeclared record all end the turn visibly as `incomplete` with the
+screen's own `CONNECTION_NOTICE`, and `parseRecord` throws rather than skipping an unreadable
+payload. The one genuine blind spot is that the error object itself is discarded at every layer …
+so a systemic failure (e.g. server/schema drift making every record undeclared) would present to
+every reader as 'Connection lost' and reach no one who could diagnose it." The orphaned-request
+concern on the same path was already decided at the approach pass (finding 2, fix) and was not
+re-reported.
+
+### IMPORTANT
+
+**1. The blind `catch` discards the error entirely — a systemic failure is indistinguishable from a
+flaky network and reaches nobody.** `src/components/ChatScreen.tsx`, the submit handler's `catch`.
+*Claim.* The `catch` has no binding and no logging. The reader-facing degradation (the turn marked
+incomplete with the connection notice) is the settled C2 design; what is not fine is that this is
+the only place these errors exist and they are observed nowhere. If the server or the record
+schema drifts so that every record fails validation, every reader sees "Connection lost" forever
+and no console, log or telemetry shows the cause.
+*Suggestion.* Bind and log: `console.error("chat request failed", error)` — the console is the only
+sink a browser bundle has. Nothing the reader sees changes.
+
+### NIT
+
+**2. `parseRecord` rethrows generic errors without `cause`.** `src/lib/chat/client.ts`,
+`parseRecord`.
+*Claim.* Both failure exits replace the evidence with a fixed sentence: the JSON `SyntaxError` is
+swallowed and rethrown as "not readable" with no `cause`; the zod rejection is rethrown as "not a
+declared record" without `parsed.error`. Even once the caller logs, the log holds neither the
+payload nor which branch refused it — the two facts that tell a server bug from a client one.
+*Suggestion.* `new Error(message, { cause })` on both throws.
+
+## Codex (glm-latest) correctness pass (2026-10-04, round d2e7d11, base main)
+
+Artifact: `reviews/chat-screen.correctness.d2e7d11.json`; 25 read-only commands; run alone after
+the concurrent attempt was cut off at the harness's time cap (loop record).
+
+**Summary.** "The branch broadly implements the approved chat-screen shape: the avatar notices are
+structural siblings of the scrolling region, the SSE reader validates the shared event schema,
+notices remain outside answer text, and the non-review diff stays within AC15's allowed paths. The
+main correctness gaps are the three fixes Thomas approved after the approach pass … plus an earlier
+send gate after a notice and a missing visible mark when an exchange becomes incomplete before its
+first answer token. The remaining findings are registry and comment drift."
+
+### IMPORTANT
+
+**1. History trimming ignores the per-message length limit** — `src/lib/chat/client.ts`,
+`buildRequest`. The approach pass's finding 1, restated; **already decided: fix.**
+
+**2. Client-side stream failures do not cancel the request** — `src/components/ChatScreen.tsx`,
+the submit handler. The approach pass's finding 2, restated; **already decided: fix.**
+
+**3. The send gate opens when a notice arrives** — `src/lib/chat/client.ts`, `canSend`.
+*Claim.* `canSend` rejects only `waiting` and `answering`. A `notice` record moves the turn to
+`incomplete` but `ended` stays false until the `audit_log_status` record that follows, so in that
+interval the button and the handler allow a second question while the first stream is still open.
+AC11 says nothing is sent until the answer has ended.
+*Suggestion.* Gate on the terminal state — every turn `ended` — and add a regression that submits
+between a provenance notice and its final record.
+
+**4. Question and answer labels are not reliably exposed as regions** —
+`src/components/Transcript.tsx`. The approach pass's finding 3, restated; **already decided:
+fix.**
+
+**5. An incomplete turn with no answer text gets no visible incomplete mark** —
+`src/components/Transcript.tsx`, the answer block.
+*Claim.* The answer block and `INCOMPLETE_MARK` render only when the answer has text. A provenance
+stop or an unreadable record can arrive before the first word; the turn becomes `incomplete`, the
+notice block renders, but no answer label and no mark. AC8 and AC10 ask for the answer itself to
+be visibly marked, and the tests cover only stops after words have arrived.
+*Suggestion.* Render the labelled answer region whenever the answer has text or the turn is
+incomplete, so an empty incomplete answer still ends in the mark; add before-first-words cases.
+
+### NIT
+
+**6. Generated accessible names bypass the screen-copy registry** —
+`src/components/AvatarNotice.tsx` ("About V-Tina (top)") and `Transcript` ("Exchange N").
+*Claim.* Reader-facing words the server does not send, yet not in `SCREEN_COPY` or the README's
+list; the equality test cannot catch drift in them.
+*Suggestion.* Move them into `src/lib/copy.ts`, or derive the names from registered visible labels.
+
+**7. Stale comments still say the wait ends at the first record** — `src/lib/copy.ts`
+(`WAITING_NOTICE`'s comment) and the AC3 `describe` title in `__tests__/chat-screen.test.tsx`.
+*Suggestion.* "the answer's first words", matching the implementation and the corrected oracle.
+
+**8. A living comment hard-codes the size of `NOTICE_KINDS`** — `src/lib/chat/events.ts`: "Today
+there is one kind" above the enumerable list; a count in living text (`workflow-protocol.md` →
+*Counts are copies*).
+*Suggestion.* Describe the kind without numbering it, or point at the list.
