@@ -669,3 +669,14 @@ non-visual readers.
 `aria-labelledby`, with ids derived per turn; keep the visible labels exactly as they are.
 *Win.* The labels become regions assistive technology actually exposes, and the oracle checks a
 name the browser exposes; a few lines, no dependency.
+
+## Decisions (2026-10-04, round d2e7d11)
+
+**Approach pass.** Thomas: "fix all three, proceed". None is a redesign, so the correctness pass
+runs in the same round and the fixes land at `/close`.
+
+| Finding | Decision | What `/close` applies |
+|---|---|---|
+| 1 — history trimmed by count, not length | **Fix.** | Prior answers shortened to the service's per-message limit (imported from `request.ts`, not copied); the built body validated with `chatRequestSchema` before sending, dropping the oldest turn while it refuses; a test with an answer longer than the limit. |
+| 2 — a client-side failure leaves the request open | **Fix.** | The request aborted on the client-side failure path, after `endTurn`; the unmount abort and its no-update rule unchanged; the AC10 test asserts the request's signal is aborted. |
+| 3 — labels on generic containers | **Fix.** | The question and answer containers become labelled regions tied to their visible labels (`aria-labelledby`, ids per turn); the tests query regions by name. |
