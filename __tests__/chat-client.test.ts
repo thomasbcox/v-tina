@@ -11,7 +11,7 @@ import {
   type Turn,
 } from "../src/lib/chat/client";
 import { chatStreamEventSchema } from "../src/lib/chat/events";
-import { MAX_HISTORY_MESSAGES, chatRequestSchema } from "../src/lib/chat/request";
+import { MAX_HISTORY_MESSAGES, MAX_QUESTION_LENGTH, chatRequestSchema } from "../src/lib/chat/request";
 import { encodeEvent } from "../src/lib/chat/stream";
 import { CONNECTION_NOTICE } from "../src/lib/copy";
 import { GROUNDED_DEFERRAL, PROVENANCE_NOTICE } from "../src/lib/prompts";
@@ -251,6 +251,16 @@ describe("AC11 — one question at a time", () => {
     expect(canSend([fold([SAMPLE.safety_status, SAMPLE.audit_log_status])])).toBe(true);
     expect(canSend([endTurn(fold([SAMPLE.safety_status, SAMPLE.streamed_tokens]))])).toBe(true);
   });
+
+  it("a stop notice does not open the gate while the stream is still open", () => {
+    // The interval the correctness review named (round d2e7d11, finding 3): a notice
+    // makes the turn incomplete a moment before the final record closes the stream.
+    const stopped = fold([SAMPLE.safety_status, SAMPLE.streamed_tokens, SAMPLE.notice]);
+    expect(stopped.status).toBe("incomplete");
+    expect(stopped.ended).toBe(false);
+    expect(canSend([stopped])).toBe(false);
+    expect(canSend([reduceTurn(stopped, SAMPLE.audit_log_status)])).toBe(true);
+  });
 });
 
 describe("AC12 — a long conversation is trimmed by whole turns and the service accepts it", () => {
@@ -276,6 +286,20 @@ describe("AC12 — a long conversation is trimmed by whole turns and the service
     // Everything kept is a contiguous run ending at the newest turn.
     const indices = kept.slice(0, -1).map((q) => Number(q.replace("question ", "")));
     expect(indices).toEqual(Array.from({ length: indices.length }, (_, i) => 25 - indices.length + 1 + i));
+  });
+
+  it("shortens a prior answer longer than the service's per-message limit rather than dropping it, and the service accepts the body", () => {
+    // Approach review, round d2e7d11, finding 1: the limit was sized for a question,
+    // and an answer can run far past it — the follow-up after a long answer was refused.
+    const long = "word ".repeat(1200).trim();
+    expect(long.length).toBeGreaterThan(MAX_QUESTION_LENGTH);
+    const body = buildRequest([answered(1, "q1", "a short answer"), answered(2, "q2", long)], "q3");
+    expect(chatRequestSchema.safeParse(body).success, "the service must accept it").toBe(true);
+    const replies = body.messages.filter((m) => m.role === "assistant").map((m) => m.content);
+    expect(replies, "the long turn is kept, shortened, not dropped").toHaveLength(2);
+    expect(replies[1].length).toBeLessThanOrEqual(MAX_QUESTION_LENGTH);
+    expect(long.startsWith(replies[1]), "what is kept is the answer's opening").toBe(true);
+    expect(body.messages[body.messages.length - 1]).toEqual({ role: "user", content: "q3" });
   });
 
   it("a prior turn contributes its answer text and never its notice", () => {

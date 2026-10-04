@@ -72,7 +72,8 @@ export type FailureReason = (typeof FAILURE_REASONS)[number];
  * and it was — the mid-sentence run-on seen live on 2026-09-28 would have come back
  * with every test green (`reviews/chat-screen.md`, finding 1).
  *
- * Today there is one kind: the quotation screen stopped the answer.
+ * The kind declared so far is the quotation screen's stop; the list below is the
+ * authority for what exists.
  */
 export const NOTICE_KINDS = ["provenance"] as const;
 

@@ -28,8 +28,22 @@ export const AVATAR_NOTICE =
   "official State of Oregon service. It quotes Oregon's official record; check every " +
   "claim against the sources it links.";
 
-/** Shown from the moment a question is sent until the first record arrives.
- *  Classification alone may take up to 10 seconds (`CLASSIFY_DEADLINE_MS`). */
+/** The accessible name of each avatar notice, followed by where it sits. */
+export const ABOUT_LABEL = "About V-Tina";
+
+/** Where each avatar notice sits, as a reader of the accessible name hears it. */
+export const NOTICE_POSITIONS = {
+  top: "top of the page",
+  bottom: "bottom of the page",
+} as const;
+
+/** The accessible name of one exchange, followed by its number. */
+export const EXCHANGE_LABEL = "Exchange";
+
+/** Shown from the moment a question is sent until the answer's first words arrive —
+ *  not its first record, which a reader cannot see. Classification alone may take up
+ *  to 10 seconds (`CLASSIFY_DEADLINE_MS`), and the answering model thinks for several
+ *  more before its first word. */
 export const WAITING_NOTICE =
   "Working on it. An answer can take several seconds to begin: the question is " +
   "checked before anything is written.";
@@ -84,6 +98,9 @@ export const SEND_LABEL = "Ask";
  *  names; `__tests__/readme-copy.test.ts` holds the two equal. */
 export const SCREEN_COPY = [
   "AVATAR_NOTICE",
+  "ABOUT_LABEL",
+  "NOTICE_POSITIONS",
+  "EXCHANGE_LABEL",
   "WAITING_NOTICE",
   "WAITING_LABEL",
   "CONNECTION_NOTICE",

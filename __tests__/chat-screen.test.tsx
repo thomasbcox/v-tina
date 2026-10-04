@@ -13,6 +13,7 @@ import {
   ANSWER_LABEL,
   AVATAR_NOTICE,
   CONNECTION_NOTICE,
+  EXCHANGE_LABEL,
   INCOMPLETE_MARK,
   NOTICE_HEADINGS,
   QUESTION_LABEL,
@@ -29,9 +30,16 @@ import { DISPLAY_FRAME } from "../src/lib/voice";
  * Story `chat-screen`: what the reader sees. Testing Library under jsdom (ratified at
  * the frame consult, option B), except AC1, which renders the real root layout to
  * static markup because a document element cannot be mounted inside a jsdom container.
+ *
+ * The question and answer regions are found by exposed role and name — what a browser
+ * actually announces — not by attribute (approach review, round d2e7d11, finding 3).
  */
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 const O = "“";
 const C = "”";
@@ -92,8 +100,17 @@ const midAnswer = turnOf(1, "What does the order say?", [
   { type: "streamed_tokens", text: `${DISPLAY_FRAME}, the record` },
 ]);
 
+/** The regions a browser exposes, by the name a reader hears. */
+const answerRegion = () => screen.getByRole("region", { name: ANSWER_LABEL });
+const answerRegions = () => screen.getAllByRole("region", { name: ANSWER_LABEL });
+const exchange = (n: number) => screen.getByRole("article", { name: `${EXCHANGE_LABEL} ${n}` });
+
 /** React escapes an apostrophe in static markup; compare against the text. */
 const unescape = (html: string) => html.replace(/&#x27;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, "&");
+
+function escapeRe(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
 describe("AC1 — the avatar notice is above and below the screen in every state", () => {
   const states: Array<[string, Turn[]]> = [
@@ -125,17 +142,13 @@ describe("AC1 — the avatar notice is above and below the screen in every state
   }
 });
 
-function escapeRe(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-describe("AC3 — the waiting line, until the first record", () => {
+describe("AC3 — the waiting line, until the first words", () => {
   it("shows the waiting text under its own label while nothing has arrived", () => {
     render(<Transcript turns={[newTurn(1, "A question?")]} />);
     const waiting = screen.getByRole("status", { name: WAITING_LABEL });
     expect(waiting.textContent).toContain(WAITING_NOTICE);
-    expect(screen.queryByLabelText(ANSWER_LABEL), "no answer element yet, so nothing to confuse it with").toBeNull();
-    expect(within(screen.getByLabelText(QUESTION_LABEL)).getByText("A question?")).toBeTruthy();
+    expect(screen.queryByRole("region", { name: ANSWER_LABEL }), "no answer region yet, so nothing to confuse it with").toBeNull();
+    expect(within(screen.getByRole("region", { name: QUESTION_LABEL })).getByText("A question?")).toBeTruthy();
   });
 
   it("stays through the verdict and the passages, and goes with the first words", () => {
@@ -158,10 +171,10 @@ describe("AC3 — the waiting line, until the first record", () => {
     screen.getByRole("heading", { name: SOURCES_HEADING });
   });
 
-  it("is never inside the answer's element", () => {
+  it("is never inside the answer's region", () => {
     render(<Transcript turns={[newTurn(1, "A question?"), grounded]} />);
     const waiting = screen.getByRole("status", { name: WAITING_LABEL });
-    for (const answer of screen.getAllByLabelText(ANSWER_LABEL)) expect(answer.contains(waiting)).toBe(false);
+    for (const answer of answerRegions()) expect(answer.contains(waiting)).toBe(false);
   });
 
   it("the new exchange is brought into view when it is sent", async () => {
@@ -176,9 +189,8 @@ describe("AC3 — the waiting line, until the first record", () => {
     ask("A question?");
     await waitFor(() => expect(scrolled).toHaveBeenCalled());
     const target = scrolled.mock.contexts[scrolled.mock.contexts.length - 1] as Element;
-    expect(target.getAttribute("aria-label")).toBe("Exchange 1");
+    expect(target.getAttribute("aria-label")).toBe(`${EXCHANGE_LABEL} 1`);
     service.close();
-    vi.unstubAllGlobals();
   });
 });
 
@@ -223,11 +235,9 @@ describe("AC5 — the sources list names each document once, linked, dated, pass
   it("an earlier turn's sources never appear under a later turn", () => {
     const later = turnOf(2, "and then?", [{ type: "safety_status", classification: "IN-BOUNDS" }]);
     render(<Transcript turns={[turn, later]} />);
-    const first = screen.getByLabelText("Exchange 1");
-    const second = screen.getByLabelText("Exchange 2");
-    within(first).getByRole("heading", { name: SOURCES_HEADING });
-    expect(within(second).queryByRole("heading", { name: SOURCES_HEADING })).toBeNull();
-    expect(within(second).queryByRole("link")).toBeNull();
+    within(exchange(1)).getByRole("heading", { name: SOURCES_HEADING });
+    expect(within(exchange(2)).queryByRole("heading", { name: SOURCES_HEADING })).toBeNull();
+    expect(within(exchange(2)).queryByRole("link")).toBeNull();
   });
 });
 
@@ -249,13 +259,13 @@ describe("AC6 — the neutral rewording is shown, once, under the turn it belong
 
     const labels = screen.getAllByText(REWORDING_LABEL);
     expect(labels, "exactly one rewording label on the page").toHaveLength(1);
-    const first = screen.getByLabelText("Exchange 1");
-    const second = screen.getByLabelText("Exchange 2");
+    const first = exchange(1);
+    const second = exchange(2);
     expect(first.contains(labels[0])).toBe(true);
     expect(within(first).getByText(/What is the rationale for the spending\?/)).toBeTruthy();
     expect(within(second).queryByText(REWORDING_LABEL)).toBeNull();
 
-    const answer = within(first).getByLabelText(ANSWER_LABEL);
+    const answer = within(first).getByRole("region", { name: ANSWER_LABEL });
     const order = labels[0].compareDocumentPosition(answer);
     expect(order & Node.DOCUMENT_POSITION_FOLLOWING, "the rewording comes before the answer").toBeTruthy();
   });
@@ -277,18 +287,18 @@ describe("AC7 — a declined question shows the deferral and no sources at all",
     render(<Transcript turns={[declined, ungrounded]} />);
     expect(screen.queryByRole("heading", { name: SOURCES_HEADING })).toBeNull();
     expect(screen.queryByText(SOURCES_HEADING)).toBeNull();
-    expect(screen.getAllByLabelText(ANSWER_LABEL)).toHaveLength(2);
-    for (const answer of screen.getAllByLabelText(ANSWER_LABEL)) expect(answer.textContent).toContain(GROUNDED_DEFERRAL);
+    expect(answerRegions()).toHaveLength(2);
+    for (const answer of answerRegions()) expect(answer.textContent).toContain(GROUNDED_DEFERRAL);
   });
 });
 
 /** The checks AC8, AC9 and AC10 share: the notice apart, the mark at the answer's end. */
 function expectSetApart(heading: string, noticeText: string) {
-  const answer = screen.getByLabelText(ANSWER_LABEL);
+  const answer = answerRegion();
   const notice = screen.getByRole("status", { name: heading });
   expect(within(notice).getByRole("heading").textContent).toBe(heading);
   expect(notice.textContent).toContain(noticeText);
-  expect(answer.contains(notice), "the notice is outside the answer's element").toBe(false);
+  expect(answer.contains(notice), "the notice is outside the answer's region").toBe(false);
   expect(answer.textContent, "none of the notice's words inside the answer").not.toContain(noticeText);
   expect(answer.textContent?.trimEnd().endsWith(INCOMPLETE_MARK), "the mark is visible text at the answer's end").toBe(true);
   expect(answer.compareDocumentPosition(notice) & Node.DOCUMENT_POSITION_FOLLOWING, "the notice follows the answer").toBeTruthy();
@@ -306,7 +316,20 @@ describe("AC8 — a stop by the quotation screen is a notice apart from the answ
     const turn = records.reduce(reduceTurn, newTurn(1, "A question?"));
     render(<Transcript turns={[turn]} />);
     expectSetApart(NOTICE_HEADINGS.provenance, PROVENANCE_NOTICE);
-    expect(screen.getByLabelText(ANSWER_LABEL).textContent).not.toContain("words in no passage");
+    expect(answerRegion().textContent).not.toContain("words in no passage");
+  });
+
+  it("before the first word: the answer region still shows where it stopped", async () => {
+    // Correctness review, round d2e7d11, finding 5. The opening itself carries the
+    // bad quotation, so the screen refuses before releasing a single word.
+    const records = await realRecords(async function* () {
+      yield `${DISPLAY_FRAME}, under EO 23-02: ${O}words in no passage${C}. That is all.`;
+    });
+    expect(records.some((e) => e.type === "streamed_tokens"), "the fixture releases no words").toBe(false);
+    expect(records.some((e) => e.type === "notice"), "and refuses on provenance").toBe(true);
+    const turn = records.reduce(reduceTurn, newTurn(1, "A question?"));
+    render(<Transcript turns={[turn]} />);
+    expectSetApart(NOTICE_HEADINGS.provenance, PROVENANCE_NOTICE);
   });
 });
 
@@ -321,15 +344,17 @@ describe("AC9 — a failure mid-answer is a notice apart from the answer", () =>
     const turn = records.reduce(reduceTurn, newTurn(1, "A question?"));
     render(<Transcript turns={[turn]} />);
     expectSetApart(NOTICE_HEADINGS.failure, FAILURE_NOTICE);
-    expect(screen.getByLabelText(ANSWER_LABEL).textContent).not.toContain("provider closed");
+    expect(answerRegion().textContent).not.toContain("provider closed");
   });
 });
 
-/** A fake service: one response whose body the test feeds by hand. */
+/** A fake service: one response whose body the test feeds by hand. Tolerant of a
+ *  stream the screen has already cancelled, which is what a local failure now does. */
 function fakeService() {
   let controller: ReadableStreamDefaultController<Uint8Array> | undefined;
   const encoder = new TextEncoder();
-  const fetch = vi.fn(async () => {
+  const fetch = vi.fn(async (_url: string, init?: RequestInit) => {
+    void init;
     const body = new ReadableStream<Uint8Array>({
       start(c) {
         controller = c;
@@ -337,23 +362,32 @@ function fakeService() {
     });
     return new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } });
   });
+  const safely = (f: () => void) => {
+    try {
+      f();
+    } catch {
+      // The stream was cancelled by the screen; nothing more can be fed to it.
+    }
+  };
   return {
     fetch,
-    send: (event: ChatStreamEvent) => controller?.enqueue(encoder.encode(encodeEvent(event))),
-    sendRaw: (text: string) => controller?.enqueue(encoder.encode(text)),
-    close: () => controller?.close(),
+    /** The request's cancellation signal, as the screen passed it. */
+    signal: () => (fetch.mock.calls[0]?.[1] as RequestInit | undefined)?.signal as AbortSignal,
+    send: (event: ChatStreamEvent) => safely(() => controller?.enqueue(encoder.encode(encodeEvent(event)))),
+    sendRaw: (text: string) => safely(() => controller?.enqueue(encoder.encode(text))),
+    close: () => safely(() => controller?.close()),
   };
 }
 
 function ask(text: string) {
-  const input = screen.getByLabelText(QUESTION_LABEL) as HTMLTextAreaElement;
+  const input = screen.getByRole("textbox", { name: QUESTION_LABEL }) as HTMLTextAreaElement;
   fireEvent.change(input, { target: { value: text } });
   fireEvent.click(screen.getByRole("button", { name: SEND_LABEL }));
   return input;
 }
 
 describe("AC10 — through the mounted screen: a stream cut short, and an unreadable record", () => {
-  it("a stream that ends without its final record shows the connection notice, apart", async () => {
+  it("a stream that ends without its final record shows the connection notice, apart, and ends the request", async () => {
     const service = fakeService();
     vi.stubGlobal("fetch", service.fetch);
     render(<ChatScreen />);
@@ -362,14 +396,17 @@ describe("AC10 — through the mounted screen: a stream cut short, and an unread
     service.send({ type: "safety_status", classification: "IN-BOUNDS" });
     service.send({ type: "retrieved_chunks", chunks: [EO_CHUNK] });
     service.send({ type: "streamed_tokens", text: `${DISPLAY_FRAME}, the record says` });
-    await waitFor(() => expect(screen.getByLabelText(ANSWER_LABEL).textContent).toContain("the record says"));
+    await waitFor(() => expect(answerRegion().textContent).toContain("the record says"));
     service.close();
     await waitFor(() => screen.getByRole("status", { name: NOTICE_HEADINGS.connection }));
     expectSetApart(NOTICE_HEADINGS.connection, CONNECTION_NOTICE);
-    vi.unstubAllGlobals();
+    // Approach review, round d2e7d11, finding 2: a turn the screen ended tells the
+    // server the reader is gone.
+    expect(service.signal().aborted, "the request is aborted").toBe(true);
   });
 
-  it("a record that cannot be read ends the answer with the connection notice, keeping what arrived", async () => {
+  it("a record that cannot be read ends the answer with the connection notice, keeps what arrived, aborts, and logs the cause", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
     const service = fakeService();
     vi.stubGlobal("fetch", service.fetch);
     render(<ChatScreen />);
@@ -377,14 +414,35 @@ describe("AC10 — through the mounted screen: a stream cut short, and an unread
     await waitFor(() => expect(service.fetch).toHaveBeenCalledTimes(1));
     service.send({ type: "safety_status", classification: "IN-BOUNDS" });
     service.send({ type: "streamed_tokens", text: `${DISPLAY_FRAME}, the words that arrived` });
-    await waitFor(() => expect(screen.getByLabelText(ANSWER_LABEL).textContent).toContain("the words that arrived"));
+    await waitFor(() => expect(answerRegion().textContent).toContain("the words that arrived"));
     service.sendRaw('data: {"type":"something-else"}\n\n');
     service.send({ type: "streamed_tokens", text: " and words after the bad record" });
     await waitFor(() => screen.getByRole("status", { name: NOTICE_HEADINGS.connection }));
     expectSetApart(NOTICE_HEADINGS.connection, CONNECTION_NOTICE);
-    expect(screen.getByLabelText(ANSWER_LABEL).textContent).not.toContain("words after the bad record");
+    expect(answerRegion().textContent).not.toContain("words after the bad record");
+    expect(service.signal().aborted, "the request is aborted").toBe(true);
+    // Hidden-failure review, round d2e7d11: the cause reaches the console, and carries
+    // the schema's objection as `cause`, so a systemic failure is diagnosable.
+    expect(logged).toHaveBeenCalledWith(
+      "chat request failed",
+      expect.objectContaining({ message: expect.stringContaining("not a declared record"), cause: expect.anything() }),
+    );
     service.close();
-    vi.unstubAllGlobals();
+  });
+
+  it("an unreadable record before the first word still marks the answer", async () => {
+    // Correctness review, round d2e7d11, finding 5, the other case.
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const service = fakeService();
+    vi.stubGlobal("fetch", service.fetch);
+    render(<ChatScreen />);
+    ask("What does the order say?");
+    await waitFor(() => expect(service.fetch).toHaveBeenCalledTimes(1));
+    service.send({ type: "safety_status", classification: "IN-BOUNDS" });
+    service.sendRaw("data: {not json\n\n");
+    await waitFor(() => screen.getByRole("status", { name: NOTICE_HEADINGS.connection }));
+    expectSetApart(NOTICE_HEADINGS.connection, CONNECTION_NOTICE);
+    expect(screen.queryByRole("status", { name: WAITING_LABEL }), "the wait is over").toBeNull();
   });
 });
 
@@ -406,15 +464,23 @@ describe("AC11 — one question at a time, by the button and by the keyboard", (
     await new Promise((r) => setTimeout(r, 20));
     expect(service.fetch, "nothing was sent").toHaveBeenCalledTimes(1);
 
-    // The first answer ends; the control comes back; Enter sends.
+    // Correctness review, round d2e7d11, finding 3: a stop notice arrives, the final
+    // record has not — the gate stays shut in that interval.
     service.send({ type: "safety_status", classification: "IN-BOUNDS" });
     service.send({ type: "streamed_tokens", text: `${DISPLAY_FRAME}, the record.` });
+    service.send({ type: "notice", kind: "provenance", text: PROVENANCE_NOTICE });
+    await waitFor(() => screen.getByRole("status", { name: NOTICE_HEADINGS.provenance }));
+    expect(button.disabled, "a notice does not open the gate").toBe(true);
+    fireEvent.keyDown(input, { key: "Enter" });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(service.fetch).toHaveBeenCalledTimes(1);
+
+    // The final record ends the exchange; the control comes back; Enter sends.
     service.send(AUDIT);
     service.close();
     await waitFor(() => expect(button.disabled).toBe(false));
     fireEvent.keyDown(input, { key: "Enter" });
     await waitFor(() => expect(service.fetch).toHaveBeenCalledTimes(2));
-    expect(screen.getAllByLabelText(QUESTION_LABEL)).toHaveLength(2 + 1); // two exchanges, plus the input's label
-    vi.unstubAllGlobals();
+    expect(screen.getAllByRole("region", { name: QUESTION_LABEL })).toHaveLength(2);
   });
 });

@@ -788,3 +788,25 @@ list; the equality test cannot catch drift in them.
 there is one kind" above the enumerable list; a count in living text (`workflow-protocol.md` →
 *Counts are copies*).
 *Suggestion.* Describe the kind without numbering it, or point at the list.
+
+## Fixes (2026-10-04, round d2e7d11)
+
+Every approved finding, applied on the feature branch. Nothing deferred or rejected was touched.
+
+| Finding | What changed |
+|---|---|
+| Approach 1 — history length | `buildRequest` cuts each prior question and answer to `MAX_QUESTION_LENGTH` (imported from `request.ts`) and then lets `chatRequestSchema` decide: whole turns are dropped, oldest first, until the schema accepts the body. The count loop is gone; the schema enforces the count too. New test: a 6,000-character prior answer is kept, shortened to its opening, and the body passes the schema. |
+| Approach 2 — the un-cancelled request | `ChatScreen` aborts the controller after `endTurn` on any failure it met itself (`failedLocally`), keeping the unmount abort and its no-update rule; `readChatStream` cancels the body's reader before rethrowing a parse failure. The two AC10 mounted tests assert the request's signal is aborted. **Found by the first gate run:** a stream that closes early *without* an error threw nothing, so nothing was aborted. The handler now keeps its own copy of the turn, fed through the same reducer the screen renders from, and treats "the stream closed and the turn has not ended" as a local failure too — aborted, and logged as `chat stream ended before its final record`. One authority for "ended"; no second list of terminal record kinds. |
+| Approach 3 — labels on generic containers | The question and the answer are `section` elements named by their visible label through `aria-labelledby` (ids per turn). The tests query `region` by name — what a browser exposes — and the textbox by its role. |
+| C3 — the gate opened on a notice | `canSend` is `turns.every((t) => t.ended)`. Tests: the reducer case (a notice leaves `ended` false; the final record ends it) and, mounted, Enter between a provenance notice and the final record sends nothing. |
+| C5 — no mark before the first word | The answer region renders whenever the turn is incomplete, mark included, with no leading space when the answer is empty. Tests: a provenance stop in the opening (the real orchestrator releases no word) and, mounted, an unreadable record before the first word. |
+| C6 — generated names outside the registry | `ABOUT_LABEL`, `NOTICE_POSITIONS` and `EXCHANGE_LABEL` in `src/lib/copy.ts`, `SCREEN_COPY` and the README's list; `AvatarNotice` and `Transcript` read them. |
+| C7 — stale "first record" wording | `WAITING_NOTICE`'s comment and the AC3 `describe` title say the first words. |
+| C8 — a count in a comment | `NOTICE_KINDS`'s comment names the kind and points at the list. |
+| H1 — the blind `catch` | `console.error("chat request failed", error)` on every failure the screen meets, except after an unmount abort. The mounted unreadable-record test asserts the call. |
+| H2 — rethrows without `cause` | Both `parseRecord` throws carry `{ cause }`; the same test asserts the logged error carries one. |
+
+**Also changed by these fixes, stated so they are not silent:** the README's *How it behaves*
+and *What a reader sees* sections describe the new behaviour (the per-message cut, the gate on
+"ended", the abort on a local failure, the console line, the regions); the test helpers tolerate a
+stream the screen has cancelled.

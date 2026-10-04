@@ -3,7 +3,7 @@ import type { DocumentKind } from "../ingest/metadata";
 import type { SafetyClassification } from "../safety";
 import { CONNECTION_NOTICE } from "../copy";
 import { chatStreamEventSchema, type ChatStreamEvent } from "./events";
-import { MAX_HISTORY_MESSAGES, type ChatRequestBody } from "./request";
+import { MAX_QUESTION_LENGTH, chatRequestSchema, type ChatRequestBody } from "./request";
 
 /**
  * The chat screen's logic, with no React and no DOM in it.
@@ -131,10 +131,15 @@ export function endTurn(turn: Turn): Turn {
   };
 }
 
-/** False while any exchange is still in progress. The one gate for the send button
- *  and the submit handler alike, so no path can send a second question mid-answer. */
+/**
+ * False until every exchange has ended — its final record arrived, or the screen
+ * closed it. Not "none is waiting or answering": a stop notice makes a turn
+ * `incomplete` a moment before the final record closes the stream, and that moment
+ * must not open the gate (correctness review, round d2e7d11, finding 3). The one gate
+ * for the send button and the submit handler alike.
+ */
 export function canSend(turns: readonly Turn[]): boolean {
-  return !turns.some((t) => t.status === "waiting" || t.status === "answering");
+  return turns.every((t) => t.ended);
 }
 
 /**
@@ -143,18 +148,30 @@ export function canSend(turns: readonly Turn[]): boolean {
  * Each earlier turn contributes its question and the answer text the reader saw —
  * never a notice, which is the service's voice and not the avatar's. A turn with no
  * answer text is left out entirely, so the roles alternate as the answering model
- * expects. Whole turns are dropped, oldest first, until the body fits the service's
- * limit; the new question is always last.
+ * expects. A prior answer is cut to the service's per-message limit: that limit was
+ * sized for a question, and an answer can run far past it, so the model is reminded
+ * of an earlier answer's opening rather than given all of it. Then the service's own
+ * request schema has the last word — whole turns are dropped, oldest first, until it
+ * accepts the body — so every limit it declares, now or later, is honoured here
+ * without a copy (approach review, round d2e7d11, finding 1). The new question is
+ * always last.
  */
 export function buildRequest(turns: readonly Turn[], question: string): ChatRequestBody {
   const prior = turns
     .filter((t) => t.answer !== "")
     .map((t) => [
-      { role: "user" as const, content: t.question },
-      { role: "assistant" as const, content: t.answer },
+      { role: "user" as const, content: t.question.slice(0, MAX_QUESTION_LENGTH) },
+      { role: "assistant" as const, content: t.answer.slice(0, MAX_QUESTION_LENGTH) },
     ]);
-  while (prior.length * 2 + 1 > MAX_HISTORY_MESSAGES) prior.shift();
-  return { messages: [...prior.flat(), { role: "user", content: question }] };
+  const body = (): ChatRequestBody => ({
+    messages: [...prior.flat(), { role: "user", content: question }],
+  });
+  let candidate = body();
+  while (prior.length > 0 && !chatRequestSchema.safeParse(candidate).success) {
+    prior.shift();
+    candidate = body();
+  }
+  return candidate;
 }
 
 /**
@@ -186,7 +203,16 @@ export async function* readChatStream(
       const records = buffered.split(/\r?\n\r?\n/);
       buffered = done ? "" : (records.pop() ?? "");
       for (const record of records) {
-        const event = parseRecord(record);
+        let event: ChatStreamEvent | undefined;
+        try {
+          event = parseRecord(record);
+        } catch (error) {
+          // A record the screen cannot read ends the exchange, and the body is
+          // cancelled with it, so the request closes rather than streaming on for
+          // nobody (approach review, round d2e7d11, finding 2).
+          await reader.cancel(error).catch(() => {});
+          throw error;
+        }
         if (event) yield event;
       }
       if (done) return;
@@ -205,12 +231,17 @@ function parseRecord(record: string): ChatStreamEvent | undefined {
     .join("\n");
   if (data === "") return undefined;
   let payload: unknown;
+  // Each refusal carries its evidence as `cause` — the parse error, or the schema's
+  // objection — so the console line the screen writes can tell a server bug from a
+  // client one (hidden-failure review, round d2e7d11).
   try {
     payload = JSON.parse(data);
-  } catch {
-    throw new Error("a record from the service was not readable");
+  } catch (error) {
+    throw new Error("a record from the service was not readable", { cause: error });
   }
   const parsed = chatStreamEventSchema.safeParse(payload);
-  if (!parsed.success) throw new Error("a record from the service was not a declared record");
+  if (!parsed.success) {
+    throw new Error("a record from the service was not a declared record", { cause: parsed.error });
+  }
   return parsed.data;
 }

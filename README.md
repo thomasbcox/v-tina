@@ -500,26 +500,36 @@ React and no DOM in it.
   *Answer failed*; and the screen's own notice, *Connection lost*, when the stream ends without its
   final record or a record arrives that is not a declared record. In every case the answer's own
   words end with a visible mark, `INCOMPLETE_MARK`, so a dangling half-sentence cannot read as a
-  finished thought. **A notice is told apart by its record kind, never by its wording.**
+  finished thought — and an answer stopped before its first word still gets its region and the
+  mark. **A notice is told apart by its record kind, never by its wording.**
+- **Who is speaking, for every reader.** The question and the answer are labelled regions that
+  assistive technology announces by name, not generic containers with an attribute.
 - **Nothing** for the classification label or the audit status.
 
 ### How it behaves
 
 - **A conversation.** Earlier turns go to the service as history: each contributes its question
-  and the answer text the reader saw — never a notice — and whole turns are dropped, oldest first,
-  to fit the service's limit. A turn with no answer text is left out entirely, so the roles
-  alternate. The hole described under *What it accepts* is unchanged: classification judges the
-  latest question alone. A reload starts a new conversation.
+  and the answer text the reader saw — never a notice. A prior answer is cut to the service's
+  per-message limit (it was sized for a question; an answer can run far past it), and the service's
+  own request schema then has the last word: whole turns are dropped, oldest first, until it
+  accepts the body, so every limit it declares is honoured without a copy. A turn with no answer
+  text is left out entirely, so the roles alternate. The hole described under *What it accepts* is
+  unchanged: classification judges the latest question alone. A reload starts a new conversation.
 - **One question at a time.** The form's single submit path — the button and the Enter key both
   arrive there; Shift+Enter keeps a line break — is gated by one function, `canSend`, which also
-  disables the button, so no path can send a second question while one is being answered.
-- **Leaving stops the work.** Each exchange holds one `AbortController`, aborted when the screen
-  unmounts; the server stops the model on disconnect (*What it streams back*).
+  disables the button. The gate opens only when every exchange has **ended**: its final record has
+  arrived, or the stream has closed. A stop notice alone does not open it.
+- **Leaving stops the work, and so does a failure the screen meets.** Each exchange holds one
+  `AbortController`, aborted when the screen unmounts and also when the screen itself ends the
+  turn — a refused request, a dropped connection, an unreadable record — so the server stops the
+  model in either case (*What it streams back*).
 - **Reading the stream.** `readChatStream` decodes the body as it arrives, splits records at the
   blank line, and validates every payload with `chatStreamEventSchema`. A payload that is not a
-  declared record ends the turn as incomplete rather than being skipped: a skipped record is a
-  truncation nothing reports. `eventsource-parser` was considered and rejected; the reason is in
-  the story's design sketch.
+  declared record ends the turn as incomplete rather than being skipped — a skipped record is a
+  truncation nothing reports — and the cause, with the payload or the schema's objection attached,
+  goes to the browser console under `chat request failed`: the reader sees only the notice, but a
+  systemic failure stays diagnosable. `eventsource-parser` was considered and rejected; the reason
+  is in the story's design sketch.
 
 ### How it is tested
 
@@ -537,6 +547,9 @@ A test holds this list equal to the module's exports in both directions, the pat
 the pillars and the source domains use.
 
 - `AVATAR_NOTICE`
+- `ABOUT_LABEL`
+- `NOTICE_POSITIONS`
+- `EXCHANGE_LABEL`
 - `WAITING_NOTICE`
 - `WAITING_LABEL`
 - `CONNECTION_NOTICE`

@@ -62,14 +62,20 @@ export function ChatScreen({ initialTurns = [] }: { initialTurns?: Turn[] }) {
 
     const id = nextId.current++;
     const body = buildRequest(turns, question);
-    setTurns((all) => [...all, newTurn(id, question)]);
+    // The handler keeps its own copy of the turn, fed through the same reducer the
+    // screen renders from, so it can ask the one authority whether the exchange ended.
+    let turn = newTurn(id, question);
+    setTurns((all) => [...all, turn]);
     setDraft("");
 
     const controller = new AbortController();
     inFlight.current = controller;
-    const update = (change: (turn: Turn) => Turn) =>
-      setTurns((all) => all.map((turn) => (turn.id === id ? change(turn) : turn)));
+    const update = (next: Turn) => {
+      turn = next;
+      setTurns((all) => all.map((t) => (t.id === id ? next : t)));
+    };
 
+    let failedLocally = false;
     try {
       const response = await fetch("/api/chat", {
         method: "POST",
@@ -80,16 +86,28 @@ export function ChatScreen({ initialTurns = [] }: { initialTurns?: Turn[] }) {
       if (!response.ok || response.body === null) {
         throw new Error(`the service answered ${response.status}`);
       }
-      for await (const record of readChatStream(response.body)) {
-        update((turn) => reduceTurn(turn, record));
+      for await (const record of readChatStream(response.body)) update(reduceTurn(turn, record));
+      if (!turn.ended && !controller.signal.aborted) {
+        // The stream closed without saying how the exchange ended: a cut, not a finish.
+        failedLocally = true;
+        console.error("chat stream ended before its final record");
       }
-    } catch {
+    } catch (error) {
       // A refused request, a dropped connection, a record that could not be read:
-      // `endTurn` below marks the turn incomplete with the screen's own notice.
-      // Nothing from the error reaches the reader; it carries no detail they can act on.
+      // `endTurn` below marks the turn incomplete with the screen's own notice, and
+      // nothing from the error reaches the reader — it carries no detail they can act
+      // on. The console is the one sink a page has; without it a systemic failure, the
+      // record format drifting say, would look like a flaky network to every reader
+      // and reach nobody who could fix it (hidden-failure review, round d2e7d11).
+      failedLocally = true;
+      if (!controller.signal.aborted) console.error("chat request failed", error);
     } finally {
-      // Not after an abort: the screen is gone and there is no reader to tell.
-      if (!controller.signal.aborted) update(endTurn);
+      // Not after an unmount abort: the screen is gone and there is no reader to tell.
+      if (!controller.signal.aborted) update(endTurn(turn));
+      // A turn the screen ended on its own tells the server the reader is gone, as
+      // leaving the page does (approach review, round d2e7d11, finding 2). After the
+      // update above, so the no-update rule still means "unmounted".
+      if (failedLocally) controller.abort();
       if (inFlight.current === controller) inFlight.current = null;
     }
   }
