@@ -272,7 +272,7 @@ after approval.
 - frame/6 — ran (codex on kimi-latest, 4 findings, 14 regressions) → reviews/chat-screen.design.23a18c3.json
 - frame/9 — demonstrated red: every ratified regression on a sized criterion (12 cases over AC3, AC5–AC12) plus 4 builder's-own cases for checks added at the build (AC1, AC3, AC4 ×2), each applied on a clean tree, red on its named test, and reverted; the two ratified entries that are live observations (R1/AC1, AC4's paint) were observed and are recorded in the build note; build commits 3809f72 and c7a5657
 - review/6 — ran (codex on glm-latest, 3 findings) → reviews/chat-screen.approach.d2e7d11.json
-- review/8 — not yet reached
+- review/8 — round d2e7d11, first attempt (2026-10-04): **stopped — codex exited 1** for both the correctness and the hidden-failure critic; nothing promoted. Cause, confirmed by a direct `codex exec` call outside the runner: Fireworks answered `401 Unauthorized` at `/inference/v1/responses` on every retry with codex's own bearer token (written by fireconnect), and `--probe-codex-routes` showed every routed model failing the same way, while the same routing had answered the approach pass at 09:21. Not a format stop and not a fabrication: codex never reached a model. Doc-drift shadow: **trial closed** (its 20 runs used). Recovery: once codex answers again, re-run only these two critics with the same round id and base (`BACKLOG.md` AAR-1's narrower recovery); the approach pass and its decisions stand.
 - close/3b — not yet reached
 - close/4 — not yet reached
 
