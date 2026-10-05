@@ -1,0 +1,36 @@
+{
+  "verdict": "Measured Sat Oct 3 09:21:12 PDT 2026. If I built this from the approved spec, I would keep the ratified shape: a pure client module validated by the shared zod event schema, thin presentational components, no runtime dependency, and an AbortController threaded to the endpoint. I would not ship the history builder as-is, because it enforces only the message-count half of the request schema and can therefore turn a normal long answer into a refused follow-up. I would also close the fetch when a client-side failure ends a turn, and use real landmark semantics for the repeated question and answer labels.",
+  "regressions": [],
+  "findings": [
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "kludgy",
+      "title": "History trimming enforces the message count but not the per-message length limit",
+      "locus": "src/lib/chat/client.ts:149-157",
+      "claim": "buildRequest loops only while prior.length * 2 + 1 > MAX_HISTORY_MESSAGES, but chatRequestSchema also limits every message to 2000 characters. An answer is allowed up to 4000 model tokens (ANSWER_MAX_TOKENS), so a follow-up after one long answer can send an assistant message the service rejects. The route then returns 400 and the screen shows the generic connection-lost notice, so the reader’s next question is not answered. That misses the stated “within the limits the service accepts” requirement and the AC12 oracle’s claim that chatRequestSchema accepts the built body; the existing test only uses short answers and so cannot expose it.",
+      "alternative": "Let the existing request schema be the single authority. Build a candidate from whole prior turns, call chatRequestSchema.safeParse on it, and drop the oldest whole turn whenever a history message makes it invalid; keep the current question as a separately validated terminal message. Alternatively, derive and apply the per-message limit explicitly to both the question and answer before the count loop, rather than copying only MAX_HISTORY_MESSAGES into the client.",
+      "win": "One schema owns all acceptance limits, so a normal long answer no longer causes a 400-backed connection notice on the next turn; the count check and a second hand-rolled character check are replaced by the already-declared contract."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "A locally unreadable stream is shown as lost but never disconnected",
+      "locus": "src/components/ChatScreen.tsx:73-94; src/lib/chat/client.ts:175-196",
+      "claim": "readChatStream throws on a malformed record and releases its reader lock, but does not cancel the response body. ChatScreen catches that error and marks the turn incomplete, yet never aborts the request controller; the only abort path is unmount. Consequently, a record the client cannot read — or a non-2xx response with an unconsumed body — can visibly end the exchange while the fetch remains open and the server continues generating an answer nobody is reading. That undercuts the pull-based cancellation design the rest of the screen deliberately follows.",
+      "alternative": "Make cancellation part of every terminal path: in ChatScreen’s catch, first apply endTurn and then call controller.abort() (or cancel response.body directly) before clearing inFlight; alternatively have readChatStream cancel its reader when parsing fails. Preserve the existing unmount abort, and keep the “do not update after an unmount abort” distinction separate from this local-failure abort.",
+      "win": "One abort call closes the only client-owned failure path that can orphan model work and billing, so every way a turn ends also tells the server the reader is gone."
+    },
+    {
+      "severity": "IMPORTANT",
+      "reversibility": "two-way",
+      "standing": "nonstandard",
+      "title": "Question and answer labels are aria-labels on generic divs",
+      "locus": "src/components/Transcript.tsx:29-35 and 52-65",
+      "claim": "The question and answer containers are generic div elements carrying aria-label, while their visible labels are separate unassociated p elements. Generic roles do not reliably expose an accessible name to assistive technology, so a screen-reader user may not hear where the reader’s question ends and V-Tina’s answer begins. Testing Library still finds the aria-label attribute, so the current tests pass while the product’s own who-is-speaking distinction is weaker for non-visual readers.",
+      "alternative": "Use section elements with aria-label for the question and answer regions, or give each visible label an id and associate the container with aria-labelledby; because turns repeat, derive the ids with React’s useId. Keep the visible labels exactly as they are.",
+      "win": "The labels become dependable accessible regions for assistive technology, and the test oracle now checks a name the browser actually exposes; this costs a few lines and no dependency."
+    }
+  ]
+}

@@ -58,9 +58,15 @@ async function collect(
   return out;
 }
 
+/** Everything the reader receives as text, in order: the answer's own words and any
+ *  notice. The notice travels as its own record kind (story `chat-screen`), so a test
+ *  that wants only the answer's words filters `streamed_tokens` itself. */
 const said = (events: ChatStreamEvent[]) =>
   events
-    .filter((e): e is Extract<ChatStreamEvent, { type: "streamed_tokens" }> => e.type === "streamed_tokens")
+    .filter(
+      (e): e is Extract<ChatStreamEvent, { type: "streamed_tokens" | "notice" }> =>
+        e.type === "streamed_tokens" || e.type === "notice",
+    )
     .map((e) => e.text)
     .join("");
 

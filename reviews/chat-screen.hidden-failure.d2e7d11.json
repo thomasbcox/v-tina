@@ -1,0 +1,21 @@
+{
+  "summary": "The change's failure model mostly surfaces its failures: a dropped connection, a refused request, or an undeclared record all end the turn visibly as `incomplete` with the screen's own CONNECTION_NOTICE, and `parseRecord` throws rather than skipping an unreadable payload. The one genuine blind spot is that the error object itself is discarded at every layer — the submit handler's `catch` has no binding and no logging, and `parseRecord` rethrows generic messages without a `cause` — so a systemic failure (e.g. server/schema drift making every record undeclared) would present to every reader as 'Connection lost' and reach no one who could diagnose it. The reader-facing half of this was a settled design decision (frame consult C2); the zero-diagnosability half was not examined. The orphaned-request concern on the same path was already flagged by the approach pass (finding 2) and decided 'fix', so it is not re-reported here.",
+  "findings": [
+    {
+      "severity": "IMPORTANT",
+      "title": "Blind catch discards the error entirely — a systemic failure is indistinguishable from a flaky network and reaches nobody",
+      "file": "src/components/ChatScreen.tsx",
+      "line": 86,
+      "claim": "The submit handler's `catch` has no binding and no logging: the error object — which distinguishes a refused request, a dropped connection, and an unreadable/undeclared record — is dropped on the floor. The reader-facing degradation (the turn marked `incomplete` with CONNECTION_NOTICE in the `finally`) is the settled C2 design and is fine; what is not fine is that this is the *only* place these errors exist, and they are observed nowhere. If the server or the event schema drifts so that every record fails validation, every reader sees 'The connection to the service ended…' forever, and no console, log, or telemetry ever shows the real cause. Catch-and-report-to-the-user is correct here (propagation from an event handler is impossible); catch-and-report-to-nobody-else is the hidden-failure pattern.",
+      "suggestion": "Bind and log the error: `catch (error) { console.error('chat request failed', error); }` — the console is the only sink a client bundle has. This changes nothing the reader sees and turns a silent systemic failure into a diagnosable one."
+    },
+    {
+      "severity": "NIT",
+      "title": "parseRecord rethrows generic errors without `cause`, destroying the diagnostic detail its caller would need",
+      "file": "src/lib/chat/client.ts",
+      "line": 210,
+      "claim": "Both failure exits of `parseRecord` replace the underlying evidence with a fixed sentence: the JSON `SyntaxError` is swallowed by the inner `catch` and rethrown as 'a record from the service was not readable' with no `cause`, and the zod rejection is rethrown as '…not a declared record' without `parsed.error`. Even if the caller is fixed to log (the finding above), what it logs contains neither the malformed payload nor which schema branch rejected it — the two facts that distinguish a server bug from a client one.",
+      "suggestion": "Preserve the cause: `throw new Error('a record from the service was not readable', { cause: error })` (binding the caught error), and include `cause: parsed.error` on the schema-rejection throw."
+    }
+  ]
+}
