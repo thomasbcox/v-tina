@@ -271,8 +271,8 @@ after approval.
 
 - frame/6 — ran (codex on kimi-latest, 4 findings, 14 regressions) → reviews/chat-screen.design.23a18c3.json
 - frame/9 — demonstrated red: every ratified regression on a sized criterion (12 cases over AC3, AC5–AC12) plus 4 builder's-own cases for checks added at the build (AC1, AC3, AC4 ×2), each applied on a clean tree, red on its named test, and reverted; the two ratified entries that are live observations (R1/AC1, AC4's paint) were observed and are recorded in the build note; build commits 3809f72 and c7a5657
-- review/6 — ran (codex on glm-latest, 3 findings) → reviews/chat-screen.approach.d2e7d11.json
-- review/8 — ran, round d2e7d11, second attempt (2026-10-04): codex glm-latest correctness / kimi-latest hidden-failure, 8 / 2 findings; doc-drift shadow: trial closed → reviews/chat-screen.correctness.d2e7d11.json, reviews/chat-screen.hidden-failure.d2e7d11.json. The hidden-failure critic promoted on the first concurrent run after the key was fixed; the correctness critic was cut off by the harness's background time cap at ten minutes with no artifact and was re-run alone (AAR-1's narrower recovery), finishing in about eleven minutes. **First attempt, earlier that morning: stopped — codex exited 1** for both the correctness and the hidden-failure critic; nothing promoted. Cause, confirmed by a direct `codex exec` call outside the runner and then by direct calls to Fireworks: the `FIREWORKS_API_KEY` this machine uses — codex's bearer token is the same key — was answered `401 Unauthorized` for every real model, the routed aliases (`glm-latest`, `kimi-latest`, `deepseek-flash-latest`) and the product's own `gpt-oss-120b` and `deepseek-v4p1-flash` alike, on both the chat-completions and the responses endpoints; a non-existent model name still drew `404`, so the key reaches the service and is refused. The same key had answered the approach pass at 09:21 and the live checklist's questions the day before. Not a format stop and not a fabrication: codex never reached a model, and neither would the app have. Doc-drift shadow: **trial closed** (its 20 runs used). Recovery: once codex answers again, re-run only these two critics with the same round id and base (`BACKLOG.md` AAR-1's narrower recovery); the approach pass and its decisions stand.
+- review/6 — n/a — round 27c42b2 is a re-review verifying approved fixes (base 008380e, no redesign last round): correctness only. Round d2e7d11's approach pass (codex on glm-latest, 3 findings) → reviews/chat-screen.approach.d2e7d11.json
+- review/8 — ran, round 27c42b2 (2026-10-04, base 008380e): codex glm-latest correctness / kimi-latest hidden-failure, 3 / 2 findings; doc-drift shadow: trial closed → reviews/chat-screen.correctness.27c42b2.json, reviews/chat-screen.hidden-failure.27c42b2.json. The hidden-failure critic's first run this round **stopped at the reply gate** ("final message holds 2 top-level JSON objects … the reply must be exactly one"); it was re-run alone with the same round, base and prompt against the unchanged HEAD (AAR-1's recovery) and promoted. Both critics ran detached from the desktop app's background cap. **Round d2e7d11:** ran, round d2e7d11, second attempt (2026-10-04): codex glm-latest correctness / kimi-latest hidden-failure, 8 / 2 findings; doc-drift shadow: trial closed → reviews/chat-screen.correctness.d2e7d11.json, reviews/chat-screen.hidden-failure.d2e7d11.json. The hidden-failure critic promoted on the first concurrent run after the key was fixed; the correctness critic was cut off by the desktop app's ten-minute background cap — *corrected 2026-10-04 (round 27c42b2, correctness NIT 1): this line first said "the harness's background time cap"; the cap is the caller's, not the reviewer harness's* with no artifact and was re-run alone (AAR-1's narrower recovery), finishing in about eleven minutes. **First attempt, earlier that morning: stopped — codex exited 1** for both the correctness and the hidden-failure critic; nothing promoted. Cause, confirmed by a direct `codex exec` call outside the runner and then by direct calls to Fireworks: the `FIREWORKS_API_KEY` this machine uses — codex's bearer token is the same key — was answered `401 Unauthorized` for every real model, the routed aliases (`glm-latest`, `kimi-latest`, `deepseek-flash-latest`) and the product's own `gpt-oss-120b` and `deepseek-v4p1-flash` alike, on both the chat-completions and the responses endpoints; a non-existent model name still drew `404`, so the key reaches the service and is refused. The same key had answered the approach pass at 09:21 and the live checklist's questions the day before. Not a format stop and not a fabrication: codex never reached a model, and neither would the app have. Doc-drift shadow: **trial closed** (its 20 runs used). Recovery: once codex answers again, re-run only these two critics with the same round id and base (`BACKLOG.md` AAR-1's narrower recovery); the approach pass and its decisions stand.
 - close/3b — ran (codex on kimi-latest) → reviews/chat-screen.lesson.d2e7d11.json. Activation this session, session-observed: the desktop app's ten-minute background cap killed the correctness critic mid-run on the concurrent attempt — no artifact, no stop line, one review worktree left behind — while the key-revocation stops (`codex exited 1`, twice) were the stop class working as documented and AAR-1's recovery applied. Drift check n/a: this repository carries no `install.sh`. Searched: this repo's `BACKLOG.md` (no item; AAR-1 is the recovery, not the failure), the workflow repo's `BACKLOG.md` (OPS-56, BUG-23, OPS-71 adjacent, none this) and its `.aar/rejected-lessons.md` (no entry). Proposal: `.aar/proposals/chat-screen.md`; the check found every citation resolving and one NIT (wording: the cap is the caller's, not the harness's), applied.
 - close/4 — presented (2026-10-04, after round d2e7d11's fixes): re-review or merge — Thomas chose **re-review**. The lesson proposal was presented at the same stop as its own decision; Thomas asked whether it belongs in the workflow repo instead (answered at the re-review's start; disposition pending, so the proposal file stays).
 
@@ -825,3 +825,59 @@ Every approved finding, applied on the feature branch. Nothing deferred or rejec
 and *What a reader sees* sections describe the new behaviour (the per-message cut, the gate on
 "ended", the abort on a local failure, the console line, the regions); the test helpers tolerate a
 stream the screen has cancelled.
+
+## Codex (glm-latest) correctness pass — re-review (2026-10-04, round 27c42b2, base 008380e)
+
+Artifact: `reviews/chat-screen.correctness.27c42b2.json`; 24 read-only commands.
+
+**Summary.** "Static review of the product changes shows the approved fixes are present: history is
+cut and then checked against the shared request schema, the send gate waits for ended turns, local
+failures end and abort the request while logging a cause, an empty incomplete answer still gets its
+labelled region and visible mark, and generated accessible names come from the copy registry. The
+remaining issues are record, documentation, and regression-coverage drift rather than observed
+product misbehavior."
+
+### NIT
+
+**1. The lesson's wording correction was only partly applied** — `.aar/proposals/chat-screen.md`.
+Two sentences still attribute the notification and the cap to "the harness"; the cap is the
+caller's. (The same slip was in this story's round-d2e7d11 `review/8` line, now corrected there by
+date.)
+
+**2. The README overstates what the console error carries** — `README.md`, *How it behaves* →
+*Reading the stream*. It says the cause has "the payload or the schema's objection attached"; the
+code attaches the JSON parse error or the zod rejection, neither of which holds the raw payload.
+
+**3. The diagnostic and cancellation fixes are not pinned by tests** —
+`__tests__/chat-screen.test.tsx`. The mounted test accepts any non-null `cause`; the malformed-JSON
+case mocks `console.error` without asserting it; nothing observes `readChatStream` cancelling the
+body before rethrowing. The code does all three today; nothing stops it regressing.
+
+## Codex (kimi-latest) hidden-failure pass — re-review (2026-10-04, round 27c42b2, base 008380e)
+
+Artifact: `reviews/chat-screen.hidden-failure.27c42b2.json`; 7 read-only commands; the second run of
+the round, after a reply-gate stop (loop record).
+
+**Summary.** "The diff substantially improves failure surfacing over the prior round … Two residual
+weak spots remain in `src/lib/chat/client.ts`: `buildRequest`'s drop-history loop can return a
+request body that fails the very schema it was checking against, with nothing recording that the
+client gave up; and a blind `.catch(() => {})` on the stream-cancel cleanup swallows the
+cancellation's own rejection."
+
+### IMPORTANT
+
+**1. `buildRequest` silently returns a body that fails the schema it just consulted** —
+`src/lib/chat/client.ts`, `buildRequest`. The loop stops when the schema accepts *or* when the
+history runs out, and returns the body either way. A future constraint that is not about history
+(on the question itself, say) would drop every prior turn and still send a body the service
+refuses; the reader sees "Connection lost", and the console says only "the service answered 400" —
+the schema's objection, which `buildRequest` held, reaches no one.
+*Suggestion.* Check once more after the loop and throw with the schema's objection as `cause`, so
+nothing malformed is sent and the reason reaches the console.
+
+### NIT
+
+**2. A blind `.catch(() => {})` on the stream-cancel cleanup** — `src/lib/chat/client.ts`,
+`readChatStream`. Small impact — the parse error that prompted the cancel is rethrown and logged —
+but as written the empty handler reads as an accident in the pass whose purpose is making
+swallows deliberate. *Suggestion.* Log it quietly, or one comment saying the discard is knowing.
