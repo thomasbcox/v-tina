@@ -274,7 +274,7 @@ after approval.
 - review/6 — ran (codex on glm-latest, 3 findings) → reviews/chat-screen.approach.d2e7d11.json
 - review/8 — ran, round d2e7d11, second attempt (2026-10-04): codex glm-latest correctness / kimi-latest hidden-failure, 8 / 2 findings; doc-drift shadow: trial closed → reviews/chat-screen.correctness.d2e7d11.json, reviews/chat-screen.hidden-failure.d2e7d11.json. The hidden-failure critic promoted on the first concurrent run after the key was fixed; the correctness critic was cut off by the harness's background time cap at ten minutes with no artifact and was re-run alone (AAR-1's narrower recovery), finishing in about eleven minutes. **First attempt, earlier that morning: stopped — codex exited 1** for both the correctness and the hidden-failure critic; nothing promoted. Cause, confirmed by a direct `codex exec` call outside the runner and then by direct calls to Fireworks: the `FIREWORKS_API_KEY` this machine uses — codex's bearer token is the same key — was answered `401 Unauthorized` for every real model, the routed aliases (`glm-latest`, `kimi-latest`, `deepseek-flash-latest`) and the product's own `gpt-oss-120b` and `deepseek-v4p1-flash` alike, on both the chat-completions and the responses endpoints; a non-existent model name still drew `404`, so the key reaches the service and is refused. The same key had answered the approach pass at 09:21 and the live checklist's questions the day before. Not a format stop and not a fabrication: codex never reached a model, and neither would the app have. Doc-drift shadow: **trial closed** (its 20 runs used). Recovery: once codex answers again, re-run only these two critics with the same round id and base (`BACKLOG.md` AAR-1's narrower recovery); the approach pass and its decisions stand.
 - close/3b — ran (codex on kimi-latest) → reviews/chat-screen.lesson.d2e7d11.json. Activation this session, session-observed: the desktop app's ten-minute background cap killed the correctness critic mid-run on the concurrent attempt — no artifact, no stop line, one review worktree left behind — while the key-revocation stops (`codex exited 1`, twice) were the stop class working as documented and AAR-1's recovery applied. Drift check n/a: this repository carries no `install.sh`. Searched: this repo's `BACKLOG.md` (no item; AAR-1 is the recovery, not the failure), the workflow repo's `BACKLOG.md` (OPS-56, BUG-23, OPS-71 adjacent, none this) and its `.aar/rejected-lessons.md` (no entry). Proposal: `.aar/proposals/chat-screen.md`; the check found every citation resolving and one NIT (wording: the cap is the caller's, not the harness's), applied.
-- close/4 — not yet reached
+- close/4 — presented (2026-10-04, after round d2e7d11's fixes): re-review or merge — Thomas chose **re-review**. The lesson proposal was presented at the same stop as its own decision; Thomas asked whether it belongs in the workflow repo instead (answered at the re-review's start; disposition pending, so the proposal file stays).
 
 ## Open questions
 
@@ -788,6 +788,21 @@ list; the equality test cannot catch drift in them.
 there is one kind" above the enumerable list; a count in living text (`workflow-protocol.md` →
 *Counts are copies*).
 *Suggestion.* Describe the kind without numbering it, or point at the list.
+
+## Build note (2026-10-04, re-review of round d2e7d11's fixes)
+
+Where the fixes landed, by criterion. The round-1 map above still holds; this is the delta.
+
+| AC | Files the fixes touched |
+|---|---|
+| 1, 2 | `src/components/AvatarNotice.tsx` (accessible name from the registry), `src/lib/copy.ts` (`ABOUT_LABEL`, `NOTICE_POSITIONS`) |
+| 3 | `src/lib/copy.ts` (`WAITING_NOTICE` comment), `__tests__/chat-screen.test.tsx` (the AC3 title) |
+| 5, 6, 7 | `src/components/Transcript.tsx` (labelled regions; `EXCHANGE_LABEL`); tests query regions by role and name |
+| 8, 9, 10 | `src/components/Transcript.tsx` (the region and mark on an empty incomplete answer), `src/components/ChatScreen.tsx` (abort and console line on a local failure; the handler's mirror of the turn), `src/lib/chat/client.ts` (`readChatStream` cancels the reader; `parseRecord` carries `cause`); tests `__tests__/chat-screen.test.tsx` |
+| 11 | `src/lib/chat/client.ts` (`canSend` on `ended`), tests `__tests__/chat-client.test.ts`, `__tests__/chat-screen.test.tsx` |
+| 12 | `src/lib/chat/client.ts` (`buildRequest`: the per-message cut and the schema as authority), test `__tests__/chat-client.test.ts` |
+| 14 | `README.md` (*What a reader sees*, *How it behaves*, *Screen copy*) |
+| — | `src/lib/chat/events.ts` (the `NOTICE_KINDS` comment) |
 
 ## Fixes (2026-10-04, round d2e7d11)
 
