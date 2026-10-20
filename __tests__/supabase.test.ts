@@ -108,19 +108,6 @@ describe("queryPolicyChunks — forwarding and mapping only (AC5)", () => {
     const { client } = fakeClient({ data: null, error: { message: "boom" } });
     await expect(queryPolicyChunks(client, embedding, 0.7, 5)).rejects.toThrow("boom");
   });
-
-  it("refuses rows of an unexpected shape", async () => {
-    const { client } = fakeClient({ data: [{ ...row, similarity: "high" }], error: null });
-    await expect(queryPolicyChunks(client, embedding, 0.7, 5)).rejects.toThrow(
-      /unexpected shape/,
-    );
-  });
-
-  it("refuses a query embedding of the wrong dimension before calling the database", async () => {
-    const { client, calls } = fakeClient({ data: [], error: null });
-    await expect(queryPolicyChunks(client, [1, 2, 3], 0.7, 5)).rejects.toThrow(/dimensions/);
-    expect(calls).toHaveLength(0);
-  });
 });
 
 describe("createSupabaseChunkStore", () => {

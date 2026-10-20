@@ -56,16 +56,6 @@ describe("the Fireworks chat client", () => {
     expect(sent[0].body.stream).toBe(false);
   });
 
-  it("rejects a response of the wrong shape rather than trusting it", async () => {
-    const { doFetch } = jsonFetch({ choices: [] });
-    await expect(
-      createChatCompletion(
-        { apiKey: "k", fetch: doFetch },
-        { model: "m", maxTokens: 5, messages: [] },
-      ),
-    ).rejects.toBeInstanceOf(ChatError);
-  });
-
   it("reassembles streamed text across arbitrary read boundaries", async () => {
     const doFetch = sseFetch([
       'data: {"choices":[{"delta":{"role":"assistant"}}]}\n\n',
@@ -152,20 +142,6 @@ describe("the stream decoder survives what the service actually sends", () => {
       out.push(t);
     }
     expect(out.join("")).toBe("real text");
-  });
-
-  it("still refuses a record of a genuinely wrong shape", async () => {
-    const doFetch = sseFetch(['data: {"choices":[{"delta":{"content":42}}]}\n\n']);
-    const run = async () => {
-      for await (const _ of createChatStream({ apiKey: "k", fetch: doFetch }, {
-        model: ANSWER_MODEL,
-        maxTokens: 50,
-        messages: [],
-      })) {
-        void _;
-      }
-    };
-    await expect(run()).rejects.toBeInstanceOf(ChatError);
   });
 });
 

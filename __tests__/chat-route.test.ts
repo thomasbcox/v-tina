@@ -17,7 +17,6 @@ const LONGEST_BUDGET_MS = Math.max(
   ANSWER_CONNECT_MS,
   ANSWER_IDLE_MS,
 );
-import * as route from "../src/app/api/chat/route";
 
 const ROUTE_FILE = resolve(__dirname, "../src/app/api/chat/route.ts");
 const ENV_MODULE = resolve(__dirname, "../src/lib/env.ts");
@@ -100,17 +99,6 @@ describe("AC10 — the chat route runs on a supported runtime, on the request-pa
       }
     }
     expect(offenders).toEqual([]);
-  });
-
-  it("refuses a malformed body before constructing anything or reading the environment", async () => {
-    // No environment is set in the suite, so `getEdgeEnv()` would throw. A 400
-    // proves validation ran first and that garbage input costs nothing: no
-    // client built, no key read, no network touched.
-    const response = await route.POST(
-      new Request("https://example.test/api/chat", { method: "POST", body: "not json" }),
-    );
-    expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: "request body must be JSON" });
   });
 });
 

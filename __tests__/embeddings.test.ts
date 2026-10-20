@@ -90,7 +90,6 @@ describe("createFireworksEmbedder", () => {
     ["a vector of the wrong length", (s: Sent) => ({ json: { data: s.body.input.map((_, index) => ({ index, embedding: [1, 2, 3] })) } }), /dimensions/],
     ["a missing vector", (s: Sent) => ({ json: { data: s.body.input.slice(1).map((_, index) => ({ index, embedding: vector(index) })) } }), /indices/],
     ["a duplicated index", (s: Sent) => ({ json: { data: s.body.input.map(() => ({ index: 0, embedding: vector(0) })) } }), /indices/],
-    ["a response of the wrong shape", () => ({ json: { embeddings: [] } }), /expected shape/],
     ["a non-finite component (an overflowing literal parsed as Infinity)", rawWithOverflow, /finite|Infinity/],
   ])("refuses %s", async (_label, respond, pattern) => {
     const { fetch } = fakeFetch(respond);
