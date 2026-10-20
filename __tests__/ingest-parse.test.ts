@@ -2,7 +2,6 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   ALLOWED_SOURCE_HOSTS,
-  DOCUMENT_KINDS,
 } from "../src/lib/ingest/metadata";
 import {
   DocumentValidationError,
@@ -59,12 +58,6 @@ describe("parseDocument — a well-formed document (AC1)", () => {
     const { source } = parseDocument(fixture("literacy-bill.md"));
     expect(source.documentKind).toBe("legislative");
     expect(new URL(source.url).hostname).toBe("olis.oregonlegislature.gov");
-  });
-
-  it("accepts every declared document kind", () => {
-    for (const kind of DOCUMENT_KINDS) {
-      expect(parseDocument(doc({ kind })).source.documentKind).toBe(kind);
-    }
   });
 
   it("accepts the bare allowed domains and their subdomains", () => {

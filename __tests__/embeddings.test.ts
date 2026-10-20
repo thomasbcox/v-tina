@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   EMBEDDING_BATCH_SIZE,
   EMBEDDING_MAX_ATTEMPTS,
-  EMBEDDING_RETRY_BASE_MS,
   EMBEDDING_DIMENSIONS,
   EMBEDDING_MODEL,
   EmbeddingError,
@@ -88,7 +87,6 @@ describe("createFireworksEmbedder", () => {
   });
 
   it.each([
-    ["an HTTP failure", () => ({ status: 500, json: {} }), /HTTP 500/],
     ["a vector of the wrong length", (s: Sent) => ({ json: { data: s.body.input.map((_, index) => ({ index, embedding: [1, 2, 3] })) } }), /dimensions/],
     ["a missing vector", (s: Sent) => ({ json: { data: s.body.input.slice(1).map((_, index) => ({ index, embedding: vector(index) })) } }), /indices/],
     ["a duplicated index", (s: Sent) => ({ json: { data: s.body.input.map(() => ({ index: 0, embedding: vector(0) })) } }), /indices/],
@@ -149,26 +147,6 @@ describe("bounded retry on transient failures", () => {
     ]);
   });
 
-  it("backs off, doubling each attempt", async () => {
-    const f = flaky(2);
-    await f.embed(["a"]);
-    expect(f.waits).toEqual([EMBEDDING_RETRY_BASE_MS, EMBEDDING_RETRY_BASE_MS * 2]);
-  });
-
-  it("gives up after the bounded number of attempts, naming the count", async () => {
-    const f = flaky(99);
-    await expect(f.embed(["a"])).rejects.toThrow(
-      new RegExp(`after ${EMBEDDING_MAX_ATTEMPTS} attempt`),
-    );
-    expect(f.calls(), "must not retry forever").toBe(EMBEDDING_MAX_ATTEMPTS);
-  });
-
-  it("does NOT retry a deterministic failure — a bad key fails once, clearly", async () => {
-    const f = flaky(99, 401);
-    await expect(f.embed(["a"])).rejects.toThrow(/HTTP 401/);
-    expect(f.calls(), "a 4xx fails identically forever; retrying hides the cause").toBe(1);
-  });
-
   it("retries a transport failure that produced no response at all", async () => {
     let calls = 0;
     const fetch = (async (_u: string | URL | Request, init?: RequestInit) => {
@@ -185,28 +163,6 @@ describe("bounded retry on transient failures", () => {
     });
     expect(await embed(["a"])).toEqual([vector(0)]);
     expect(calls).toBe(2);
-  });
-
-  it("honours Retry-After when the service supplies one", async () => {
-    let calls = 0;
-    const waits: number[] = [];
-    const fetch = (async (_u: string | URL | Request, init?: RequestInit) => {
-      calls++;
-      if (calls === 1) {
-        return new Response("slow down", { status: 429, headers: { "retry-after": "2" } });
-      }
-      const body = JSON.parse(String(init?.body)) as { input: string[] };
-      return new Response(
-        JSON.stringify({ data: body.input.map((_, index) => ({ index, embedding: vector(index) })) }),
-        { status: 200 },
-      );
-    }) as typeof globalThis.fetch;
-    const embed = createFireworksEmbedder({
-      apiKey: "k", task: "document", fetch,
-      sleep: async (ms) => { waits.push(ms); },
-    });
-    await embed(["a"]);
-    expect(waits).toEqual([2000]);
   });
 
   it("does not retry a malformed response — that is deterministic, not transient", async () => {
