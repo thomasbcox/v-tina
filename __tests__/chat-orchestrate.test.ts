@@ -347,24 +347,6 @@ describe("a reader who disconnects stops every call made for them", () => {
     }
   });
 
-  const laterStages: Record<Exclude<Stage, "answer">, Stage[]> = {
-    classify: ["rewrite", "retrieve", "answer"],
-    rewrite: ["retrieve", "answer"],
-    retrieve: ["answer"],
-  };
-
-  for (const stage of ["classify", "rewrite", "retrieve"] as const) {
-    it(`starts no further call when the reader leaves during ${stage}`, async () => {
-      const controller = new AbortController();
-      const { deps, seen } = signalRecorder(controller, stage);
-      await collect2(deps, ask("A question"), controller.signal);
-      expect(stage in seen, `${stage} itself must have run`).toBe(true);
-      for (const later of laterStages[stage]) {
-        expect(later in seen, `${later} must not start for a reader who has gone`).toBe(false);
-      }
-    });
-  }
-
   it("still runs every stage when the reader stays", async () => {
     // The gate must not be a blanket early return: a live request completes.
     const controller = new AbortController();

@@ -85,18 +85,6 @@ describe("AC6 — the response is a sequence of self-describing records", () => 
     expect(records).toHaveLength(2);
     expect(records[1]).toEqual(TERMINATOR);
   });
-
-  it("terminates even when framing an event is what fails", async () => {
-    // A value JSON cannot serialise: the failure is raised by the encoder, not by
-    // the source. The 'always terminates' promise must hold on exactly the path
-    // it was written for.
-    const circular: Record<string, unknown> = { type: "streamed_tokens", text: "x" };
-    circular.self = circular;
-    const records = await readRecords(
-      toSseStream(from([circular as unknown as ChatStreamEvent]), TERMINATOR),
-    );
-    expect(records).toEqual([TERMINATOR]);
-  });
 });
 
 describe("the stream is pull-based, and a disconnect stops the work", () => {

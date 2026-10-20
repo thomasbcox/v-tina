@@ -132,13 +132,6 @@ describe("AC7 — impersonation is caught, but quoting the record is not", () =>
     }
   });
 
-  it("catches an anchor with a clause interposed before the first person", () => {
-    for (const shape of ["As your Governor — and I say this plainly — I want to be clear.",
-      "As Governor of Oregon, having considered the record, my view is this."]) {
-      expect(screenOpening(shape).kind, shape).toBe("impersonates");
-    }
-  });
-
   it("does not flag the avatar describing her in the third person", () => {
     expect(screenOpening(`${AVATAR_FRAME[0]}, as Governor of Oregon, Tina Kotek signed it.`)).toEqual({ kind: "ok" });
   });

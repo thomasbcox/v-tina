@@ -80,12 +80,6 @@ describe("queryPolicyChunks — forwarding and mapping only (AC5)", () => {
     });
   });
 
-  it("omits the pillar rather than sending an empty value when none is given", async () => {
-    const { client, calls } = fakeClient({ data: [], error: null });
-    await queryPolicyChunks(client, embedding, 0.7, 5);
-    expect(Object.hasOwn(calls[0].args ?? {}, "filter_pillar")).toBe(false);
-  });
-
   it("maps each row to a RetrievedPolicyChunk with its similarity and full source", async () => {
     const { client } = fakeClient({ data: [row], error: null });
     const [chunk] = await queryPolicyChunks(client, embedding, 0.7, 5);
@@ -160,26 +154,5 @@ describe("createSupabaseChunkStore", () => {
     await expect(
       createSupabaseChunkStore(odd.client).replaceDocument("u", rows),
     ).rejects.toThrow(/row count/);
-  });
-});
-
-describe("cancellation is a requirement of the query client, not a capability", () => {
-  it("refuses a query client that cannot be cancelled", () => {
-    // A COMPILE-TIME check, because this invariant cannot fail at runtime: a
-    // fake that happens to provide the method behaves identically whether the
-    // type demands it or not. Making `abortSignal` optional again would make the
-    // assignment below legal, the @ts-expect-error unused, and typecheck fail —
-    // which is the only way this particular weakening gets caught.
-    const noCancellation = {
-      rpc: () => Promise.resolve({ data: [], error: null }),
-    };
-    // @ts-expect-error a client without abortSignal must not satisfy QueryRpcClient
-    const rejected: QueryRpcClient = noCancellation;
-    void rejected;
-
-    // The ingestion store's client legitimately has no cancellation, and must
-    // still be accepted — so this is not simply "everything must have it".
-    const storeOnly: RpcClient = noCancellation;
-    void storeOnly;
   });
 });

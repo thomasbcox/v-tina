@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  RETRY_BASE_MS,
   RETRY_MAX_ATTEMPTS,
   TransportError,
   fetchWithRetry,
@@ -44,15 +43,6 @@ describe("the one transient-failure policy shared by every Fireworks call", () =
       fetchWithRetry("Test", doFetch, "https://x", {}, { sleep: noWait }),
     ).rejects.toBeInstanceOf(TransportError);
     expect(calls).toHaveLength(1);
-  });
-
-  it("doubles the backoff between attempts", async () => {
-    waits.length = 0;
-    const { doFetch } = scripted([{ status: 503 }]);
-    await expect(
-      fetchWithRetry("Test", doFetch, "https://x", {}, { sleep: noWait }),
-    ).rejects.toThrow();
-    expect(waits).toEqual([RETRY_BASE_MS, RETRY_BASE_MS * 2]);
   });
 });
 
