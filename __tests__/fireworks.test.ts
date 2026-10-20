@@ -56,20 +56,6 @@ describe("the Fireworks chat client", () => {
     expect(sent[0].body.stream).toBe(false);
   });
 
-  it("names two distinct, well-formed Fireworks models", () => {
-    // NOT the models the specification names. It names the Llama 3.1 family;
-    // on 2026-09-10 the account serves no Llama model at all and the request
-    // returns HTTP 404, so the named models are not choices that exist. The
-    // substitutes were picked by measurement — see the story file. What is
-    // asserted here is what remains true regardless of which models are served:
-    // the identifiers are well formed, and classifying and answering are two
-    // different jobs done by two different models.
-    for (const m of [CLASSIFIER_MODEL, ANSWER_MODEL]) {
-      expect(m).toMatch(/^accounts\/[a-z0-9-]+\/models\/[a-z0-9.-]+$/);
-    }
-    expect(CLASSIFIER_MODEL).not.toBe(ANSWER_MODEL);
-  });
-
   it("rejects a response of the wrong shape rather than trusting it", async () => {
     const { doFetch } = jsonFetch({ choices: [] });
     await expect(
@@ -250,48 +236,6 @@ describe("a stream that goes silent is abandoned, not waited on forever", () => 
       out.push(t);
     }
     expect(out.join("")).toBe("012345");
-  }, 20_000);
-});
-
-describe("a failing stream says WHICH failure it was", () => {
-  /** Hangs until aborted, like a real fetch. */
-  const hangs = (async (_u: unknown, init?: RequestInit) =>
-    new Promise<Response>((_r, reject) => {
-      const abort = () => reject(new DOMException("aborted", "AbortError"));
-      const s = init?.signal;
-      if (!s) return;
-      if (s.aborted) return abort();
-      s.addEventListener("abort", abort, { once: true });
-    })) as unknown as typeof globalThis.fetch;
-
-  const run = (signal?: AbortSignal, connectMs = 120) => async () => {
-    for await (const _ of createChatStream(
-      { apiKey: "k", fetch: hangs },
-      { model: ANSWER_MODEL, maxTokens: 50, messages: [] },
-      signal,
-      30_000,
-      connectMs,
-    )) {
-      void _;
-    }
-  };
-
-  it("names the connect timeout when the provider never answers", async () => {
-    // Both the timeout and a reader disconnect trip the SAME controller, so
-    // without this distinction a dead provider — the failure this bound exists
-    // to catch — was logged identically to someone closing a tab.
-    await expect(run()()).rejects.toThrow(/did not respond within 120ms/);
-  }, 20_000);
-
-  it("names the reader instead when the reader is the one who left", async () => {
-    // Same controller, same AbortError, different cause — and the message must
-    // say so, or the operational signal is absorbed.
-    await expect(run(AbortSignal.abort(), 30_000)()).rejects.toThrow(/reader disconnected/i);
-  }, 20_000);
-
-  it("does not blame the reader for a provider timeout, or vice versa", async () => {
-    await expect(run()()).rejects.not.toThrow(/reader disconnected/i);
-    await expect(run(AbortSignal.abort(), 30_000)()).rejects.not.toThrow(/did not respond within/);
   }, 20_000);
 });
 

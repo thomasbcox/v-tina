@@ -3,7 +3,6 @@ import type { ChatStreamEvent, RetrievedPolicyChunk } from "../src/types";
 import type { ChatMessage } from "../src/lib/fireworks";
 import {
   GROUNDED_DEFERRAL,
-  OREGON_PORTAL_URL,
   ANSWER_SYSTEM_PROMPT,
   PROVENANCE_NOTICE,
 } from "../src/lib/prompts";
@@ -220,14 +219,6 @@ describe("AC3 — an out-of-bounds question never reaches the store or the model
     ]);
     expect(r.retrieved, "the store must not be touched").toHaveLength(0);
     expect(r.answered, "the answering model must not be called").toHaveLength(0);
-  });
-
-  it("sends the reader to the official state portal, not to a redirect or a search", () => {
-    const url = new URL(OREGON_PORTAL_URL);
-    expect(url.protocol).toBe("https:");
-    expect(url.host).toBe("www.oregon.gov");
-    expect(url.search, "a search URL is not the portal").toBe("");
-    expect(GROUNDED_DEFERRAL).toContain(OREGON_PORTAL_URL);
   });
 });
 

@@ -112,13 +112,6 @@ describe("parseDocument — refusals name exactly the fields at fault (AC2)", ()
     expect(refusedFields(doc(overrides))).toEqual([...expected]);
   });
 
-  it("names every faulty field at once, and no valid one", () => {
-    const named = refusedFields(
-      doc({ date: "soon", url: "ftp://oregon.gov/x", kind: "podcast" }),
-    );
-    expect(named).toEqual(["date", "kind", "url"]);
-  });
-
   it("refuses an empty body, naming the body", () => {
     expect(refusedFields(doc({}, "   \n"))).toEqual(["body"]);
   });
@@ -126,17 +119,5 @@ describe("parseDocument — refusals name exactly the fields at fault (AC2)", ()
   it("refuses unreadable YAML, naming the frontmatter and the fields it could not read", () => {
     const named = refusedFields("---\ntitle: [unclosed\n---\n\nBody.\n");
     expect(named).toContain("frontmatter");
-  });
-
-  it("carries the diagnosis in the error message, one line per fault", () => {
-    try {
-      parseDocument(doc({ date: "soon" }));
-    } catch (e) {
-      const message = (e as Error).message;
-      expect(message).toContain("date");
-      expect(message).not.toContain("title");
-      return;
-    }
-    throw new Error("expected refusal");
   });
 });

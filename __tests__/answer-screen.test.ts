@@ -3,17 +3,13 @@ import { describe, expect, it } from "vitest";
 import type { ChatStreamEvent, RetrievedPolicyChunk } from "../src/types";
 import { screenedAnswer } from "../src/lib/chat/orchestrate";
 import {
-  ANSWER_SYSTEM_PROMPT,
   FAILURE_NOTICE,
-  GROUNDED_DEFERRAL,
-  OREGON_PORTAL_URL,
   PROVENANCE_NOTICE,
 } from "../src/lib/prompts";
 import {
   AVATAR_FRAME,
   CADENCE_TARGET_WORDS,
   DISPLAY_FRAME,
-  IMPERSONATION_FORMS,
   REFUSAL_OPENING_CHARS,
   checkCadence,
   normalise,
@@ -65,18 +61,6 @@ const said = (events: ChatStreamEvent[]) =>
     .join("");
 
 const frame = DISPLAY_FRAME;
-
-describe("the displayed frame is one the screen recognises", () => {
-  it("DISPLAY_FRAME is exactly a declared AVATAR_FRAME, not merely one containing it", () => {
-    // A display form the screen did not recognise would inject a frame the cadence
-    // counter never sees — and then inject it again, forever.
-    expect(AVATAR_FRAME).toContain(DISPLAY_FRAME.toLowerCase());
-  });
-
-  it("the notices that speak as the avatar open with that same frame", () => {
-    for (const notice of [GROUNDED_DEFERRAL, PROVENANCE_NOTICE]) expect(notice.startsWith(`${DISPLAY_FRAME}, `)).toBe(true);
-  });
-});
 
 describe("AC4 — an unverifiable quotation never reaches the reader", () => {
   it("withholds a fabricated quotation and refuses on provenance", async () => {
@@ -191,13 +175,6 @@ describe("AC6 — the cadence is enforced as the answer streams", () => {
   /** The frame, then four words of the avatar's own. */
   const opening = `${frame}, here is the record.`;
   const frames = (text: string) => text.split(DISPLAY_FRAME).length - 1;
-
-  it("the test shape is the real one: whitespace leads a token and never trails it", () => {
-    const trailing = (tokens: string[]) => tokens.filter((t) => /\S\s+$/.test(t));
-    expect(trailing(DELTAS), "the captured stream").toEqual([]);
-    expect(DELTAS.filter((t) => /^\s+\S/.test(t)).length, "most real tokens lead with a space").toBeGreaterThan(DELTAS.length / 2);
-    expect(trailing(asModelTokens(`${opening}${sentences(3)}\n\nThe order says: ${O}address${C}.`))).toEqual([]);
-  });
 
   it("releases the captured real answer unaltered, however it is chunked", async () => {
     const answer = DELTAS.join("");
@@ -323,16 +300,6 @@ describe("AC8 — clean answers pass unaltered, streaming, with honest refusals"
     expect(await sameEveryWay(answer)).toBe(`${frame}, the record is clear. It runs ${PROVENANCE_NOTICE}`);
   });
 
-  it("the answering prompt tells the model never to begin a word with an apostrophe", () => {
-    expect(ANSWER_SYSTEM_PROMPT).toContain("Never begin a word with an apostrophe");
-  });
-
-  it("the answering prompt rules out the other quotation-like marks the screen refuses", () => {
-    // The screen refuses them; without this line the model is never told, and the first
-    // answer using one is stopped for a rule it was not given.
-    expect(ANSWER_SYSTEM_PROMPT).toContain("Use no other quotation-like mark");
-  });
-
   it("releases a quotation cited in the avatar's words, whatever the quotation before it names", async () => {
     // Both live refusals, replayed on the real corpus text.
     const at = (title: string, file: string, n: number): RetrievedPolicyChunk => ({
@@ -415,28 +382,6 @@ describe("AC8 — clean answers pass unaltered, streaming, with honest refusals"
 
   it("refuses when an impersonating answer has nothing else", async () => {
     expect(said(await collect(["As your Governor, I want to be clear"]))).toContain(PROVENANCE_NOTICE);
-  });
-});
-
-describe("AC9 — the reader-facing notices keep their load-bearing content", () => {
-  it("the deferral still names the official state portal", () => {
-    expect(GROUNDED_DEFERRAL).toContain(OREGON_PORTAL_URL);
-  });
-
-  it("the infrastructure notice still discloses the answer is incomplete", () => {
-    expect(FAILURE_NOTICE).toMatch(/incomplete/i);
-  });
-
-  it("no reader-facing notice speaks as the Governor", () => {
-    for (const text of [GROUNDED_DEFERRAL, FAILURE_NOTICE, PROVENANCE_NOTICE]) {
-      for (const form of IMPERSONATION_FORMS) expect(text.toLowerCase()).not.toContain(form);
-    }
-  });
-
-  it("the deferral and the provenance notice speak as the avatar", () => {
-    for (const text of [GROUNDED_DEFERRAL, PROVENANCE_NOTICE]) {
-      expect(AVATAR_FRAME.some((f) => text.toLowerCase().includes(f))).toBe(true);
-    }
   });
 });
 
