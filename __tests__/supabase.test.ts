@@ -6,7 +6,6 @@ import {
   queryPolicyChunks,
   type MatchRow,
   type QueryRpcClient,
-  type RpcClient,
 } from "../src/lib/supabase";
 
 /**
@@ -34,19 +33,6 @@ function fakeClient(answer: { data: unknown; error: { message: string } | null }
           return result;
         },
       });
-    },
-  };
-  return { client, calls };
-}
-
-/** The ingestion store's client, which needs no cancellation: the operator
- *  script has no reader who can disconnect. */
-function fakeStoreClient(answer: { data: unknown; error: { message: string } | null }) {
-  const calls: { fn: string; args: Record<string, unknown> | undefined }[] = [];
-  const client: RpcClient = {
-    rpc(fn, args) {
-      calls.push({ fn, args });
-      return Promise.resolve(answer);
     },
   };
   return { client, calls };

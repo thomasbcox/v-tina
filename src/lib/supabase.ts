@@ -15,11 +15,6 @@ import type { ChunkStore, NewPolicyChunk } from "./ingest/pipeline";
  * its own client from its own validated environment contract.
  */
 
-/** The largest result count `match_policy_chunks` will serve. The guard lives
- *  in SQL, where a direct caller cannot bypass it; a unit test holds this equal
- *  to the migration's value so the documented maximum is the enforced one. */
-export const MAX_MATCH_COUNT = 50;
-
 /**
  * The similarity below which a chunk is not considered grounding for an answer.
  *
