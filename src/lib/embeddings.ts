@@ -1,6 +1,5 @@
 import { z } from "zod";
 import {
-  RETRY_BASE_MS,
   RETRY_MAX_ATTEMPTS,
   TransportError,
   fetchWithRetry,
@@ -40,10 +39,6 @@ export const EMBEDDING_BATCH_SIZE = 64;
  * corpus and the service change.
  */
 export const EMBEDDING_MAX_ATTEMPTS = RETRY_MAX_ATTEMPTS;
-
-/** Base backoff. Deliberately short: these failures return in milliseconds and
- *  are independent, so a long wait buys nothing. Doubles per attempt. */
-export const EMBEDDING_RETRY_BASE_MS = RETRY_BASE_MS;
 
 /** What a retry is told about. Reported rather than silent: a service degrading
  *  under the operator is something they should see, not something the library

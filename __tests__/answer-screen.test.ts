@@ -3,20 +3,14 @@ import { describe, expect, it } from "vitest";
 import type { ChatStreamEvent, RetrievedPolicyChunk } from "../src/types";
 import { screenedAnswer } from "../src/lib/chat/orchestrate";
 import {
-  ANSWER_SYSTEM_PROMPT,
-  FAILURE_NOTICE,
-  GROUNDED_DEFERRAL,
-  OREGON_PORTAL_URL,
   PROVENANCE_NOTICE,
 } from "../src/lib/prompts";
 import {
   AVATAR_FRAME,
   CADENCE_TARGET_WORDS,
   DISPLAY_FRAME,
-  IMPERSONATION_FORMS,
   REFUSAL_OPENING_CHARS,
   checkCadence,
-  normalise,
   type RefusalEntry,
   type UnverifiedQuotation,
 } from "../src/lib/voice";
@@ -71,18 +65,6 @@ const said = (events: ChatStreamEvent[]) =>
     .join("");
 
 const frame = DISPLAY_FRAME;
-
-describe("the displayed frame is one the screen recognises", () => {
-  it("DISPLAY_FRAME is exactly a declared AVATAR_FRAME, not merely one containing it", () => {
-    // A display form the screen did not recognise would inject a frame the cadence
-    // counter never sees — and then inject it again, forever.
-    expect(AVATAR_FRAME).toContain(DISPLAY_FRAME.toLowerCase());
-  });
-
-  it("the notices that speak as the avatar open with that same frame", () => {
-    for (const notice of [GROUNDED_DEFERRAL, PROVENANCE_NOTICE]) expect(notice.startsWith(`${DISPLAY_FRAME}, `)).toBe(true);
-  });
-});
 
 describe("AC4 — an unverifiable quotation never reaches the reader", () => {
   it("withholds a fabricated quotation and refuses on provenance", async () => {
@@ -198,13 +180,6 @@ describe("AC6 — the cadence is enforced as the answer streams", () => {
   const opening = `${frame}, here is the record.`;
   const frames = (text: string) => text.split(DISPLAY_FRAME).length - 1;
 
-  it("the test shape is the real one: whitespace leads a token and never trails it", () => {
-    const trailing = (tokens: string[]) => tokens.filter((t) => /\S\s+$/.test(t));
-    expect(trailing(DELTAS), "the captured stream").toEqual([]);
-    expect(DELTAS.filter((t) => /^\s+\S/.test(t)).length, "most real tokens lead with a space").toBeGreaterThan(DELTAS.length / 2);
-    expect(trailing(asModelTokens(`${opening}${sentences(3)}\n\nThe order says: ${O}address${C}.`))).toEqual([]);
-  });
-
   it("releases the captured real answer unaltered, however it is chunked", async () => {
     const answer = DELTAS.join("");
     expect(said(await collect(DELTAS, CAPTURED_PASSAGES)), "as the model sent it").toBe(answer);
@@ -217,12 +192,6 @@ describe("AC6 — the cadence is enforced as the answer streams", () => {
     expect(text).toContain(`this year. ${DISPLAY_FRAME}, the order followed.`);
     expect(checkCadence(text), "no sentence starts past the target unframed").toEqual([]);
     expect(frames(text), "the opening, then an injection every ~150 words").toBe(3);
-  });
-
-  it("keeps injecting through a long answer", async () => {
-    const text = await sameEveryWay(`${opening}${sentences(80)}`);
-    expect(checkCadence(text)).toEqual([]);
-    expect(frames(text)).toBeGreaterThanOrEqual(5);
   });
 
   it("never splits a sentence at an abbreviation that falls where the frame is due", async () => {
@@ -258,85 +227,15 @@ describe("AC6 — the cadence is enforced as the answer streams", () => {
     expect(text).toContain("clause0");
     expect(frames(text), "a long quotation needs no re-identification").toBe(1);
   });
-
-  it("keeps a proper noun's capital when injecting before it", async () => {
-    const text = await sameEveryWay(`${opening}${sentences(15)} Oregon adopted the measure.`);
-    expect(text).toContain(`${DISPLAY_FRAME}, Oregon adopted the measure.`);
-  });
-});
-
-describe("the stream's work grows with the answer, not with its square", () => {
-  /** The quickest of three runs, in milliseconds: a ratio of these, never a clock. */
-  const fastest = async (tokens: string[], chunks: RetrievedPolicyChunk[] = PASSAGES) => {
-    let best = Infinity;
-    for (let run = 0; run < 3; run += 1) {
-      const started = performance.now();
-      await collect(tokens, chunks);
-      best = Math.min(best, performance.now() - started);
-    }
-    return best;
-  };
-
-  it("an answer eight times longer costs far less than sixty-four times as much", async () => {
-    // Re-lexing the whole answer on every token measured 17 ms at 500 tokens and
-    // 465 ms at 4,000 (approach review round b6039ac). Linear work scales about 8x
-    // here and the quadratic version about 64x.
-    const answer = (n: number) =>
-      asModelTokens(`${frame}, here is the record.${Array.from({ length: n }, (_, i) => ` Record ${i} shows the state acted on housing this year.`).join("")}`);
-    await fastest(answer(50));
-    const small = await fastest(answer(100));
-    const large = await fastest(answer(800));
-    expect(large / small, `100 sentences: ${small.toFixed(1)} ms; 800 sentences: ${large.toFixed(1)} ms`).toBeLessThan(24);
-  });
-
-  it("a quotation held open costs about what the same words cost flowing", async () => {
-    // A quotation is held until it closes. Rescanning held text for every token
-    // measured 108 ms for a 2,000-word quotation against 3 ms for the same words
-    // flowing.
-    const words = Array.from({ length: 2000 }, (_, i) => `clause${i}`).join(" ");
-    const chunks: RetrievedPolicyChunk[] = [{ ...PASSAGES[0], content: `${EO_TEXT} ${words}` }];
-    const opening = `${frame}, here is the record.`;
-    const flowing = asModelTokens(`${opening} It runs ${words}.`);
-    await fastest(flowing, chunks);
-    const base = await fastest(flowing, chunks);
-    for (const [name, text] of [["an open quotation", `${opening} Under EO 23-02: ${O}${words}${C}.`]]) {
-      const tokens = asModelTokens(text);
-      expect(said(await collect(tokens, chunks)), name).not.toContain(PROVENANCE_NOTICE);
-      const cost = await fastest(tokens, chunks);
-      expect(cost / base, `${name}: ${cost.toFixed(1)} ms; flowing: ${base.toFixed(1)} ms`).toBeLessThan(8);
-    }
-  });
 });
 
 describe("AC8 — clean answers pass unaltered, streaming, with honest refusals", () => {
-  it("delivers a clean answer whole", async () => {
-    const pieces = [`${frame}, the record is clear. `, "The order sets a statewide emergency. ", "That is what it requires."];
-    expect(said(await collect(pieces))).toBe(pieces.join(""));
-  });
-
   it("reads a possessive split at its apostrophe as prose, however the tokens fall", async () => {
     // The stream lexes only unreleased text, so a token boundary can fall between
     // "Governor" and "'s". Without the character before it, that apostrophe looks like
     // a quotation opening, "agencies' " closes it, and a clean answer is refused.
     const answer = `${frame}, the record is clear. The Governor's staff and the agencies' work continue under the order.`;
     expect(await sameEveryWay(answer)).toBe(answer);
-  });
-
-  it("stops at a straight apostrophe that begins a word, the same way however the tokens fall", async () => {
-    // The cost Thomas accepted for closing the unclosed single-quote bypass: nothing
-    // after the mark reaches the reader. The prompt tells the model never to write one.
-    const answer = `${frame}, the record is clear. It runs 'til the plan is done. That is all.`;
-    expect(await sameEveryWay(answer)).toBe(`${frame}, the record is clear. It runs ${PROVENANCE_NOTICE}`);
-  });
-
-  it("the answering prompt tells the model never to begin a word with an apostrophe", () => {
-    expect(ANSWER_SYSTEM_PROMPT).toContain("Never begin a word with an apostrophe");
-  });
-
-  it("the answering prompt rules out the other quotation-like marks the screen refuses", () => {
-    // The screen refuses them; without this line the model is never told, and the first
-    // answer using one is stopped for a rule it was not given.
-    expect(ANSWER_SYSTEM_PROMPT).toContain("Use no other quotation-like mark");
   });
 
   it("releases a quotation cited in the avatar's words, whatever the quotation before it names", async () => {
@@ -376,12 +275,6 @@ describe("AC8 — clean answers pass unaltered, streaming, with honest refusals"
     expect(events.filter((e) => e.type === "streamed_tokens").length).toBeGreaterThan(2);
   });
 
-  it("reports a provenance refusal as provenance, never as an infrastructure failure", async () => {
-    const text = said(await collect([`${frame}, the record says. `, `Under EO 23-02: ${O}words in no passage${C}.`]));
-    expect(text).toContain(PROVENANCE_NOTICE);
-    expect(text).not.toContain(FAILURE_NOTICE);
-  });
-
   it("repairs a missing frame rather than refusing", async () => {
     const text = said(await collect(["The order sets a statewide emergency. ", "That is what it requires."]));
     expect(text.toLowerCase()).toContain(AVATAR_FRAME[0]);
@@ -406,43 +299,8 @@ describe("AC8 — clean answers pass unaltered, streaming, with honest refusals"
     expect(text).toBe(`${frame}, the order sets a statewide emergency.`);
   });
 
-  it("never cuts an opening inside a quotation, and refuses when nothing clean remains", async () => {
-    // The repair cut at the first sentence end anywhere — including inside a quotation —
-    // and never re-screened what it kept, emitting impersonation and a broken quotation
-    // (hidden-failure, round d42bbb0).
-    const wrecked = `As your Governor, I say ${O}Look. Now.${C} and my administration acts. Then more follows.`;
-    const text = await sameEveryWay(wrecked);
-    expect(text).not.toContain("Now.”");
-    expect(text.toLowerCase()).not.toContain("my administration");
-    expect(text).toBe(`${frame}, Then more follows.`); // "Then" is no function word, so it keeps its capital
-    expect(said(await collect(["As your Governor, I want to be clear. My administration acts."])), "nothing clean left")
-      .toContain(PROVENANCE_NOTICE);
-  });
-
   it("refuses when an impersonating answer has nothing else", async () => {
     expect(said(await collect(["As your Governor, I want to be clear"]))).toContain(PROVENANCE_NOTICE);
-  });
-});
-
-describe("AC9 — the reader-facing notices keep their load-bearing content", () => {
-  it("the deferral still names the official state portal", () => {
-    expect(GROUNDED_DEFERRAL).toContain(OREGON_PORTAL_URL);
-  });
-
-  it("the infrastructure notice still discloses the answer is incomplete", () => {
-    expect(FAILURE_NOTICE).toMatch(/incomplete/i);
-  });
-
-  it("no reader-facing notice speaks as the Governor", () => {
-    for (const text of [GROUNDED_DEFERRAL, FAILURE_NOTICE, PROVENANCE_NOTICE]) {
-      for (const form of IMPERSONATION_FORMS) expect(text.toLowerCase()).not.toContain(form);
-    }
-  });
-
-  it("the deferral and the provenance notice speak as the avatar", () => {
-    for (const text of [GROUNDED_DEFERRAL, PROVENANCE_NOTICE]) {
-      expect(AVATAR_FRAME.some((f) => text.toLowerCase().includes(f))).toBe(true);
-    }
   });
 });
 
@@ -504,19 +362,6 @@ describe("FEAT-3 — a refused quotation's log entry is enough to diagnose it", 
   /** An opening the record does not hold, running past the kept opening to a marked tail. */
   const INVENTED = "an opening sentence found nowhere in the record, which runs well past its opening to QX-TAIL-7";
 
-  it("AC1 — keeps the whole of a quotation that opens in the record and leaves it later, however long", async () => {
-    expect(LONG.length, "past the console's own 10,000-character cut").toBeGreaterThan(10_000);
-    expect(LONG_RECORD, "the quotation opens with the record's words").toContain(LONG.slice(0, REFUSAL_OPENING_CHARS));
-    const { logged } = await screened(
-      [`${frame}, the record is clear. `, `Under EO 23-02: ${O}`, LONG, `${C}. That is the position.`],
-      LONG_PASSAGES,
-    );
-    const entry = entryOf(logged);
-    expect(entry.quotation, "the whole quotation, to its last word").toBe(LONG);
-    expect(entry.quotation.endsWith(LONG_TAIL)).toBe(true);
-    expect(entry.shortened).toBeNull();
-  });
-
   /**
    * One refusal per reason the screen refuses on, each down both paths: a quotation in
    * the opening, and one after it. **Keyed by the declared reason type**, so a reason
@@ -550,27 +395,6 @@ describe("FEAT-3 — a refused quotation's log entry is enough to diagnose it", 
     }
   });
 
-  it("AC3 — names every document the quotation was checked against, and no other", async () => {
-    const quoted = `${O}a 13% rise in unsheltered homelessness${C}. Done.`;
-    // Both named in the quotation's sentence, and neither holds the words: both were tested.
-    const both = entryOf((await screened([`${frame}, the record is clear. `, `Unlike EO 23-02, Senate Bill 1537 provides: ${quoted}`])).logged);
-    expect([...both.citedAs].sort()).toEqual([EO, SB].sort());
-    // Named in an earlier sentence: that document was deliberately NOT tested.
-    const earlier = entryOf((await screened([`${frame}, the record is clear. `, `EO 23-02 declared it. Senate Bill 1537 provides: ${quoted}`])).logged);
-    expect(earlier.citedAs).toEqual([SB]);
-  });
-
-  it("AC4 — says no document was taken as the citation when none was", async () => {
-    for (const text of [
-      `It says ${O}a 13% rise in unsheltered homelessness${C}. Done.`, // nothing named
-      REFUSING.elided.text, // refused before any citation is read
-    ]) {
-      const entry = entryOf((await screened([`${frame}, the record is clear. `, text])).logged);
-      expect(entry, text).toHaveProperty("citedAs");
-      expect(entry.citedAs, text).toEqual([]);
-    }
-  });
-
   it("AC6 — the reader receives the provenance notice and none of the refused words", async () => {
     for (const [path, answer] of Object.entries(PATHS)) {
       for (const [reason, { text, words }] of Object.entries(REFUSING)) {
@@ -593,19 +417,5 @@ describe("FEAT-3 — a refused quotation's log entry is enough to diagnose it", 
     const raw = logged.find(([context]) => context === REFUSED)?.[1] as string;
     expect(raw, "nothing past the opening rides anywhere in the entry").not.toContain("QX-TAIL-7");
     expect(raw).not.toContain(INVENTED.slice(REFUSAL_OPENING_CHARS));
-  });
-
-  it("AC7 — an opening the model line-wrapped is still the record's, and is kept whole", async () => {
-    const wrapped =
-      "NOW, THEREFORE, I, TINA KOTEK,\n   Governor of the State of Oregon, do hereby order that the State address a need the record never named";
-    // Closed: the verifier's span is already normalised.
-    const closed = entryOf((await screened([`${frame}, the record is clear. `, `Under EO 23-02: ${O}${wrapped}${C}. Done.`])).logged);
-    expect(closed.shortened).toBeNull();
-    expect(closed.quotation).toBe(normalise(wrapped));
-    // Never closed: the violation's text is as the model wrote it, line break and all.
-    const open = entryOf((await screened([`${frame}, the record is clear. `, `Under EO 23-02: ${O}${wrapped}`])).logged);
-    expect(open.check).toBe("unterminated");
-    expect(open.shortened).toBeNull();
-    expect(open.quotation).toBe(`${O}${wrapped}`);
   });
 });

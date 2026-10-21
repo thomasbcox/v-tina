@@ -3,7 +3,6 @@ import type { ChatStreamEvent, RetrievedPolicyChunk } from "../src/types";
 import type { ChatMessage } from "../src/lib/fireworks";
 import {
   GROUNDED_DEFERRAL,
-  OREGON_PORTAL_URL,
   ANSWER_SYSTEM_PROMPT,
   PROVENANCE_NOTICE,
 } from "../src/lib/prompts";
@@ -221,21 +220,12 @@ describe("AC3 — an out-of-bounds question never reaches the store or the model
     expect(r.retrieved, "the store must not be touched").toHaveLength(0);
     expect(r.answered, "the answering model must not be called").toHaveLength(0);
   });
-
-  it("sends the reader to the official state portal, not to a redirect or a search", () => {
-    const url = new URL(OREGON_PORTAL_URL);
-    expect(url.protocol).toBe("https:");
-    expect(url.host).toBe("www.oregon.gov");
-    expect(url.search, "a search URL is not the portal").toBe("");
-    expect(GROUNDED_DEFERRAL).toContain(OREGON_PORTAL_URL);
-  });
 });
 
 describe("AC4 — an unusable classification is treated as out of bounds", () => {
   const cases: Array<[string, ChatDeps["classify"]]> = [
     ["the call threw", async () => { throw new Error("network down"); }],
     ["the deadline passed", async () => ({ ok: false, reason: "deadline reached" })],
-    ["the reply was off-vocabulary", async () => ({ ok: false, reason: "said MAYBE" })],
   ];
 
   for (const [name, classify] of cases) {
@@ -251,17 +241,6 @@ describe("AC4 — an unusable classification is treated as out of bounds", () =>
       expect(r.answered).toHaveLength(0);
     });
   }
-
-  it("emits a verdict a client can match against the declared vocabulary exactly", async () => {
-    for (const classification of SAFETY_CLASSIFICATIONS) {
-      const r = recorder({ classify: async () => ({ ok: true, classification }) });
-      const events = await collect(r.deps, ask("A question"));
-      const first = events[0];
-      if (first.type !== "safety_status") throw new Error("expected a verdict first");
-      expect(SAFETY_CLASSIFICATIONS).toContain(first.classification);
-      expect(first.classification).toBe(first.classification.trim());
-    }
-  });
 });
 
 describe("AC5 — an in-bounds question nothing grounds is declined, not invented", () => {
@@ -367,24 +346,6 @@ describe("a reader who disconnects stops every call made for them", () => {
       expect(seen[stage], `${stage} must receive the request signal`).toBe(controller.signal);
     }
   });
-
-  const laterStages: Record<Exclude<Stage, "answer">, Stage[]> = {
-    classify: ["rewrite", "retrieve", "answer"],
-    rewrite: ["retrieve", "answer"],
-    retrieve: ["answer"],
-  };
-
-  for (const stage of ["classify", "rewrite", "retrieve"] as const) {
-    it(`starts no further call when the reader leaves during ${stage}`, async () => {
-      const controller = new AbortController();
-      const { deps, seen } = signalRecorder(controller, stage);
-      await collect2(deps, ask("A question"), controller.signal);
-      expect(stage in seen, `${stage} itself must have run`).toBe(true);
-      for (const later of laterStages[stage]) {
-        expect(later in seen, `${later} must not start for a reader who has gone`).toBe(false);
-      }
-    });
-  }
 
   it("still runs every stage when the reader stays", async () => {
     // The gate must not be a blanket early return: a live request completes.

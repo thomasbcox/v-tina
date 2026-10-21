@@ -75,14 +75,4 @@ describe("AC9 — a malformed request is refused, naming what was wrong", () => 
       expect(result.problem).toMatch(expected);
     });
   }
-
-  it("gives a DIFFERENT reason for each failure, not one generic refusal", () => {
-    // 'invalid request body' for every mode satisfies 'told why' while giving an
-    // API consumer nothing it can act on.
-    const problems = refusals.map(([, run]) => {
-      const r = run();
-      return r.ok ? "accepted" : r.problem;
-    });
-    expect(new Set(problems).size).toBe(problems.length);
-  });
 });

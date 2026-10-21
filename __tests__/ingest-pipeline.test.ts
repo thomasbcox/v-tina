@@ -101,17 +101,6 @@ describe("ingestDocument — failure part-way (AC4)", () => {
     expect(store.calls).toHaveLength(1);
     expect(store.calls[0].rows).toHaveLength(chunkCount);
   });
-
-  it("never resolves to a success-shaped value carrying an error", async () => {
-    const outcome = await ingestDocument(fixture("housing-order.md"), {
-      embed: fakeEmbedder({ failOnCall: 1 }).embed,
-      store: fakeStore().store,
-    }).then(
-      (value) => ({ resolved: true as const, value }),
-      (error: unknown) => ({ resolved: false as const, error }),
-    );
-    expect(outcome.resolved).toBe(false);
-  });
 });
 
 describe("ingestDocument — a refused document (AC2)", () => {

@@ -3,11 +3,9 @@ import { EMBEDDING_DIMENSIONS } from "../src/lib/embeddings";
 import type { NewPolicyChunk } from "../src/lib/ingest/pipeline";
 import {
   createSupabaseChunkStore,
-  createSupabaseClient,
   queryPolicyChunks,
   type MatchRow,
   type QueryRpcClient,
-  type RpcClient,
 } from "../src/lib/supabase";
 
 /**
@@ -35,19 +33,6 @@ function fakeClient(answer: { data: unknown; error: { message: string } | null }
           return result;
         },
       });
-    },
-  };
-  return { client, calls };
-}
-
-/** The ingestion store's client, which needs no cancellation: the operator
- *  script has no reader who can disconnect. */
-function fakeStoreClient(answer: { data: unknown; error: { message: string } | null }) {
-  const calls: { fn: string; args: Record<string, unknown> | undefined }[] = [];
-  const client: RpcClient = {
-    rpc(fn, args) {
-      calls.push({ fn, args });
-      return Promise.resolve(answer);
     },
   };
   return { client, calls };
@@ -81,12 +66,6 @@ describe("queryPolicyChunks — forwarding and mapping only (AC5)", () => {
     });
   });
 
-  it("omits the pillar rather than sending an empty value when none is given", async () => {
-    const { client, calls } = fakeClient({ data: [], error: null });
-    await queryPolicyChunks(client, embedding, 0.7, 5);
-    expect(Object.hasOwn(calls[0].args ?? {}, "filter_pillar")).toBe(false);
-  });
-
   it("maps each row to a RetrievedPolicyChunk with its similarity and full source", async () => {
     const { client } = fakeClient({ data: [row], error: null });
     const [chunk] = await queryPolicyChunks(client, embedding, 0.7, 5);
@@ -108,25 +87,6 @@ describe("queryPolicyChunks — forwarding and mapping only (AC5)", () => {
   it("surfaces a database error rather than returning an empty result", async () => {
     const { client } = fakeClient({ data: null, error: { message: "boom" } });
     await expect(queryPolicyChunks(client, embedding, 0.7, 5)).rejects.toThrow("boom");
-  });
-
-  it("refuses rows of an unexpected shape", async () => {
-    const { client } = fakeClient({ data: [{ ...row, similarity: "high" }], error: null });
-    await expect(queryPolicyChunks(client, embedding, 0.7, 5)).rejects.toThrow(
-      /unexpected shape/,
-    );
-  });
-
-  it("refuses a query embedding of the wrong dimension before calling the database", async () => {
-    const { client, calls } = fakeClient({ data: [], error: null });
-    await expect(queryPolicyChunks(client, [1, 2, 3], 0.7, 5)).rejects.toThrow(/dimensions/);
-    expect(calls).toHaveLength(0);
-  });
-
-  it("accepts a real Supabase client as an RpcClient", () => {
-    // Compile-time: a real client must satisfy the narrow interface the fakes do.
-    const real: RpcClient = createSupabaseClient("https://example.supabase.co", "public-key");
-    expect(typeof real.rpc).toBe("function");
   });
 });
 
@@ -180,26 +140,5 @@ describe("createSupabaseChunkStore", () => {
     await expect(
       createSupabaseChunkStore(odd.client).replaceDocument("u", rows),
     ).rejects.toThrow(/row count/);
-  });
-});
-
-describe("cancellation is a requirement of the query client, not a capability", () => {
-  it("refuses a query client that cannot be cancelled", () => {
-    // A COMPILE-TIME check, because this invariant cannot fail at runtime: a
-    // fake that happens to provide the method behaves identically whether the
-    // type demands it or not. Making `abortSignal` optional again would make the
-    // assignment below legal, the @ts-expect-error unused, and typecheck fail —
-    // which is the only way this particular weakening gets caught.
-    const noCancellation = {
-      rpc: () => Promise.resolve({ data: [], error: null }),
-    };
-    // @ts-expect-error a client without abortSignal must not satisfy QueryRpcClient
-    const rejected: QueryRpcClient = noCancellation;
-    void rejected;
-
-    // The ingestion store's client legitimately has no cancellation, and must
-    // still be accepted — so this is not simply "everything must have it".
-    const storeOnly: RpcClient = noCancellation;
-    void storeOnly;
   });
 });

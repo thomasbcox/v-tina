@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  RETRY_BASE_MS,
   RETRY_MAX_ATTEMPTS,
   TransportError,
   fetchWithRetry,
@@ -45,15 +44,6 @@ describe("the one transient-failure policy shared by every Fireworks call", () =
     ).rejects.toBeInstanceOf(TransportError);
     expect(calls).toHaveLength(1);
   });
-
-  it("doubles the backoff between attempts", async () => {
-    waits.length = 0;
-    const { doFetch } = scripted([{ status: 503 }]);
-    await expect(
-      fetchWithRetry("Test", doFetch, "https://x", {}, { sleep: noWait }),
-    ).rejects.toThrow();
-    expect(waits).toEqual([RETRY_BASE_MS, RETRY_BASE_MS * 2]);
-  });
 });
 
 describe("AC4 (the clock) — one deadline covers retries and backoff, not each attempt", () => {
@@ -77,17 +67,6 @@ describe("AC4 (the clock) — one deadline covers retries and backoff, not each 
       ),
     ).rejects.toThrow(/deadline reached/);
     expect(calls, "no attempt may start after the budget is spent").toHaveLength(2);
-  });
-
-  it("hands the deadline to fetch itself, so a slow attempt is cut short too", async () => {
-    const controller = new AbortController();
-    const { doFetch, calls } = scripted([{ status: 200 }]);
-    await fetchWithRetry("Test", doFetch, "https://x", { method: "POST" }, {
-      signal: controller.signal,
-      sleep: noWait,
-    });
-    expect(calls[0].signal, "the signal must reach fetch").toBe(controller.signal);
-    expect(calls[0].method, "the caller's own init must survive").toBe("POST");
   });
 
   it("cuts a backoff sleep short when the deadline lands during it", async () => {

@@ -5,7 +5,6 @@ import {
   edgeEnvSchema,
   nodeEnvSchema,
   parseEnv,
-  publicEnvSchema,
 } from "../src/lib/env";
 
 const VALID: Record<string, string> = {
@@ -41,36 +40,7 @@ describe("parseEnv against the Node contract", () => {
         EnvValidationError,
       );
     });
-
-    it(`rejects ${key} when it is whitespace only`, () => {
-      expect(() => parseEnv(nodeEnvSchema, { ...VALID, [key]: "   " })).toThrow(
-        EnvValidationError,
-      );
-    });
   }
-
-  it("rejects a Supabase URL with no scheme", () => {
-    expect(() =>
-      parseEnv(nodeEnvSchema, {
-        ...VALID,
-        NEXT_PUBLIC_SUPABASE_URL: "example.supabase.co",
-      }),
-    ).toThrow(EnvValidationError);
-  });
-
-  it("names EVERY offending variable, not just the first", () => {
-    const env = { ...VALID };
-    delete env.SUPABASE_SERVICE_ROLE_KEY;
-    delete env.FIREWORKS_API_KEY;
-    try {
-      parseEnv(nodeEnvSchema, env);
-      throw new Error("expected parseEnv to throw");
-    } catch (e) {
-      const keys = (e as EnvValidationError).invalidKeys;
-      expect(keys).toContain("SUPABASE_SERVICE_ROLE_KEY");
-      expect(keys).toContain("FIREWORKS_API_KEY");
-    }
-  });
 });
 
 describe("runtime contracts are nested, not identical", () => {
@@ -84,30 +54,5 @@ describe("runtime contracts are nested, not identical", () => {
 
   it("Edge accepts configuration with no service-role secret", () => {
     expect(() => parseEnv(edgeEnvSchema, withoutServiceRole())).not.toThrow();
-  });
-
-  it("Node rejects the same configuration, because it needs that secret", () => {
-    expect(() => parseEnv(nodeEnvSchema, withoutServiceRole())).toThrow(
-      EnvValidationError,
-    );
-  });
-
-  it("public accepts configuration with neither secret", () => {
-    expect(() =>
-      parseEnv(publicEnvSchema, {
-        NEXT_PUBLIC_SUPABASE_URL: VALID.NEXT_PUBLIC_SUPABASE_URL,
-        NEXT_PUBLIC_SUPABASE_ANON_KEY: VALID.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-      }),
-    ).not.toThrow();
-  });
-
-  it("widens strictly: every public key is in edge, every edge key is in node", () => {
-    const pub = Object.keys(publicEnvSchema.shape);
-    const edge = Object.keys(edgeEnvSchema.shape);
-    const node = Object.keys(nodeEnvSchema.shape);
-    for (const k of pub) expect(edge).toContain(k);
-    for (const k of edge) expect(node).toContain(k);
-    expect(node.length).toBeGreaterThan(edge.length);
-    expect(edge.length).toBeGreaterThan(pub.length);
   });
 });

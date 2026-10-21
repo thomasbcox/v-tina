@@ -446,26 +446,6 @@ and cannot be repaired stops the answer with a **provenance notice** — never t
 failure notice. Telling a reader something went wrong when nothing broke is a false statement about
 the cause.
 
-### Reader-facing prompts
-
-Prose a member of the public actually reads. `src/lib/prompts.ts` declares them and a test holds this
-list equal to the code in both directions.
-
-- `ANSWER_SYSTEM_PROMPT`
-- `GROUNDED_DEFERRAL`
-- `FAILURE_NOTICE`
-- `PROVENANCE_NOTICE`
-
-### Routing prompts
-
-Prompts that produce a label or a rephrased question and are never read by anyone.
-
-- `CLASSIFIER_SYSTEM_PROMPT`
-- `REWRITE_SYSTEM_PROMPT`
-
-Nothing is provisional any more. `PROVISIONAL_PROMPTS` is empty, and the declared lists still partition
-every prompt the module exports — a new one classified into none of them fails the suite.
-
 
 ## The chat screen
 

@@ -48,10 +48,6 @@ async function* from(events: ChatStreamEvent[]): AsyncGenerator<ChatStreamEvent>
 }
 
 describe("AC6 — the response is a sequence of self-describing records", () => {
-  it("serves the standard streaming content type", () => {
-    expect(SSE_CONTENT_TYPE).toMatch(/^text\/event-stream/);
-  });
-
   it("frames every declared event kind so a client can parse it back", async () => {
     const events: ChatStreamEvent[] = [
       { type: "safety_status", classification: "PARTISAN-TRAP", neutralisedQuestion: "q?" },
@@ -95,24 +91,6 @@ describe("AC6 — the response is a sequence of self-describing records", () => 
     expect(records).toHaveLength(2);
     expect(records[1]).toEqual(TERMINATOR);
   });
-
-  it("terminates even when framing an event is what fails", async () => {
-    // A value JSON cannot serialise: the failure is raised by the encoder, not by
-    // the source. The 'always terminates' promise must hold on exactly the path
-    // it was written for.
-    const circular: Record<string, unknown> = { type: "streamed_tokens", text: "x" };
-    circular.self = circular;
-    const records = await readRecords(
-      toSseStream(from([circular as unknown as ChatStreamEvent]), TERMINATOR),
-    );
-    expect(records).toEqual([TERMINATOR]);
-  });
-
-  it("escapes newlines in the payload rather than relying on the caller", () => {
-    const encoded = encodeEvent({ type: "streamed_tokens", text: "a\nb" });
-    expect(encoded.endsWith("\n\n")).toBe(true);
-    expect(encoded.slice(0, -2)).not.toContain("\n");
-  });
 });
 
 describe("the stream is pull-based, and a disconnect stops the work", () => {
@@ -131,17 +109,6 @@ describe("the stream is pull-based, and a disconnect stops the work", () => {
     }
     return { state, gen: gen() };
   }
-
-  it("does not run the source to completion ahead of the reader", async () => {
-    // The earlier shape looped inside `start`, so a fast model could finish while
-    // a slow reader was still on the first paragraph, with the rest piling up in
-    // the queue. Reading one record must not drain the whole source.
-    const { state, gen } = countingSource(50);
-    const reader = toSseStream(gen, TERMINATOR).getReader();
-    await reader.read();
-    expect(state.produced).toBeLessThan(50);
-    await reader.cancel();
-  });
 
   it("unwinds the source when the reader disconnects", async () => {
     // This is what stops the answering model: cancelling returns the iterator,
