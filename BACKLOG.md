@@ -60,45 +60,6 @@ measurement watches for, so the cache's lifetime must be shorter than the re-mea
 
 **Sequencing.** After FEAT-4 and User Story 4; there are no readers to repeat questions yet.
 
-### OPS-1 — The policy-pillars comment still counts the pillars
-
-**What is wrong (found 2026-09-20).** The comment above `POLICY_PILLARS` in
-`src/lib/ingest/pillars.ts` calls them "Governor Kotek's three stated priorities", while the same
-comment says pillars are "an open classification expected to grow with the corpus". The number is a
-second statement of the list's length, and it goes false the day a pillar is added
-(`workflow-protocol.md` → *Counts are copies*).
-
-**The fix.** Name the kind — "Governor Kotek's stated priorities" — and leave the list as the only
-statement of how many there are.
-
-**Why it is filed rather than fixed.** The approach review of `answer-voice-screen` (round 3b101a0)
-reported it, and that story's declared file scope does not include this file; Thomas kept the scope
-rather than widen it for a comment.
-
-**Sequencing.** Independent. If OPS-2 lands first, its check flags this line and the fix rides there.
-
-### OPS-2 — Catch counts in living text mechanically
-
-**Want (Thomas, 2026-09-20).** A number in living text that restates the size of a set defined
-elsewhere is caught when the gate runs, not by a reviewer a round later.
-
-**Why it recurs today.** The rule is read, never run. Successive review rounds of
-`answer-voice-screen` each found counts that had survived the previous round's fix, because each fix
-covered the instances named or the sections swept, and nothing checked the rest. Instances and dates:
-`reviews/answer-voice-screen.md` → round-6 decisions.
-
-**Shape to consider — not decided.** A check that flags a number word standing next to a noun that
-names a declared list ("three lists", "five fields"), either as a test in the existing suite or as a
-separate gate check. The hard part is the boundary: dated records — story files, review artifacts,
-Done rows — may carry counts by design, and a parameter such as a threshold or a limit is not a count
-at all.
-
-**Owed by the story that builds it.** Measure false positives on this repository before adopting it,
-and state how a flagged number that is genuinely a rule or a parameter is exempted, so the exemption
-is visible rather than a silent allowlist.
-
-**Sequencing.** Independent of the FEAT items. Its first run should flag OPS-1's line.
-
 ### OPS-3 — Re-run the classifier measurement on a schedule
 
 **Want (Thomas, 2026-09-24).** The routing measurement FEAT-1 built runs on a schedule as well as by
@@ -114,31 +75,50 @@ have, and a decision on where a scheduled run's receipt is committed.
 
 **Sequencing.** After FEAT-1 (`reviews/oregon-default-jurisdiction.md`) merges.
 
-### AAR-1 — Recover a partial correctness refusal by re-running only the refused critic
+### OPS-4 — Reword the text that still promises tests deleted on 2026-10-20
 
-**What happened (2026-09-21).** In `answer-voice-screen` round 26728d4 the review runner refused the
-correctness critic's reply — its final message was not valid JSON — while the hidden-failure critic
-and the doc-drift shadow passed. The loop's only recovery for that, "round stopped; rerun /review",
-repeats the whole step and so dispatches all three critics again.
+**Want (Thomas, 2026-10-20).** The test cleanup that day (the `delete:` merges from
+`delete-doc-sync-tests` to `delete-dead-code`) removed tests that comments and README sentences
+still name: "a test holds the two equal". Those sentences now describe checks that do not exist.
+Reword each to say what is true, and remove the leftovers the cleanup could not remove by deletion
+alone.
 
-**The lesson.** Repeating the whole step spends one of the doc-drift trial's capped runs on a commit
-the trial has already sampled, and replaces the results that passed. The narrower recovery — re-run
-only the refused critic, with the same round id, base and prompt, against an unchanged HEAD —
-completed the round at neither cost, and the loop describes it nowhere, so the next builder to meet a
-partial refusal must either spend the run or improvise.
+**Why it needs a story.** Every fix edits a line that stays, so none of it fits the deletion quick
+route.
 
-**Weight — as checked.** The independent lesson check found the lesson real and modest. The cap cost
-is the weaker half: the trial's ledger shows a run consumed the same day by an ordinary stop in
-another repository, so spending the cap is not peculiar to this path. The undocumented recovery is the
-stronger half. When the decision was taken, no commit had yet been sampled twice. Evidence and the
-corrected figures: `reviews/answer-voice-screen.md` → `review/8` and "Codex correctness pass — round
-7", and `reviews/answer-voice-screen.lesson.26728d4.json`.
+**What it covers.**
+- Sentences that promise a deleted test: the comments on `EMBEDDING_DIMENSIONS` in
+  `src/lib/embeddings.ts`, on the classification deadline in `src/lib/safety.ts`, on
+  `DEFAULT_MATCH_THRESHOLD` in `src/lib/supabase.ts`, on `REQUIRED_ENV_KEYS` in `src/lib/env.ts`, on
+  `POLICY_PILLARS` in `src/lib/ingest/pillars.ts` and on `ALLOWED_SOURCE_HOSTS` in
+  `src/lib/ingest/metadata.ts`; and the README's "Policy pillars", "Retrieval threshold",
+  "Classification latency" and "Ingesting the corpus" sections, plus the repository map's "nothing is
+  provisional now".
+- **Absorbs OPS-1.** The same `pillars.ts` comment calls the pillars "Governor Kotek's three stated
+  priorities". Name the kind instead — "Governor Kotek's stated priorities" — and leave the list as
+  the only statement of how many there are (`workflow-protocol.md` → *Counts are copies*).
+- Import names left unused on lines that keep others (lint warnings, not failures):
+  `SAFETY_CLASSIFICATIONS` in `__tests__/chat-orchestrate.test.ts`; `nodeEnvSchema` and
+  `EnvValidationError` in `__tests__/chat-route.test.ts`; `SSE_CONTENT_TYPE` and `encodeEvent` in
+  `__tests__/chat-stream.test.ts`; `vi` in `__tests__/fireworks.test.ts`.
+- Code nothing uses that needs an edit to remove: the `pillar` parameter of `queryPolicyChunks` (its
+  one caller passes `undefined`); the Edge branch of `register()` in `src/instrumentation.ts`; the
+  `onCleanupError` option of `createChatStream`; the `maxAttempts` option of
+  `createFireworksEmbedder` and its `EMBEDDING_MAX_ATTEMPTS` alias; and `FRONTMATTER_KEYS` in
+  `src/lib/ingest/parse.ts`, which only tests read.
 
-**Remedy — not decided.** Approving the lesson approves no change. Documenting the narrower recovery in
-the review skill, or teaching the runner to decline a second trial run for a round it has already
-sampled, is a later story through the workflow's own loop.
+**Not in scope.** The two comments in the applied SQL migration that name a unit test stay as they
+are: an applied migration is not edited.
+
+**Sequencing.** Independent of the FEAT items.
 
 ## Done
 
 - **FEAT-1** — Read a question that names no jurisdiction as being about Oregon — PR #8 / merge: oregon-default-jurisdiction (story: `reviews/oregon-default-jurisdiction.md`).
 - **FEAT-3** — Keep enough of a refused quotation to diagnose it — PR #9 / merge: refusal-diagnostics (story: `reviews/refusal-diagnostics.md`).
+
+## Closed — won't do
+
+- **OPS-1** — The policy-pillars comment still counts the pillars — folded into OPS-4, which edits the same comment (Thomas, 2026-10-20).
+- **OPS-2** — Catch counts in living text mechanically — closed 2026-10-20 (Thomas): it governs how this repository writes its own documentation, and no reader has met a stale count.
+- **AAR-1** — Recover a partial correctness refusal by re-running only the refused critic — closed 2026-10-20 (Thomas): its subject is the review workflow, not V-Tina. The lesson stays on record in `reviews/answer-voice-screen.md` and `reviews/answer-voice-screen.lesson.26728d4.json`.
