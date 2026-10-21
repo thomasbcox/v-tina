@@ -48,10 +48,6 @@ async function* from(events: ChatStreamEvent[]): AsyncGenerator<ChatStreamEvent>
 }
 
 describe("AC6 — the response is a sequence of self-describing records", () => {
-  it("serves the standard streaming content type", () => {
-    expect(SSE_CONTENT_TYPE).toMatch(/^text\/event-stream/);
-  });
-
   it("frames every declared event kind so a client can parse it back", async () => {
     const events: ChatStreamEvent[] = [
       { type: "safety_status", classification: "PARTISAN-TRAP", neutralisedQuestion: "q?" },

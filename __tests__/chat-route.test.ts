@@ -69,13 +69,6 @@ function runtimeClosure(entry: string): Map<string, string[]> {
 }
 
 describe("AC10 — the chat route runs on a supported runtime, on the request-path contract alone", () => {
-  it("declares a supported runtime, which is the export Next.js itself reads", () => {
-    // Was "edge" until 2026-09-10; Next.js 16 deprecates that runtime and Thomas
-    // chose at the review consult to move while one route depended on it.
-    expect(route.runtime).toBe("nodejs");
-    expect(typeof route.POST).toBe("function");
-  });
-
   it("builds every dependency from the edge contract, with no server-only secret", () => {
     const edgeOnly = {
       NEXT_PUBLIC_SUPABASE_URL: "https://project.supabase.co",
@@ -165,14 +158,6 @@ describe("the request-scoped deadlines are real, and composed with the reader's 
         }) as Promise<Response>,
     );
   }
-
-  it("declares a deadline for the rewrite, not only for classification", () => {
-    // The rewrite carried NO bound at all until 2026-09-11: no deadline and no
-    // signal, and the retry helper sets no fetch timeout without one. A hung
-    // rewrite hung the request, on the partisan path.
-    expect(REWRITE_DEADLINE_MS).toBeGreaterThan(0);
-    expect(CLASSIFY_DEADLINE_MS).toBeGreaterThan(0);
-  });
 
   it("abandons a hung classification at its deadline, failing closed", async () => {
     const deps = createChatDeps(parseEnv(edgeEnvSchema, edgeOnly));

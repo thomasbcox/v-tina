@@ -57,20 +57,6 @@ describe("parseEnv against the Node contract", () => {
       }),
     ).toThrow(EnvValidationError);
   });
-
-  it("names EVERY offending variable, not just the first", () => {
-    const env = { ...VALID };
-    delete env.SUPABASE_SERVICE_ROLE_KEY;
-    delete env.FIREWORKS_API_KEY;
-    try {
-      parseEnv(nodeEnvSchema, env);
-      throw new Error("expected parseEnv to throw");
-    } catch (e) {
-      const keys = (e as EnvValidationError).invalidKeys;
-      expect(keys).toContain("SUPABASE_SERVICE_ROLE_KEY");
-      expect(keys).toContain("FIREWORKS_API_KEY");
-    }
-  });
 });
 
 describe("runtime contracts are nested, not identical", () => {

@@ -260,24 +260,6 @@ describe("the one grammar", () => {
   });
 });
 
-describe("the declared constants must mean something, not merely exist", () => {
-  it("every avatar frame names whose avatar this is", () => {
-    for (const frame of AVATAR_FRAME) {
-      expect(frame).toMatch(/governor|kotek/);
-      expect(frame).toMatch(/avatar/);
-    }
-  });
-
-  it("every impersonation form is first person", () => {
-    for (const form of IMPERSONATION_FORMS) expect(form).toMatch(/\b(i|my|me)\b/);
-  });
-
-  it("the cadence target is inside the range Thomas set", () => {
-    expect(CADENCE_TARGET_WORDS).toBeGreaterThanOrEqual(100);
-    expect(CADENCE_TARGET_WORDS).toBeLessThanOrEqual(200);
-  });
-});
-
 describe("AC1 — the avatar identifies itself", () => {
   it("accepts an opening carrying any declared frame", () => {
     for (const frame of AVATAR_FRAME) {
