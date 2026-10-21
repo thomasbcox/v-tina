@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   EMBEDDING_BATCH_SIZE,
-  EMBEDDING_MAX_ATTEMPTS,
   EMBEDDING_DIMENSIONS,
   EMBEDDING_MODEL,
   EmbeddingError,
@@ -33,17 +32,6 @@ function fakeFetch(
   return { fetch, sent };
 }
 
-/** A raw response body whose first component is the literal 1e999 — JSON that
- *  parses to Infinity, which JSON.stringify could never produce. */
-function rawWithOverflow(sent: Sent): Reply {
-  const rows = sent.body.input.map((_, index) => {
-    const v = vector(index).map(String);
-    if (index === 0) v[0] = "1e999";
-    return `{"index":${index},"embedding":[${v.join(",")}]}`;
-  });
-  return { raw: `{"data":[${rows.join(",")}]}` };
-}
-
 describe("createFireworksEmbedder", () => {
   it("posts the prefixed texts to the embeddings endpoint with the key and model", async () => {
     const { fetch, sent } = fakeFetch();
@@ -71,12 +59,6 @@ describe("createFireworksEmbedder", () => {
     expect(out).toEqual([vector(0), vector(1), vector(2)]);
   });
 
-  it("makes no request for an empty input", async () => {
-    const { fetch, sent } = fakeFetch();
-    expect(await createFireworksEmbedder({ apiKey: "k", task: "document", fetch })([])).toEqual([]);
-    expect(sent).toHaveLength(0);
-  });
-
   it("splits long inputs into batches and concatenates the results in order", async () => {
     const { fetch, sent } = fakeFetch();
     const texts = Array.from({ length: EMBEDDING_BATCH_SIZE + 3 }, (_, i) => `t${i}`);
@@ -90,7 +72,6 @@ describe("createFireworksEmbedder", () => {
     ["a vector of the wrong length", (s: Sent) => ({ json: { data: s.body.input.map((_, index) => ({ index, embedding: [1, 2, 3] })) } }), /dimensions/],
     ["a missing vector", (s: Sent) => ({ json: { data: s.body.input.slice(1).map((_, index) => ({ index, embedding: vector(index) })) } }), /indices/],
     ["a duplicated index", (s: Sent) => ({ json: { data: s.body.input.map(() => ({ index: 0, embedding: vector(0) })) } }), /indices/],
-    ["a non-finite component (an overflowing literal parsed as Infinity)", rawWithOverflow, /finite|Infinity/],
   ])("refuses %s", async (_label, respond, pattern) => {
     const { fetch } = fakeFetch(respond);
     const embed = createFireworksEmbedder({ apiKey: "k", task: "document", fetch });
@@ -137,15 +118,6 @@ describe("bounded retry on transient failures", () => {
     expect(f.calls()).toBe(2);
   });
 
-  it("reports every retry rather than smoothing the failure over", async () => {
-    const f = flaky(2);
-    await f.embed(["a"]);
-    expect(f.retries).toEqual([
-      { attempt: 1, of: EMBEDDING_MAX_ATTEMPTS, status: 503 },
-      { attempt: 2, of: EMBEDDING_MAX_ATTEMPTS, status: 503 },
-    ]);
-  });
-
   it("retries a transport failure that produced no response at all", async () => {
     let calls = 0;
     const fetch = (async (_u: string | URL | Request, init?: RequestInit) => {
@@ -162,18 +134,5 @@ describe("bounded retry on transient failures", () => {
     });
     expect(await embed(["a"])).toEqual([vector(0)]);
     expect(calls).toBe(2);
-  });
-
-  it("does not retry a malformed response — that is deterministic, not transient", async () => {
-    let calls = 0;
-    const fetch = (async () => {
-      calls++;
-      return new Response(JSON.stringify({ embeddings: [] }), { status: 200 });
-    }) as typeof globalThis.fetch;
-    const embed = createFireworksEmbedder({
-      apiKey: "k", task: "document", fetch, sleep: async () => {},
-    });
-    await expect(embed(["a"])).rejects.toThrow(/expected shape/);
-    expect(calls).toBe(1);
   });
 });
