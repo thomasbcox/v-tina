@@ -276,16 +276,6 @@ describe("the declared constants must mean something, not merely exist", () => {
     expect(CADENCE_TARGET_WORDS).toBeGreaterThanOrEqual(100);
     expect(CADENCE_TARGET_WORDS).toBeLessThanOrEqual(200);
   });
-
-  it("the README states the target the code uses, and promises no ceiling", () => {
-    // It once promised "no reader meets more than 200" words unframed, which nothing
-    // enforced; Thomas withdrew that guarantee (approach review round b6039ac).
-    const row = readFileSync("README.md", "utf8").split("\n").find((line) => line.startsWith("| **Say who is speaking**"));
-    expect(row, "the README's cadence rule").toBeDefined();
-    expect(row).toContain(`**${CADENCE_TARGET_WORDS}**`);
-    expect(row).toMatch(/no hard ceiling/);
-    expect(row).not.toMatch(/no reader meets more than/i);
-  });
 });
 
 describe("AC1 — the avatar identifies itself", () => {

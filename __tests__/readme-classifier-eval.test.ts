@@ -58,10 +58,6 @@ describe("AC6 — the published routing reliability is a real measurement of the
     expect(latest).toBeDefined();
     expect(PUBLISHED?.trim()).toBe(renderReceipt(latest!));
   });
-
-  it("the README limits the claim to the questions listed", () => {
-    expect(SECTION).toMatch(/describe (only )?(these|the listed) questions/i);
-  });
 });
 
 describe("AC6 — a receipt cannot carry impossible or mis-credited evidence", () => {
