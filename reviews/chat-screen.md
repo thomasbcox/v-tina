@@ -161,8 +161,9 @@ ratified.
 14. The README's Status paragraph no longer says there is no user interface; a *The chat screen*
     section states what the screen shows — the two notices, the waiting state, the sources, the
     rewording, and how a notice is told apart from answer text; a *Screen copy* list names the
-    registry's constants and a test holds it equal to the code in both directions; and the record
-    table gains a `notice` row.
+    registry's constants; and the record table gains a `notice` row. *(Amended 2026-10-21, Thomas:
+    this criterion first also required "a test holds it equal to the code in both directions"; that
+    requirement is dropped — Decisions, round 27c42b2.)*
 
 15. Scope containment: `git diff --name-only main...HEAD -- . ':(exclude)reviews/'` lists only
     `src/app/page.tsx`, `src/app/layout.tsx`, `src/app/globals.css`, files under
@@ -881,3 +882,47 @@ nothing malformed is sent and the reason reaches the console.
 `readChatStream`. Small impact — the parse error that prompted the cancel is rethrown and logged —
 but as written the empty handler reads as an accident in the pass whose purpose is making
 swallows deliberate. *Suggestion.* Log it quietly, or one comment saying the discard is knowing.
+
+## Decisions (2026-10-21, round 27c42b2)
+
+**Before the decisions.** PR #10 was closed on 2026-10-20 without merging. Thomas, 2026-10-21:
+"Closing it was not deliberate. Reopen it, bring the branch up to date with main". Reopened;
+`origin/main` — the 2026-10-20 test cleanup, from `delete: delete-doc-sync-tests` to
+`records: close-backlog-wont-do` — merged into the branch with no conflicts; the gate passed on the
+merged HEAD, locally and on the PR.
+
+**Thomas:** "As recommended: reject all five findings, and drop the README-matching checks (keep the
+avatar-notice check, reword the README, amend criterion 14). Record the decisions and run /close."
+
+**Ratings are the builder's.** This round's replies predate the likelihood and impact fields, so
+each finding was rated by reading the code at the merged HEAD. The bar for *fix*: likely or
+possible, medium or high impact, and a basis that is not speculative. No finding met it, so no basis
+check was owed; H1's reachability was checked anyway and is recorded.
+
+| Finding | Likelihood | Impact | Decision |
+|---|---|---|---|
+| C1 — the lesson proposal still says "the harness" twice | certain it is there (read at `.aar/proposals/chat-screen.md` lines 24 and 71) | low: two words in a pending record | **reject** — impact |
+| C2 — the README says the console error carries "the payload" | certain the sentence is false (`parseRecord` attaches the parse error or the schema's objection, never the raw text) | low: a maintainer finds less in the console than promised; no reader effect | **reject** — impact |
+| C3 — the cause, the malformed-record console line and the reader's cancel have no test of their own | speculative: needs a later change to break code that works today | low to medium if it regressed | **reject** — basis |
+| H1 — `buildRequest` can return a body the schema refuses | unlikely, speculative. Checked: the input caps a question at the service's per-message limit (`maxLength` in `ChatScreen.tsx`) and the handler sends no empty question, so with every prior turn dropped the body is one valid question; only a future rule about something other than history reaches the path | medium if it happened: every question shows "Connection lost" and the cause reaches no console | **reject** — likelihood and basis |
+| H2 — the blind `.catch(() => {})` on the cancel cleanup | possible | low: the error that prompted the cancel is still rethrown and logged | **reject** — impact |
+
+**Doc-drift critic: not run this round.** The `review/8` line records the doc-drift shadow as "trial
+closed". A re-review at the merge fork would run it.
+
+**Scope amendment — criterion 14.** The merge brought in the 2026-10-20 deletion of the tests whose
+subject is this repository's own documentation or records (`delete: tests that check docs and records
+match the code`). This branch added one more of that kind, `__tests__/readme-copy.test.ts`, and the
+merge left two sentences naming tests that no longer exist: the README's "the pattern the prompts, the
+pillars and the source domains use", and the test's own comment naming `readme-prompts.test.ts`.
+Decision: drop the README-matching checks. What `/close` applies:
+
+- Remove the registry and README-matching tests, and `SCREEN_COPY` with its `ScreenCopy` type, which
+  only those tests read.
+- Keep the check that the avatar notice states its three facts — a reader sees that notice — moved
+  into the AC1 block of `__tests__/chat-screen.test.tsx`; `readme-copy.test.ts` is then empty and is
+  deleted.
+- Reword the README's *Screen copy* paragraph so it promises no test, and remove the stale references
+  the merge created.
+- Criterion 14 amended in place, dated. Its oracle stays `reviewer`; the scope-containment criterion
+  (15) already allows every file this touches.
