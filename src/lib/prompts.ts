@@ -19,13 +19,6 @@ import {
  * Governor, never as her, and the deferral and the provenance notice speak that
  * way themselves. The failure notice is deliberately out of character; its own
  * comment says why.
- *
- * `ROUTING_PROMPTS` and `READER_FACING_PROMPTS` below are the machine-readable form
- * of that split, and `PROVISIONAL_PROMPTS`, empty, is kept for a future
- * placeholder. A test requires every exported prompt to sit in exactly one of the
- * declared lists, and the README documents the routing and reader-facing lists
- * with a test holding each equal to the code — the pattern the domain allowlist,
- * the pillar list and the retrieval threshold use.
  */
 
 /** Oregon's official state portal, which the deferral must send readers to. */
@@ -175,50 +168,3 @@ export const FAILURE_NOTICE = `Something went wrong while this answer was being 
  * one fact worth knowing: the service refused rather than failed.
  */
 export const PROVENANCE_NOTICE = `${DISPLAY_FRAME}, I stopped this answer: I could not match something in it back to the document it cited, and I will not present words as the record's unless they are.`;
-
-/**
- * Prompts still shipping as placeholders. **Empty: story 3 replaced all three.**
- *
- * The list stays, and so does the partition below, because the guard is what
- * matters, not the emptiness. A future placeholder is declared here, and a prompt
- * in none of the lists still fails the partition.
- * Emptiness reached by deleting the list would pass every check and mean nothing,
- * which is why a test asserts the partition still has teeth over an empty one.
- */
-export const PROVISIONAL_PROMPTS = [] as const;
-
-export type ProvisionalPrompt = (typeof PROVISIONAL_PROMPTS)[number];
-
-/**
- * The prompts that carry no voice: they produce a label and a rephrased question,
- * never prose a reader sees.
- */
-export const ROUTING_PROMPTS = [
-  "CLASSIFIER_SYSTEM_PROMPT",
-  "REWRITE_SYSTEM_PROMPT",
-] as const;
-
-export type RoutingPrompt = (typeof ROUTING_PROMPTS)[number];
-
-/**
- * The prompts a reader actually meets — the avatar's own voice, finished rather
- * than provisional.
- *
- * **This list exists because of a mistake worth recording.** Emptying
- * `PROVISIONAL_PROMPTS` left the partition needing a home for the answering
- * prompt and the notices, and the builder's first move was to file them under
- * `ROUTING_PROMPTS` — the "carries no voice" list — which would have made every
- * check pass while putting reader-facing prose in the bucket that says nobody
- * reads it. That is precisely the failure the round-2 design review predicted of
- * this partition: it proves every prompt is *classified*, never that it is
- * classified *correctly*. Lists that each mean what their name says are the
- * answer; a partition whose buckets are honest is the only kind worth checking.
- */
-export const READER_FACING_PROMPTS = [
-  "ANSWER_SYSTEM_PROMPT",
-  "GROUNDED_DEFERRAL",
-  "FAILURE_NOTICE",
-  "PROVENANCE_NOTICE",
-] as const;
-
-export type ReaderFacingPrompt = (typeof READER_FACING_PROMPTS)[number];
