@@ -523,8 +523,6 @@ in-app browser and recorded there.
 ### Screen copy
 
 Every word the screen shows a reader that the server does not send, declared in `src/lib/copy.ts`.
-A test holds this list equal to the module's exports in both directions, the pattern the prompts,
-the pillars and the source domains use.
 
 - `AVATAR_NOTICE`
 - `ABOUT_LABEL`

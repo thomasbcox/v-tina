@@ -140,6 +140,15 @@ describe("AC1 — the avatar notice is above and below the screen in every state
       expect(html).toMatch(new RegExp(`<aside[^>]*>${escapeRe(AVATAR_NOTICE)}</aside>[\\s\\S]*<aside[^>]*>${escapeRe(AVATAR_NOTICE)}</aside>`));
     });
   }
+
+  it("names the three facts: an AI avatar, not the Governor, not an official state service", () => {
+    // The wording is Thomas's (reviews/chat-screen.md, Open question 8). A rewording
+    // that drops one of the three facts is what this catches; the exact sentence is
+    // not pinned.
+    expect(AVATAR_NOTICE).toMatch(/virtual AI avatar/);
+    expect(AVATAR_NOTICE).toMatch(/not Governor Kotek/);
+    expect(AVATAR_NOTICE).toMatch(/not an official State of Oregon service/);
+  });
 });
 
 describe("AC3 — the waiting line, until the first words", () => {

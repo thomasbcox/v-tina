@@ -6,19 +6,12 @@ import type { TurnNoticeKind } from "./chat/client";
  * server does not send.
  *
  * One declared home, for the same reason `prompts.ts` is one: the avatar notice is
- * the product's first safety rule, and a wording nothing watches is a wording that
- * drifts. `SCREEN_COPY` lists every constant here by name, the README's *Screen
- * copy* section lists the same names, and a test holds the two equal in both
- * directions and requires every export of this module to be in the list — the
- * partition `prompts.ts` already keeps.
+ * the product's first safety rule, and wording kept in one place is wording a
+ * reviewer can find. The README's *Screen copy* section lists these constants by name.
  *
  * Kept apart from `prompts.ts` on purpose (design review of `reviews/chat-screen.md`,
  * finding 2, option b): that module imports the quotation grammar, and the screen is
  * the one module the browser bundle carries. Nothing here is a model instruction.
- *
- * Every value is a single-line string, or a record of them keyed by a declared
- * vocabulary, so the suite's "no reader-facing prompt outside prompts.ts" check — which
- * looks for multi-line template literals — reads these as what they are: labels.
  */
 
 /** The notice at the top and the bottom of every page. Wording approved by Thomas,
@@ -93,28 +86,3 @@ export const ANSWER_LABEL = "V-Tina's answer";
 export const QUESTION_PLACEHOLDER = "Ask about housing, homelessness, behavioral health or education in Oregon";
 
 export const SEND_LABEL = "Ask";
-
-/** Every constant above, by name. The README's *Screen copy* section lists the same
- *  names; `__tests__/readme-copy.test.ts` holds the two equal. */
-export const SCREEN_COPY = [
-  "AVATAR_NOTICE",
-  "ABOUT_LABEL",
-  "NOTICE_POSITIONS",
-  "EXCHANGE_LABEL",
-  "WAITING_NOTICE",
-  "WAITING_LABEL",
-  "CONNECTION_NOTICE",
-  "NOTICE_HEADINGS",
-  "INCOMPLETE_MARK",
-  "REWORDING_LABEL",
-  "SOURCES_HEADING",
-  "PASSAGE_TOGGLE",
-  "KIND_LABELS",
-  "PAGE_HEADING",
-  "QUESTION_LABEL",
-  "ANSWER_LABEL",
-  "QUESTION_PLACEHOLDER",
-  "SEND_LABEL",
-] as const;
-
-export type ScreenCopy = (typeof SCREEN_COPY)[number];

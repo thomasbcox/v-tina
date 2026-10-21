@@ -926,3 +926,15 @@ Decision: drop the README-matching checks. What `/close` applies:
   the merge created.
 - Criterion 14 amended in place, dated. Its oracle stays `reviewer`; the scope-containment criterion
   (15) already allows every file this touches.
+
+## Fixes (2026-10-21, round 27c42b2)
+
+No review finding was approved, so no finding's fix was applied. The criterion-14 scope amendment
+Thomas approved at the same stop was:
+
+| Change | What changed |
+|---|---|
+| The README-matching checks | `__tests__/readme-copy.test.ts` deleted. Its registry, README-list and non-empty-strings tests are gone; its avatar-notice test (the three facts) moved unchanged into the AC1 block of `__tests__/chat-screen.test.tsx`. |
+| `SCREEN_COPY` and `ScreenCopy` | Removed from `src/lib/copy.ts`; only the deleted tests read them. |
+| `src/lib/copy.ts` header comment | No longer describes the list or the test that held it, and no longer names the suite's "no reader-facing prompt outside prompts.ts" check, which the 2026-10-20 cleanup deleted. That second stale reference was found while rewriting the same comment; it is stated here so the change is not silent. |
+| README *Screen copy* | The sentence promising a test, and naming the deleted prompts, pillars and source-domain tests as its pattern, is removed. The list of names stays. |
