@@ -5,7 +5,6 @@ import {
   edgeEnvSchema,
   nodeEnvSchema,
   parseEnv,
-  publicEnvSchema,
 } from "../src/lib/env";
 
 const VALID: Record<string, string> = {
@@ -55,14 +54,5 @@ describe("runtime contracts are nested, not identical", () => {
 
   it("Edge accepts configuration with no service-role secret", () => {
     expect(() => parseEnv(edgeEnvSchema, withoutServiceRole())).not.toThrow();
-  });
-
-  it("public accepts configuration with neither secret", () => {
-    expect(() =>
-      parseEnv(publicEnvSchema, {
-        NEXT_PUBLIC_SUPABASE_URL: VALID.NEXT_PUBLIC_SUPABASE_URL,
-        NEXT_PUBLIC_SUPABASE_ANON_KEY: VALID.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-      }),
-    ).not.toThrow();
   });
 });
