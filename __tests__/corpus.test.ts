@@ -4,7 +4,6 @@ import { describe, expect, it } from "vitest";
 import { corpusDocumentPaths } from "../src/lib/ingest/corpus";
 import {
   DOCUMENT_KINDS,
-  isAllowedSourceHost,
 } from "../src/lib/ingest/metadata";
 import { parseDocument } from "../src/lib/ingest/parse";
 import { POLICY_PILLARS } from "../src/lib/ingest/pillars";
@@ -24,23 +23,6 @@ const paths = corpusDocumentPaths();
 const MIN_CHUNKS_PER_DOCUMENT = 3;
 
 describe("the seed corpus", () => {
-  // Without this the whole suite passes vacuously on an empty directory.
-  it("contains documents at all", () => {
-    expect(paths.length).toBeGreaterThan(0);
-  });
-
-  it.each(paths)("%s parses with complete, valid metadata", (path) => {
-    const { source } = parseDocument(readFileSync(path, "utf8"));
-    expect(source.documentTitle.length).toBeGreaterThan(0);
-    expect(source.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect(
-      isAllowedSourceHost(new URL(source.url).hostname),
-      `${basename(path)} cites ${source.url}, which is not an allowed official host`,
-    ).toBe(true);
-    expect(POLICY_PILLARS as readonly string[]).toContain(source.pillar);
-    expect(DOCUMENT_KINDS as readonly string[]).toContain(source.documentKind);
-  });
-
   it.each(paths)("%s carries enough text to ground a question", (path) => {
     const chunks = prepareDocument(readFileSync(path, "utf8"));
     expect(

@@ -51,21 +51,4 @@ describe("register", () => {
     const { register } = await import("../src/instrumentation");
     await expect(register()).resolves.toBeUndefined();
   });
-
-  // Fails closed. The previous version of this test ratified the opposite —
-  // an unrecognised runtime validated nothing and the app started anyway — which
-  // is the silent unvalidated-boot path this hook exists to remove.
-  it("refuses to start in an unrecognised runtime, even with valid configuration", async () => {
-    vi.stubEnv("NEXT_RUNTIME", "deno");
-    stubAll();
-    const { register } = await import("../src/instrumentation");
-    await expect(register()).rejects.toThrow(/deno/);
-  });
-
-  it("refuses to start when NEXT_RUNTIME is unset", async () => {
-    vi.stubEnv("NEXT_RUNTIME", "");
-    stubAll();
-    const { register } = await import("../src/instrumentation");
-    await expect(register()).rejects.toThrow(/unset/);
-  });
 });

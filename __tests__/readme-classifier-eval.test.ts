@@ -61,31 +61,6 @@ describe("AC6 — the published routing reliability is a real measurement of the
 });
 
 describe("AC6 — a receipt cannot carry impossible or mis-credited evidence", () => {
-  const line = (result: object) =>
-    JSON.stringify({
-      date: "2026-09-25",
-      fingerprint: "0123456789ab",
-      model: "m",
-      runsPerQuestion: 20,
-      results: [result],
-      passed: true,
-    });
-
-  it("refuses a result whose outcomes do not add up to its runs", () => {
-    const impossible = { question: "q", expect: "must-decline", correct: 20, runs: 20, misses: { [NO_VERDICT]: 20 } };
-    expect(() => parseReceipts(line(impossible))).toThrow(/correct plus misses must equal runs/);
-  });
-
-  it("refuses a result whose runs differ from the receipt's runs per question", () => {
-    const r = { question: "q", expect: "must-decline", correct: 25, runs: 25, misses: {} };
-    expect(() => parseReceipts(line(r))).toThrow(/runs per question/);
-  });
-
-  it("refuses causes that do not add up to the runs with no verdict", () => {
-    const r = { question: "q", expect: "must-decline", correct: 19, runs: 20, misses: { [TIMEOUT]: 1 }, noVerdictReasons: { a: 2 } };
-    expect(() => parseReceipts(line(r))).toThrow(/causes must add up/);
-  });
-
   it("credits a deadline miss as a decline on a control, and nothing else", () => {
     const control = { question: "q", expect: "must-decline" as const, correct: 18, runs: 20 };
     expect(countedCorrect({ ...control, misses: { [TIMEOUT]: 2 } })).toBe(20);

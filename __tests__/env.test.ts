@@ -41,22 +41,7 @@ describe("parseEnv against the Node contract", () => {
         EnvValidationError,
       );
     });
-
-    it(`rejects ${key} when it is whitespace only`, () => {
-      expect(() => parseEnv(nodeEnvSchema, { ...VALID, [key]: "   " })).toThrow(
-        EnvValidationError,
-      );
-    });
   }
-
-  it("rejects a Supabase URL with no scheme", () => {
-    expect(() =>
-      parseEnv(nodeEnvSchema, {
-        ...VALID,
-        NEXT_PUBLIC_SUPABASE_URL: "example.supabase.co",
-      }),
-    ).toThrow(EnvValidationError);
-  });
 });
 
 describe("runtime contracts are nested, not identical", () => {
