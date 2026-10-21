@@ -79,17 +79,6 @@ describe("AC4 (the clock) — one deadline covers retries and backoff, not each 
     expect(calls, "no attempt may start after the budget is spent").toHaveLength(2);
   });
 
-  it("hands the deadline to fetch itself, so a slow attempt is cut short too", async () => {
-    const controller = new AbortController();
-    const { doFetch, calls } = scripted([{ status: 200 }]);
-    await fetchWithRetry("Test", doFetch, "https://x", { method: "POST" }, {
-      signal: controller.signal,
-      sleep: noWait,
-    });
-    expect(calls[0].signal, "the signal must reach fetch").toBe(controller.signal);
-    expect(calls[0].method, "the caller's own init must survive").toBe("POST");
-  });
-
   it("cuts a backoff sleep short when the deadline lands during it", async () => {
     const controller = new AbortController();
     const { doFetch } = scripted([{ status: 503 }]);

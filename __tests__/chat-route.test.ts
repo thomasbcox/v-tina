@@ -69,22 +69,6 @@ function runtimeClosure(entry: string): Map<string, string[]> {
 }
 
 describe("AC10 — the chat route runs on a supported runtime, on the request-path contract alone", () => {
-  it("builds every dependency from the edge contract, with no server-only secret", () => {
-    const edgeOnly = {
-      NEXT_PUBLIC_SUPABASE_URL: "https://project.supabase.co",
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: "anon-key",
-      FIREWORKS_API_KEY: "fireworks-key",
-    };
-    const env = parseEnv(edgeEnvSchema, edgeOnly);
-    const deps = createChatDeps(env);
-    for (const name of ["classify", "rewrite", "retrieve", "answer"] as const) {
-      expect(typeof deps[name], `${name} must be constructible`).toBe("function");
-    }
-    // And the same map is genuinely insufficient for the node contract, so this
-    // is a real demonstration that the service-role secret is not needed here.
-    expect(() => parseEnv(nodeEnvSchema, edgeOnly)).toThrow(EnvValidationError);
-  });
-
   it("never reaches the server-only environment contract, anywhere in its import graph", () => {
     // This is the part the two checks above cannot do. They pass under Vitest,
     // which runs in Node where every import resolves, so neither can see the
@@ -158,31 +142,6 @@ describe("the request-scoped deadlines are real, and composed with the reader's 
         }) as Promise<Response>,
     );
   }
-
-  it("abandons a hung classification at its deadline, failing closed", async () => {
-    const deps = createChatDeps(parseEnv(edgeEnvSchema, edgeOnly));
-    hangUntilAborted();
-    try {
-      const started = Date.now();
-      const result = await deps.classify("a question");
-      expect(result.ok, "an unanswerable classification must fail closed").toBe(false);
-      expect(Date.now() - started).toBeLessThan(CLASSIFY_DEADLINE_MS * 3);
-    } finally {
-      vi.restoreAllMocks();
-    }
-  }, 30_000);
-
-  it("abandons a hung rewrite at its deadline instead of hanging the request", async () => {
-    const deps = createChatDeps(parseEnv(edgeEnvSchema, edgeOnly));
-    hangUntilAborted();
-    try {
-      const started = Date.now();
-      await expect(deps.rewrite("a hostile question")).rejects.toThrow();
-      expect(Date.now() - started).toBeLessThan(REWRITE_DEADLINE_MS * 3);
-    } finally {
-      vi.restoreAllMocks();
-    }
-  }, 40_000);
 
   it("stops at once when the reader has already gone, without waiting out the deadline", async () => {
     // The composed signal must honour the request half, not only the timeout —

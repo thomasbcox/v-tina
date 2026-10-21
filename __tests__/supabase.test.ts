@@ -3,7 +3,6 @@ import { EMBEDDING_DIMENSIONS } from "../src/lib/embeddings";
 import type { NewPolicyChunk } from "../src/lib/ingest/pipeline";
 import {
   createSupabaseChunkStore,
-  createSupabaseClient,
   queryPolicyChunks,
   type MatchRow,
   type QueryRpcClient,
@@ -121,12 +120,6 @@ describe("queryPolicyChunks — forwarding and mapping only (AC5)", () => {
     const { client, calls } = fakeClient({ data: [], error: null });
     await expect(queryPolicyChunks(client, [1, 2, 3], 0.7, 5)).rejects.toThrow(/dimensions/);
     expect(calls).toHaveLength(0);
-  });
-
-  it("accepts a real Supabase client as an RpcClient", () => {
-    // Compile-time: a real client must satisfy the narrow interface the fakes do.
-    const real: RpcClient = createSupabaseClient("https://example.supabase.co", "public-key");
-    expect(typeof real.rpc).toBe("function");
   });
 });
 

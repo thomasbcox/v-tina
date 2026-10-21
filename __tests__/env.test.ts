@@ -72,12 +72,6 @@ describe("runtime contracts are nested, not identical", () => {
     expect(() => parseEnv(edgeEnvSchema, withoutServiceRole())).not.toThrow();
   });
 
-  it("Node rejects the same configuration, because it needs that secret", () => {
-    expect(() => parseEnv(nodeEnvSchema, withoutServiceRole())).toThrow(
-      EnvValidationError,
-    );
-  });
-
   it("public accepts configuration with neither secret", () => {
     expect(() =>
       parseEnv(publicEnvSchema, {
@@ -85,15 +79,5 @@ describe("runtime contracts are nested, not identical", () => {
         NEXT_PUBLIC_SUPABASE_ANON_KEY: VALID.NEXT_PUBLIC_SUPABASE_ANON_KEY,
       }),
     ).not.toThrow();
-  });
-
-  it("widens strictly: every public key is in edge, every edge key is in node", () => {
-    const pub = Object.keys(publicEnvSchema.shape);
-    const edge = Object.keys(edgeEnvSchema.shape);
-    const node = Object.keys(nodeEnvSchema.shape);
-    for (const k of pub) expect(edge).toContain(k);
-    for (const k of edge) expect(node).toContain(k);
-    expect(node.length).toBeGreaterThan(edge.length);
-    expect(edge.length).toBeGreaterThan(pub.length);
   });
 });

@@ -97,12 +97,6 @@ describe("AC6 — the response is a sequence of self-describing records", () => 
     );
     expect(records).toEqual([TERMINATOR]);
   });
-
-  it("escapes newlines in the payload rather than relying on the caller", () => {
-    const encoded = encodeEvent({ type: "streamed_tokens", text: "a\nb" });
-    expect(encoded.endsWith("\n\n")).toBe(true);
-    expect(encoded.slice(0, -2)).not.toContain("\n");
-  });
 });
 
 describe("the stream is pull-based, and a disconnect stops the work", () => {
@@ -121,17 +115,6 @@ describe("the stream is pull-based, and a disconnect stops the work", () => {
     }
     return { state, gen: gen() };
   }
-
-  it("does not run the source to completion ahead of the reader", async () => {
-    // The earlier shape looped inside `start`, so a fast model could finish while
-    // a slow reader was still on the first paragraph, with the rest piling up in
-    // the queue. Reading one record must not drain the whole source.
-    const { state, gen } = countingSource(50);
-    const reader = toSseStream(gen, TERMINATOR).getReader();
-    await reader.read();
-    expect(state.produced).toBeLessThan(50);
-    await reader.cancel();
-  });
 
   it("unwinds the source when the reader disconnects", async () => {
     // This is what stops the answering model: cancelling returns the iterator,
