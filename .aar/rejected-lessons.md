@@ -1,8 +1,14 @@
-# Lesson proposal — chat-screen (round d2e7d11, 2026-10-04)
+# Rejected lessons
+
+Append-only. Each entry is a lesson proposal Thomas rejected, in full, with his reason.
+
+## Lesson proposal — chat-screen (round d2e7d11, 2026-10-04)
+
+**Rejected 2026-10-21 (Thomas):** "its subject is the review workflow, not V-Tina (the same reason as AAR-1)."
 
 **Class: workflow.** It concerns the review loop's runner and skill text, not the product.
 
-## What happened, and where it first became visible
+### What happened, and where it first became visible
 
 At `/review` step 8 the correctness and hidden-failure critics were dispatched concurrently from
 one background shell. The hidden-failure critic (kimi-latest) promoted its artifact in about nine
@@ -17,14 +23,14 @@ notification reading "stopped after reaching its background time limit", with no
 hand). Re-run alone and detached from the cap, the same critic finished in about eleven minutes
 (loop record, `review/8`; `reviews/chat-screen.md`).
 
-## The activation, and its class
+### The activation, and its class
 
 **Session-observed.** The runner refused nothing: it was killed from outside before it could write
 anything. There is no durable trace except the orphan worktree, the loop-record line this session
 wrote, and the harness's own notification. A later reader cannot re-derive it from the repository
 alone (OPS-27's limit applies).
 
-## What it revealed
+### What it revealed
 
 Two things the loop does not state:
 
@@ -38,7 +44,7 @@ Two things the loop does not state:
    artifacts). Neither covers the runner itself being terminated: the throwaway worktree is not
    removed, and the loop record has no stop class to record under.
 
-## Evidence
+### Evidence
 
 - `reviews/chat-screen.md` → `## Loop record` → `review/8`: the first attempt's stop (the key),
   the concurrent second attempt (hidden-failure promoted, correctness killed), the detached third
@@ -55,7 +61,7 @@ Two things the loop does not state:
   worktree cannot switch branches), OPS-71 (a rejected reply discarded) — adjacent, none this. Its
   `.aar/rejected-lessons.md` has no entry mentioning a kill, a cap, a timeout, or a worktree.
 
-## Material evidence consulted and excluded
+### Material evidence consulted and excluded
 
 - **The first attempt's "codex exited 1" stops** (the revoked Fireworks key). Excluded: the stop
   class named the failure exactly, the cause was outside the loop, and the recovery (re-run the
@@ -65,14 +71,14 @@ Two things the loop does not state:
 - **The MCP noise line in codex's stderr** (`resources/list failed for mempalace`). Excluded:
   unrelated to the kill and to the loop.
 
-## Isolated or systematic?
+### Isolated or systematic?
 
 **Systematic in kind, rare in incidence, on this basis:** any caller with a time ceiling — the
 harness's background cap here, a CI job's step timeout elsewhere — meets it whenever a critic's
 duration crosses the ceiling, and nothing in the loop measures or bounds that duration. It has
 been observed once, on one large diff, with one slow route.
 
-## Candidate lesson
+### Candidate lesson
 
 A review critic has no stated time budget and no stop class for being killed from outside. When a
 caller's ceiling is lower than a critic's duration, the round loses the critic's work, leaves a
@@ -81,7 +87,7 @@ how a long pass is run (detached from any caller ceiling, or with the ceiling ra
 runner clean up and record on termination — which of these is a later story's decision, not this
 lesson's.
 
-## Competing explanations
+### Competing explanations
 
 - **This is the caller's limitation, not the loop's.** The ten-minute cap belongs to the tool that
   launched the shell; a terminal session has no such cap, and `run_codex` cannot see or prevent a
@@ -93,7 +99,7 @@ lesson's.
 - **The diff was unusually large.** The lockfile inflated it, and a smaller story's critics would
   finish well inside ten minutes. True, but it narrows the incidence, not the mechanism.
 
-## What would weaken, narrow or disprove it
+### What would weaken, narrow or disprove it
 
 - A measurement over past rounds showing critic durations rarely approach any caller's ceiling
   would make the budget half low-leverage.
@@ -102,7 +108,7 @@ lesson's.
 - A runner change that already prunes stale `claude-review-*` worktrees on start would close the
   cleanup half outright.
 
-## What must not be generalized
+### What must not be generalized
 
 - Not "concurrent critics are unsafe": the concurrency did not cause the kill, and the earlier
   double failure was the key.
