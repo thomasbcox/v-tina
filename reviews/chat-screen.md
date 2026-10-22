@@ -946,3 +946,9 @@ killed from outside — is **rejected**. Thomas: "Reject the lesson proposal, re
 review workflow, not V-Tina (the same reason as AAR-1)." The proposal is appended in full, with that
 reason, to `.aar/rejected-lessons.md`, and `.aar/proposals/chat-screen.md` is removed. Its wording
 NIT from round 27c42b2 (C1, rejected) travels with it unchanged.
+
+**Criterion 15 at the merge fork (2026-10-21).** The scope check, run against `origin/main` with the
+release records staged, lists every path the criterion names plus one it does not:
+`.aar/rejected-lessons.md`, the register `/close` writes when a lesson is rejected, created here by
+the rejection above. Thomas: "Yes: record .aar/rejected-lessons.md as an exception to criterion 15,
+then merge." Recorded as an exception; the criterion's text is unchanged.
