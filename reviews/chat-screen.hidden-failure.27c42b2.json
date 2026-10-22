@@ -1,0 +1,21 @@
+{
+  "summary": "The diff substantially improves failure surfacing over the prior round: the previously bare `catch` in `ChatScreen.onSubmit` now logs the error (with `cause` chains added in `parseRecord`), a stream that closes without its final record is logged and the request aborted, and `readChatStream` cancels the body before rethrowing an unreadable record. Two residual weak spots remain in `src/lib/chat/client.ts`: `buildRequest`'s drop-history loop can return a request body that fails the very schema it was checking against, with nothing recording that the client gave up; and a blind `.catch(() => {})` on the stream-cancel cleanup swallows the cancellation's own rejection. Both are in code this diff rewrote.",
+  "findings": [
+    {
+      "severity": "IMPORTANT",
+      "title": "buildRequest silently returns a body that fails the schema it just consulted",
+      "file": "src/lib/chat/client.ts",
+      "line": 170,
+      "claim": "The loop `while (prior.length > 0 && !chatRequestSchema.safeParse(candidate).success) prior.shift();` exits by either of two conditions — the schema accepted the body, or the history ran out — and line 174 returns `candidate` in both cases with nothing distinguishing them. The doc comment promises the schema 'has the last word … every limit it declares, now or later, is honoured here', but a 'later' limit that is not about history (a new refinement, a constraint on the final question) makes the loop drop every prior turn and still hand back a body the schema rejects. The failure then surfaces only one hop later and in degraded form: the server answers 400 and the catch in `ChatScreen` logs a generic `the service answered 400`, with the schema's actual objection — which `buildRequest` held in its hands and discarded — never reaching any sink. The screen's own failure detection is thus bypassed for the one case the new design was built to catch.",
+      "suggestion": "After the loop, run `chatRequestSchema.safeParse(candidate)` one final time; on failure, throw (or at minimum `console.error` with `parsed.error`) instead of returning the known-invalid body, so the request never goes out malformed and the schema's objection reaches the console with its `cause` intact."
+    },
+    {
+      "severity": "NIT",
+      "title": "Blind `.catch(() => {})` on the stream-cancel cleanup",
+      "file": "src/lib/chat/client.ts",
+      "line": 213,
+      "claim": "`await reader.cancel(error).catch(() => {});` swallows any rejection from the cancellation itself with no log and no comment saying the discard is deliberate. The impact is small — the parse error that prompted the cancel is rethrown on the next line and does reach the console, and a failed cancel leaves at most a lingering connection nobody could act on — but as written the empty handler is indistinguishable from an accidental swallow, in the pass whose whole purpose is making swallows deliberate.",
+      "suggestion": "Either log the cancellation failure at low volume (e.g. `console.warn('could not cancel the chat stream', cancelError)`), or add one comment line stating the rejection is knowingly ignored because the stream is already dead — so the swallow reads as a decision rather than an omission."
+    }
+  ]
+}

@@ -26,21 +26,6 @@ accurate, since the corpus is Oregon executive orders and bills. Keep the claim 
 **Sequencing.** Touches `src/lib/voice.ts` and `src/lib/prompts.ts`, which `answer-voice-screen` also
 edits — start after that story merges.
 
-### FEAT-4 — Tell the reader an answer can take a while
-
-**Want (Thomas, 2026-09-24).** A reader is told that an answer can take a while to begin.
-
-**Why it is needed.** Classification may now take up to 10 seconds before anything streams (raised
-from 3 s in `reviews/oregon-default-jurisdiction.md`, because a missed deadline turns the reader
-away). Silence that long reads as a broken page.
-
-**Shape to consider — not decided.** A notice or progress indicator on the chat screen, shown from
-the moment a question is sent until the first record arrives. The screen is User Story 4 and does not
-exist yet, so this is a requirement on that story. Whether the stream should also send an early
-"working" record is part of the same decision.
-
-**Sequencing.** With or after User Story 4's chat screen.
-
 ### FEAT-5 — Consider caching answers to common questions
 
 **Want (Thomas, 2026-09-24).** Contemplate caching responses for common questions, so a frequently
@@ -116,6 +101,7 @@ are: an applied migration is not edited.
 
 - **FEAT-1** — Read a question that names no jurisdiction as being about Oregon — PR #8 / merge: oregon-default-jurisdiction (story: `reviews/oregon-default-jurisdiction.md`).
 - **FEAT-3** — Keep enough of a refused quotation to diagnose it — PR #9 / merge: refusal-diagnostics (story: `reviews/refusal-diagnostics.md`).
+- **FEAT-4** — Tell the reader an answer can take a while — PR #10 / merge: chat-screen (story: `reviews/chat-screen.md`).
 
 ## Closed — won't do
 

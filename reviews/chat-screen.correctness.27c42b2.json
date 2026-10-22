@@ -1,0 +1,29 @@
+{
+  "summary": "Measured `date`: Sun Oct 4 17:15:02 PDT 2026. Static review of the product changes shows the approved fixes are present: history is cut and then checked against the shared request schema, the send gate waits for ended turns, local failures end and abort the request while logging a cause, an empty incomplete answer still gets its labelled region and visible mark, and generated accessible names come from the copy registry. The remaining issues are record, documentation, and regression-coverage drift rather than observed product misbehavior: the deferred lesson proposal still contains the harness attribution its own check corrected, the README claims payload evidence that the implementation does not attach, and the new diagnostic and reader-cancellation behavior is not pinned tightly by tests.",
+  "findings": [
+    {
+      "severity": "NIT",
+      "title": "Lesson wording correction was only partly applied",
+      "file": ".aar/proposals/chat-screen.md",
+      "line": 24,
+      "claim": "The proposal says at lines 9-13 that the independent check's wording correction was applied, and `reviews/chat-screen.md` line 276 records that the cap belongs to the caller, not the reviewer harness. But the proposal still attributes the task notification to “the harness's own notification” at line 24 and the cap to “the harness's background cap” at line 71. The reviewer harness has no cap and did not emit the desktop notification, so a later reader deciding where this pending lesson belongs can again blame `run_codex`.",
+      "suggestion": "Replace the remaining harness attributions at `.aar/proposals/chat-screen.md:24` and `.aar/proposals/chat-screen.md:71` with “the caller's” or “the desktop app's”. If the earlier loop-record sentence is also corrected, record that correction by date rather than silently rewriting the existing record."
+    },
+    {
+      "severity": "NIT",
+      "title": "README overstates what the console error carries",
+      "file": "README.md",
+      "line": 529,
+      "claim": "`parseRecord` attaches the native JSON `SyntaxError` at `src/lib/chat/client.ts:240` and the Zod rejection at line 244 as `cause`; neither carries the raw payload. The README therefore documents a diagnostic—“the payload … attached”—that the implementation does not provide, contrary to AC14's requirement that the README describe the screen's actual behavior.",
+      "suggestion": "Change the README sentence to say that the parse error or the schema objection is attached, or make the JSON-parse error carry the raw record and add a test for that behavior."
+    },
+    {
+      "severity": "NIT",
+      "title": "Diagnostic and cancellation regressions are not pinned",
+      "file": "__tests__/chat-screen.test.tsx",
+      "line": 426,
+      "claim": "The mounted test accepts any non-null `cause`, so replacing `parsed.error` with a generic value would still pass. The malformed-JSON case at lines 433-445 mocks `console.error` but never asserts it, and no test observes `readChatStream` cancelling the body reader before rethrowing. The implementation currently does these things, but the diagnostic behavior approved in H2 and the reader-cancellation half of approach 2 can regress silently.",
+      "suggestion": "Add focused `readChatStream` tests for malformed JSON and an undeclared payload, using streams whose `cancel` callback records its reason. Assert the expected rejection messages, the `SyntaxError` and Zod rejection causes, and that cancellation happens before the error reaches `ChatScreen`."
+    }
+  ]
+}

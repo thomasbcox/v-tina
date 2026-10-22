@@ -1,0 +1,69 @@
+{
+  "summary": "Sun Oct  4 09:37:06 PDT 2026 — The branch broadly implements the approved chat-screen shape: the avatar notices are structural siblings of the scrolling region, the SSE reader validates the shared event schema, notices remain outside answer text, and the non-review diff stays within AC15’s allowed paths. The main correctness gaps are the three fixes Thomas approved after the approach pass—history is trimmed only by message count, a locally unreadable stream is not cancelled, and generic divs carry the question and answer labels—plus an earlier send gate after a notice and a missing visible mark when an exchange becomes incomplete before its first answer token. The remaining findings are registry and comment drift.",
+  "findings": [
+    {
+      "severity": "IMPORTANT",
+      "title": "History trimming ignores the per-message length limit",
+      "file": "src/lib/chat/client.ts",
+      "line": 156,
+      "claim": "`buildRequest` trims only while the message count exceeds `MAX_HISTORY_MESSAGES`, but `chatRequestSchema` also limits every message to `MAX_QUESTION_LENGTH` characters. A prior assistant answer longer than 2000 characters remains in the next request, the service refuses the whole body with 400, and the reader sees the generic connection notice instead of an answer. This violates AC12 and leaves the approach-pass fix unimplemented.",
+      "suggestion": "Import the per-message limit and `chatRequestSchema`, shorten prior answers to the service’s limit, build from whole turns, validate with `chatRequestSchema.safeParse`, and drop the oldest turn while the body is refused. Add a regression whose prior answer exceeds 2000 characters."
+    },
+    {
+      "severity": "IMPORTANT",
+      "title": "Client-side stream failures do not cancel the request",
+      "file": "src/components/ChatScreen.tsx",
+      "line": 86,
+      "claim": "When `readChatStream` throws on a malformed or undeclared record, `ChatScreen` catches the error and marks the turn incomplete, but never aborts its `AbortController`; `readChatStream` only releases the reader lock. The response body and request therefore remain unclosed on the client’s only owned failure path, contrary to the approved cancellation design and AC10’s terminal-failure behaviour.",
+      "suggestion": "After marking the turn incomplete on a local failure, call `controller.abort()` while preserving the separate unmount abort and its no-update rule. Add an AC10 assertion that the request signal is aborted."
+    },
+    {
+      "severity": "IMPORTANT",
+      "title": "The send gate opens when a notice arrives",
+      "file": "src/lib/chat/client.ts",
+      "line": 137,
+      "claim": "`canSend` rejects only `waiting` and `answering` turns. A `notice` record changes the turn to `incomplete` but leaves `ended` false until the following `audit_log_status` record, so the button and submit handler allow a second question while the first stream is still open. This violates AC11’s requirement that nothing be sent until the answer has ended.",
+      "suggestion": "Base the gate on the terminal state, for example `return turns.every((turn) => turn.ended)`, and add a regression that submits during the interval between a provenance notice and its final record."
+    },
+    {
+      "severity": "IMPORTANT",
+      "title": "Question and answer labels are not reliably exposed as regions",
+      "file": "src/components/Transcript.tsx",
+      "line": 29,
+      "claim": "The question and answer containers are generic `div` elements with `aria-label`s while their visible labels are separate `p` elements. Generic roles do not reliably expose an accessible name, so a non-visual reader may not hear where the reader’s question ends and V-Tina’s answer begins. This is the approved approach-pass finding and has not been applied.",
+      "suggestion": "Use labelled `section` elements for the question and answer, with per-turn IDs and `aria-labelledby` pointing to their visible labels. Update the tests to query the regions by exposed role and name."
+    },
+    {
+      "severity": "IMPORTANT",
+      "title": "An incomplete turn with no answer text gets no visible incomplete mark",
+      "file": "src/components/Transcript.tsx",
+      "line": 52,
+      "claim": "The answer block and `INCOMPLETE_MARK` render only when `turn.answer !== \"\"`. A provenance stop or unreadable record can arrive before the first token; the turn becomes `incomplete`, but no answer label or mark is rendered. AC8 and AC10 require the answer itself to be visibly marked stopped or incomplete, and the current tests cover only stops after words have arrived.",
+      "suggestion": "Render the labelled answer region whenever `turn.answer !== \"\" || turn.status === \"incomplete\"`, so an empty incomplete answer still ends in `INCOMPLETE_MARK`. Add before-first-words regressions for a provenance notice and a malformed record."
+    },
+    {
+      "severity": "NIT",
+      "title": "Generated accessible names bypass the screen-copy registry",
+      "file": "src/components/AvatarNotice.tsx",
+      "line": 16,
+      "claim": "`About V-Tina (top)` is a generated accessible name, and `Transcript` similarly generates `Exchange N`, but neither string is in `SCREEN_COPY` or the README’s Screen copy list. These are reader-facing words the server does not send, so the declared registry does not cover all such copy and its equality test cannot catch drift in them.",
+      "suggestion": "Move these labels into `src/lib/copy.ts` and list them in `SCREEN_COPY` and the README, or derive their accessible names from already-registered visible labels and stable IDs."
+    },
+    {
+      "severity": "NIT",
+      "title": "Stale comments still say the wait ends at the first record",
+      "file": "src/lib/copy.ts",
+      "line": 31,
+      "claim": "The comment on `WAITING_NOTICE` says the line lasts until the first record arrives, but the ratified correction and implementation keep it through the verdict and passages until the answer’s first words. The AC3 test title in `__tests__/chat-screen.test.tsx` line 132 repeats the stale wording.",
+      "suggestion": "Change both comments to “the answer’s first words”, matching the implementation, the story’s corrected oracle, and the test body."
+    },
+    {
+      "severity": "NIT",
+      "title": "Living comment hard-codes the size of NOTICE_KINDS",
+      "file": "src/lib/chat/events.ts",
+      "line": 75,
+      "claim": "The comment says “Today there is one kind” immediately above the enumerable `NOTICE_KINDS` list. That count is a copy of the list’s size in living text and will drift when another notice kind is added, contrary to the builder protocol’s counts-are-copies rule.",
+      "suggestion": "Delete the count and describe the current kind without numbering it, or point to `NOTICE_KINDS` as the authority; keep any concrete count only in a dated story record."
+    }
+  ]
+}

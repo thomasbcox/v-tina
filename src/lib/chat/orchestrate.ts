@@ -315,7 +315,8 @@ function wordAt(text: string, at: number): string {
  *   enforcement over documentation, knowing it may read abruptly). That sentence's
  *   start is held until its first word is complete and it is clear the model is not
  *   repeating the frame itself — a few characters, never a sentence.
- * - A refusal emits `PROVENANCE_NOTICE`, never `FAILURE_NOTICE`.
+ * - A refusal emits `PROVENANCE_NOTICE` as a `notice` record — never as answer text,
+ *   and never `FAILURE_NOTICE`.
  *
  * **Linear in the answer.** Each model token lexes only what has not been released,
  * a quotation still held resumes its scan instead of starting it again, and the
@@ -365,7 +366,10 @@ export async function* screenedAnswer(
   function* stop(logged: string): Generator<ChatStreamEvent> {
     refused = true;
     log("answer refused on provenance", logged);
-    yield { type: "streamed_tokens", text: PROVENANCE_NOTICE };
+    // Its own record kind, not more answer text: the stream cannot take back the
+    // words already sent, so the screen has to be able to tell the notice from
+    // the answer it interrupts (story `chat-screen`, finding 1).
+    yield { type: "notice", kind: "provenance", text: PROVENANCE_NOTICE };
   }
 
   /**
